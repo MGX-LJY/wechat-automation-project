@@ -5,54 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d4bcc2e8-f119-4cec-9283-219547d2a42a" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/wechat-automation-project.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/QR.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/app.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/auto_click/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/auto_click/auto_clicker.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/browser_automation/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/browser_automation/download_automation.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/config.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/config/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/config/config_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/download_watcher.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/error_handling/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/error_handling/error_handler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/file_upload/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/file_upload/uploader.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/itchat_module/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/itchat_module/itchat_handler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/logging_module/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/logging_module/logger.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/logs/app.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/message_handler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/notification/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/notification/notifier.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ui/components/config_editor.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ui/components/log_viewer.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ui/main_ui.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_auto_clicker.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_config_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_download_automation.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_error_handler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_itchat_handler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_logger.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_message_handler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_notifier.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_uploader.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -95,7 +48,7 @@
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "reference.settingsdialog.IDE.editor.colors.Code With Me",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
@@ -178,7 +131,7 @@
       <workItem from="1727764329602" duration="3568000" />
       <workItem from="1727767914679" duration="3721000" />
       <workItem from="1727771854144" duration="16326000" />
-      <workItem from="1727791911666" duration="9063000" />
+      <workItem from="1727791911666" duration="9861000" />
     </task>
     <servers />
   </component>
