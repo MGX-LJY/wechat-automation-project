@@ -1,3 +1,4 @@
+# wechat-automation-project
 # 微信自动化上传系统技术文档
 
 ## 目录
