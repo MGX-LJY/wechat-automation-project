@@ -2,6 +2,7 @@
 TRANSLATE = 'Chinese'
 
 class ReturnValue(dict):
+
     ''' turn return value of itchat into a boolean value
     for requests:
         ..code::python
