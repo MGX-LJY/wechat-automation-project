@@ -22,27 +22,35 @@ def main():
         logging.info("应用启动")
 
         # 加载配置
-        config = ConfigManager.load_config('src/config.json')
+        config = ConfigManager.load_config('config.json')
         logging.info("配置文件加载成功")
 
         # 初始化通知模块
-        notifier = Notifier(config['error_notification'])
+        notifier = Notifier(config.get('error_notification', {}))
 
         # 初始化错误处理
         error_handler = ErrorHandler(notifier)
 
         # 初始化各模块
         itchat_handler = ItChatHandler(config['wechat'], error_handler)
-        # 先登录微信
+        # 登录微信
         itchat_handler.login()
 
-        # 初始化其他模块
-        message_handler = MessageHandler(config['url'], error_handler)
+        # 获取监控的群组列表
+        monitor_groups = config['wechat'].get('monitor_groups', [])
+
+        # 初始化消息处理器，并传递 monitor_groups
+        message_handler = MessageHandler(config['url'], error_handler, monitor_groups)
+
+        # 初始化自动点击器
         auto_clicker = AutoClicker(error_handler)
+        message_handler.set_auto_clicker(auto_clicker)
+
+        # 初始化上传器
         uploader = Uploader(config['upload'], error_handler)
 
         # 初始化下载监控模块
-        download_path = config['download'].get('download_path', '/Users/martinezdavid/Downloads')
+        download_path = config['download'].get('download_path', '/Users/your_username/Downloads')
         allowed_extensions = config['download'].get('allowed_extensions', ['.pdf', '.docx', '.xlsx'])
         download_watcher = DownloadWatcher(
             download_path,
@@ -52,9 +60,6 @@ def main():
 
         # 绑定模块间关系
         itchat_handler.set_message_callback(message_handler.handle_message)
-        message_handler.set_auto_clicker(auto_clicker)
-        # 移除以下行，因为我们已经不再需要设置 download_watcher
-        # auto_clicker.set_download_watcher(download_watcher)
 
         # 启动下载监控
         watcher_thread = threading.Thread(target=download_watcher.start)
