@@ -4,3 +4,4 @@ certifi>=2021.5.30
 Pillow>=10.0.0
 qrcode>=6.1
 watchdog>=2.1.0
+PyQRCode~=1.2.1
