@@ -49,7 +49,7 @@
     },
     "error_notification": {
         "method": "wechat",
-        "recipient": "李老师呀"
+        "recipient": "文件传输助手"
     },
     "itchat": {
         "qr_check": {
