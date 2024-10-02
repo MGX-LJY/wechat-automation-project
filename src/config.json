@@ -1,0 +1,60 @@
+{
+    "wechat": {
+        "login_qr_path": "qr.png",
+        "monitor_groups": ["🐠【学虎】课件下载"]
+    },
+    "url": {
+        "regex": "https?://[^\\s#]+",
+        "validation": true
+    },
+    "download": {
+        "download_path": "/Users/martinezdavid/Downloads",
+        "allowed_extensions": [
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".xlsx",
+            ".ppt",
+            ".pptx",
+            ".zip",
+            ".rar",
+            ".7z",
+            ".mp4",
+            ".avi",
+            ".mkv",
+            ".mp3",
+            ".wav",
+            ".aac",
+            ".tar",
+            ".gz",
+            ".bz2",
+            ".mov",
+            ".flv",
+            ".wmv"
+        ],
+        "temporary_extensions": [
+            ".crdownload",
+            ".part",
+            ".tmp",
+            ".download"
+        ],
+        "stable_time": 5
+    },
+    "upload": {
+        "target_groups": ["🐠【学虎】课件下载"]
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "logs/app.log"
+    },
+    "error_notification": {
+        "method": "wechat",
+        "recipient": "李老师呀"
+    },
+    "itchat": {
+        "qr_check": {
+            "max_retries": 5,
+            "retry_interval": 2
+        }
+    }
+}
