@@ -1,6 +1,6 @@
 # app.py
 
-import logging  # 导入 logging 模块
+import logging
 import sys
 import signal
 import threading
@@ -53,7 +53,8 @@ def main():
         # 绑定模块间关系
         itchat_handler.set_message_callback(message_handler.handle_message)
         message_handler.set_auto_clicker(auto_clicker)
-        auto_clicker.set_download_watcher(download_watcher)
+        # 移除以下行，因为我们已经不再需要设置 download_watcher
+        # auto_clicker.set_download_watcher(download_watcher)
 
         # 启动下载监控
         watcher_thread = threading.Thread(target=download_watcher.start)
