@@ -9,7 +9,7 @@ import threading
 from queue import Queue, Empty
 
 class AutoClicker:
-    def __init__(self, error_handler, batch_size=3, wait_time=180, collect_timeout=5, close_after_count=5, close_wait_time=600):
+    def __init__(self, error_handler, batch_size=4, wait_time=60, collect_timeout=5, close_after_count=7, close_wait_time=600):
         """
         初始化 AutoClicker。
 

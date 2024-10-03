@@ -6,7 +6,7 @@ from urllib.parse import urlparse, urlunparse
 
 class MessageHandler:
     def __init__(self, config, error_handler, monitor_groups):
-        self.regex = config.get('regex', r'https?://[^\s#]+')
+        self.regex = config.get('regex', r'https?://[^\s#"]+')
         self.validation = config.get('validation', True)
         self.auto_clicker = None
         self.error_handler = error_handler
@@ -27,6 +27,11 @@ class MessageHandler:
             msg_type = msg['Type'] if 'Type' in msg else getattr(msg, 'type', '')
             logging.debug(f"消息类型: {msg_type}")
 
+            # 仅处理文本和分享消息，忽略其他类型
+            if msg_type not in ['Text', 'Sharing']:
+                logging.debug(f"忽略非文本或分享类型的消息: {msg_type}")
+                return
+
             # 初始化消息内容
             message_content = ''
 
@@ -35,20 +40,6 @@ class MessageHandler:
                 message_content = msg['Text'] if 'Text' in msg else getattr(msg, 'text', '')
             elif msg_type == 'Sharing':
                 message_content = msg['Url'] if 'Url' in msg else getattr(msg, 'url', '')
-            elif msg_type in ['Attachment', 'Video', 'Picture', 'Recording']:
-                # 处理可能是函数的情况
-                text_attr = msg['Text'] if 'Text' in msg else getattr(msg, 'text', '')
-                if callable(text_attr):
-                    message_content = text_attr()
-                else:
-                    message_content = text_attr
-            else:
-                # 处理其他类型的消息
-                content_attr = msg.get('Content', '') if 'Content' in msg else getattr(msg, 'content', '')
-                if callable(content_attr):
-                    message_content = content_attr()
-                else:
-                    message_content = content_attr
 
             logging.debug(f"处理消息内容: {message_content}")
 
