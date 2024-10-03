@@ -3,13 +3,12 @@
 import webbrowser
 import logging
 import time
-import os
 import subprocess
 import threading
 from queue import Queue, Empty
 
 class AutoClicker:
-    def __init__(self, error_handler, batch_size=4, wait_time=60, collect_timeout=5, close_after_count=7, close_wait_time=600):
+    def __init__(self, error_handler, batch_size=1, wait_time=60, collect_timeout=5, close_after_count=7, close_wait_time=300):
         """
         初始化 AutoClicker。
 
@@ -32,6 +31,7 @@ class AutoClicker:
         self.timer_running = False
         self.count_lock = threading.Lock()
 
+        # 启动处理线程一次
         self.processing_thread = threading.Thread(target=self.process_queue, daemon=True)
         self.processing_thread.start()
         logging.info("AutoClicker 初始化完成，处理线程已启动。")
@@ -70,14 +70,15 @@ class AutoClicker:
                     for url in batch:
                         self.open_url(url)
 
+                    # 在处理完当前批次后，检查是否需要等待
                     if not self.url_queue.empty():
                         logging.info(f"等待 {self.wait_time} 秒后继续处理下一批链接")
                         time.sleep(self.wait_time)
                     else:
                         logging.info("当前队列处理完毕，无需等待。")
                 else:
+                    # 队列为空时不记录日志，避免日志充斥
                     time.sleep(5)
-            logging.info("所有链接已处理完毕")
         except Exception as e:
             logging.error(f"处理URL队列时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -119,6 +120,7 @@ class AutoClicker:
         等待指定时间后关闭浏览器，并重置计数和计时器状态。
         """
         try:
+            logging.info(f"计时器启动，等待 {self.close_wait_time} 秒后关闭浏览器")
             time.sleep(self.close_wait_time)
             self.close_safari()
         except Exception as e:
@@ -128,7 +130,7 @@ class AutoClicker:
             with self.count_lock:
                 self.opened_count = 0
                 self.timer_running = False
-                logging.debug("计数器已重置，计时器状态已关闭")
+                logging.debug("计数器已重置")
 
     def close_safari(self):
         """
