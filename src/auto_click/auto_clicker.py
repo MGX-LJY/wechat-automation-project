@@ -4,11 +4,12 @@ import webbrowser
 import logging
 import time
 import os
+import subprocess
 import threading
 from queue import Queue, Empty
 
 class AutoClicker:
-    def __init__(self, error_handler, batch_size=3, wait_time=180, collect_timeout=5):
+    def __init__(self, error_handler, batch_size=3, wait_time=180, collect_timeout=5, close_after_count=5, close_wait_time=600):
         """
         初始化 AutoClicker。
 
@@ -16,12 +17,21 @@ class AutoClicker:
         :param batch_size: 每批处理的URL数量。
         :param wait_time: 每批之间的等待时间（秒）。
         :param collect_timeout: 收集批次URL的超时时间（秒）。
+        :param close_after_count: 达到此计数后关闭浏览器。
+        :param close_wait_time: 达到计数后等待的时间（秒）。
         """
         self.error_handler = error_handler
         self.url_queue = Queue()
         self.batch_size = batch_size
         self.wait_time = wait_time
         self.collect_timeout = collect_timeout
+        self.close_after_count = close_after_count
+        self.close_wait_time = close_wait_time
+
+        self.opened_count = 0
+        self.timer_running = False
+        self.count_lock = threading.Lock()
+
         self.processing_thread = threading.Thread(target=self.process_queue, daemon=True)
         self.processing_thread.start()
         logging.info("AutoClicker 初始化完成，处理线程已启动。")
@@ -65,13 +75,16 @@ class AutoClicker:
                         time.sleep(self.wait_time)
                     else:
                         logging.info("当前队列处理完毕，无需等待。")
+                else:
+                    time.sleep(5)
+            logging.info("所有链接已处理完毕")
         except Exception as e:
             logging.error(f"处理URL队列时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def open_url(self, url):
         """
-        打开指定的 URL。
+        打开指定的 URL，并进行计数控制。
 
         :param url: 要打开的 URL。
         """
@@ -79,17 +92,55 @@ class AutoClicker:
             logging.info(f"打开URL: {url}")
             webbrowser.get('safari').open(url)
             time.sleep(1)  # 等待Safari打开标签页，防止过快打开
+
+            # 更新已打开的URL计数
+            self.increment_count()
+
         except Exception as e:
             logging.error(f"打开URL时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
+
+    def increment_count(self):
+        """
+        增加已打开URL的计数，并在达到阈值时启动计时器关闭浏览器。
+        """
+        with self.count_lock:
+            self.opened_count += 1
+            logging.debug(f"已打开的URL数量: {self.opened_count}")
+
+            if self.opened_count >= self.close_after_count and not self.timer_running:
+                self.timer_running = True
+                logging.info(f"已打开 {self.close_after_count} 个链接，启动计时器将在 {self.close_wait_time} 秒后关闭浏览器")
+                timer_thread = threading.Thread(target=self.close_timer, daemon=True)
+                timer_thread.start()
+
+    def close_timer(self):
+        """
+        等待指定时间后关闭浏览器，并重置计数和计时器状态。
+        """
+        try:
+            time.sleep(self.close_wait_time)
+            self.close_safari()
+        except Exception as e:
+            logging.error(f"计时器运行时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+        finally:
+            with self.count_lock:
+                self.opened_count = 0
+                self.timer_running = False
+                logging.debug("计数器已重置，计时器状态已关闭")
 
     def close_safari(self):
         """
         关闭 Safari 浏览器。
         """
         try:
-            logging.info("关闭 Safari 浏览器")
-            os.system("osascript -e 'tell application \"Safari\" to quit'")
+            logging.info("尝试关闭 Safari 浏览器")
+            result = subprocess.run(['osascript', '-e', 'tell application "Safari" to quit'], capture_output=True, text=True)
+            if result.returncode != 0:
+                logging.error(f"关闭 Safari 失败: {result.stderr.strip()}")
+            else:
+                logging.info("Safari 已成功关闭")
         except Exception as e:
             logging.error(f"关闭 Safari 时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
