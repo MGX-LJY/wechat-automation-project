@@ -17,14 +17,45 @@ class MessageHandler:
 
     def handle_message(self, msg):
         try:
-            logging.info("msg 日志类型：", type(msg))
             # 获取群组名称
-            group_name = msg['User']['NickName']
+            group_name = msg['User']['NickName'] if 'User' in msg else msg.user.nickName
             if group_name not in self.monitor_groups:
                 return
 
-            message_content = msg.get('Text', '')
+            # 获取消息类型
+            msg_type = msg['Type'] if 'Type' in msg else msg.type
+            logging.debug(f"消息类型: {msg_type}")
+
+            # 初始化消息内容
+            message_content = ''
+
+            # 根据消息类型获取内容
+            if msg_type == 'Text':
+                message_content = msg['Text'] if 'Text' in msg else msg.text
+            elif msg_type == 'Sharing':
+                message_content = msg['Url'] if 'Url' in msg else msg.url
+            elif msg_type in ['Attachment', 'Video', 'Picture', 'Recording']:
+                # 处理可能是函数的情况
+                text_attr = msg['Text'] if 'Text' in msg else msg.text
+                if callable(text_attr):
+                    message_content = text_attr()
+                else:
+                    message_content = text_attr
+            else:
+                # 处理其他类型的消息
+                content_attr = msg.get('Content', '') if 'Content' in msg else getattr(msg, 'content', '')
+                if callable(content_attr):
+                    message_content = content_attr()
+                else:
+                    message_content = content_attr
+
             logging.debug(f"处理消息内容: {message_content}")
+
+            # 确保 message_content 是字符串类型
+            if not isinstance(message_content, str):
+                message_content = str(message_content)
+
+            # 使用正则表达式提取URL
             urls = re.findall(self.regex, message_content)
             logging.info(f"识别到URL: {urls}")
 
@@ -39,6 +70,7 @@ class MessageHandler:
                 if self.auto_clicker:
                     logging.debug(f"调用自动点击模块打开URL: {clean_url}")
                     self.auto_clicker.open_url(clean_url)
+
         except Exception as e:
             logging.error(f"处理消息时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
