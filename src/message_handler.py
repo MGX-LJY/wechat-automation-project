@@ -17,6 +17,7 @@ class MessageHandler:
 
     def handle_message(self, msg):
         try:
+            logging.info("msg 日志类型：", type(msg))
             # 获取群组名称
             group_name = msg['User']['NickName']
             if group_name not in self.monitor_groups:
