@@ -8,7 +8,7 @@ import threading
 from queue import Queue, Empty
 
 class AutoClicker:
-    def __init__(self, error_handler, batch_size=4, wait_time=60, collect_timeout=5, close_after_count=7, close_wait_time=300):
+    def __init__(self, error_handler, batch_size=3, wait_time=60, collect_timeout=5, close_after_count=7, close_wait_time=240):
         """
         初始化 AutoClicker。
 
@@ -45,6 +45,10 @@ class AutoClicker:
         for url in urls:
             self.url_queue.put(url)
             logging.debug(f"添加URL到队列: {url}")
+
+        # 记录当前剩余批次数量
+        remaining_batches = self.get_remaining_batches()
+        logging.info(f"当前剩余批次数量: {remaining_batches}")
 
     def process_queue(self):
         """
@@ -92,7 +96,7 @@ class AutoClicker:
         try:
             logging.info(f"打开URL: {url}")
             webbrowser.get('safari').open(url)
-            time.sleep(1)  # 等待Safari打开标签页，防止过快打开
+            time.sleep(2)  # 等待Safari打开标签页，防止过快打开
 
             # 更新已打开的URL计数
             self.increment_count()
@@ -130,7 +134,7 @@ class AutoClicker:
             with self.count_lock:
                 self.opened_count = 0
                 self.timer_running = False
-                logging.debug("计数器已重置")
+                logging.debug("计数器已重置，计时器状态已关闭")
 
     def close_safari(self):
         """
@@ -146,3 +150,14 @@ class AutoClicker:
         except Exception as e:
             logging.error(f"关闭 Safari 时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
+
+    def get_remaining_batches(self):
+        """
+        计算当前队列中剩余的批次数量。
+
+        :return: 剩余批次数量。
+        """
+        with self.count_lock:
+            queue_size = self.url_queue.qsize()
+            remaining_batches = (queue_size + self.batch_size - 1) // self.batch_size  # 向上取整
+            return remaining_batches
