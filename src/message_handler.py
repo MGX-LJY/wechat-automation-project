@@ -1,4 +1,4 @@
-# message_handler.py
+# src/message_handler.py
 
 import re
 import logging
@@ -18,12 +18,13 @@ class MessageHandler:
     def handle_message(self, msg):
         try:
             # 获取群组名称
-            group_name = msg['User']['NickName'] if 'User' in msg else msg.user.nickName
+            group_name = msg['User']['NickName'] if 'User' in msg else getattr(msg.user, 'NickName', '')
             if group_name not in self.monitor_groups:
+                logging.debug(f"消息来自非监控群组: {group_name}")
                 return
 
             # 获取消息类型
-            msg_type = msg['Type'] if 'Type' in msg else msg.type
+            msg_type = msg['Type'] if 'Type' in msg else getattr(msg, 'type', '')
             logging.debug(f"消息类型: {msg_type}")
 
             # 初始化消息内容
@@ -31,12 +32,12 @@ class MessageHandler:
 
             # 根据消息类型获取内容
             if msg_type == 'Text':
-                message_content = msg['Text'] if 'Text' in msg else msg.text
+                message_content = msg['Text'] if 'Text' in msg else getattr(msg, 'text', '')
             elif msg_type == 'Sharing':
-                message_content = msg['Url'] if 'Url' in msg else msg.url
+                message_content = msg['Url'] if 'Url' in msg else getattr(msg, 'url', '')
             elif msg_type in ['Attachment', 'Video', 'Picture', 'Recording']:
                 # 处理可能是函数的情况
-                text_attr = msg['Text'] if 'Text' in msg else msg.text
+                text_attr = msg['Text'] if 'Text' in msg else getattr(msg, 'text', '')
                 if callable(text_attr):
                     message_content = text_attr()
                 else:
@@ -59,6 +60,8 @@ class MessageHandler:
             urls = re.findall(self.regex, message_content)
             logging.info(f"识别到URL: {urls}")
 
+            # 处理和收集有效的URL
+            valid_urls = []
             for url in urls:
                 clean_url = self.clean_url(url)
                 logging.debug(f"清理后的URL: {clean_url}")
@@ -67,9 +70,12 @@ class MessageHandler:
                     logging.warning(f"URL验证失败: {clean_url}")
                     continue
 
-                if self.auto_clicker:
-                    logging.debug(f"调用自动点击模块打开URL: {clean_url}")
-                    self.auto_clicker.open_url(clean_url)
+                valid_urls.append(clean_url)
+
+            # 将有效的URL添加到AutoClicker队列
+            if self.auto_clicker and valid_urls:
+                logging.debug(f"调用自动点击模块添加URL: {valid_urls}")
+                self.auto_clicker.add_urls(valid_urls)
 
         except Exception as e:
             logging.error(f"处理消息时发生错误: {e}", exc_info=True)

@@ -39,11 +39,12 @@ def main():
         # 获取监控的群组列表
         monitor_groups = config['wechat'].get('monitor_groups', [])
 
-        # 初始化消息处理器，并传递 monitor_groups
-        message_handler = MessageHandler(config['url'], error_handler, monitor_groups)
-
         # 初始化自动点击器
         auto_clicker = AutoClicker(error_handler)
+
+        # 初始化消息处理器，并传递 monitor_groups
+        message_handler = MessageHandler(config['url'], error_handler, monitor_groups)
+        logging.info("消息处理器初始化完成并绑定自动点击器")
         message_handler.set_auto_clicker(auto_clicker)
 
         # 初始化上传器
