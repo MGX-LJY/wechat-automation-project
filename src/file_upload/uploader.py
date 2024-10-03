@@ -49,6 +49,11 @@ class Uploader:
 
             file_size = os.path.getsize(file_path)
             max_size = 50 * 1024 * 1024  # 假设企业微信支持上传50MB文件
+            alert_size = 25 * 1024 * 1024  # 25MB的阈值
+
+            # 检查是否需要发送超过25MB的提醒消息
+            if file_size > alert_size:
+                self.send_large_file_message(file_path)
 
             if file_size > max_size:
                 logging.warning(f"文件大小 {file_size} 字节 超过企业微信限制的 {max_size} 字节。")
@@ -101,3 +106,27 @@ class Uploader:
             time.sleep(stable_time)
 
         logging.info(f"文件已稳定: {file_path}, 准备上传")
+
+    def send_large_file_message(self, file_path):
+        """
+        发送超过25MB的文件上传提醒消息到所有目标群组。
+
+        :param file_path: 要上传的文件路径。
+        """
+        try:
+            filename = os.path.basename(file_path)
+            message = f"{filename} 超过25MB 晚上统一上传，急需的话@李老师"
+
+            for group_name, user_name in self.group_usernames.items():
+                if not user_name:
+                    logging.error(f"群组 '{group_name}' 的 UserName 未找到，无法发送提醒消息")
+                    continue
+                try:
+                    itchat.send(message, toUserName=user_name)
+                    logging.info(f"发送提醒消息到群组 '{group_name}': {message}")
+                except Exception as e:
+                    logging.error(f"发送消息到群组 '{group_name}' 失败: {e}", exc_info=True)
+                    self.error_handler.handle_exception(e)
+        except Exception as e:
+            logging.error(f"发送超过25MB提醒消息时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
