@@ -11,7 +11,6 @@ class Uploader:
         self.group_usernames = self._fetch_group_usernames()
         self.max_retries = 3  # 最大重试次数
         self.retry_delay = 5  # 重试间隔时间（秒）
-        self.max_size = 50 * 1024 * 1024  # 假设企业微信支持上传50MB文件
         self.alert_size = 25 * 1024 * 1024  # 25MB的阈值
 
     def _fetch_group_usernames(self):
@@ -38,7 +37,7 @@ class Uploader:
 
     def _upload_file_thread(self, file_path):
         """
-        上传文件的线程函数，直接上传完整文件
+        上传文件的线程函数，发送提醒消息并根据文件大小决定是否上传
         """
         try:
             if not os.path.exists(file_path):
@@ -50,14 +49,10 @@ class Uploader:
 
             file_size = os.path.getsize(file_path)
 
-            # 检查文件大小是否超过限制
-            if file_size > self.max_size:
-                logging.warning(f"文件大小 {file_size} 字节超过限制的 {self.max_size} 字节，无法上传。")
-                return
-
             # 检查是否需要发送超过25MB的提醒消息
             if file_size > self.alert_size:
                 self.send_large_file_message(file_path)
+                return  # 不进行上传
 
             # 文件符合上传条件，直接上传
             for group_name, user_name in self.group_usernames.items():
@@ -113,7 +108,7 @@ class Uploader:
         """
         try:
             filename = os.path.basename(file_path)
-            message = f"{filename} 超过25MB，晚上统一上传，急需的话@李老师"
+            message = f"{filename} 超过25MB 晚上统一上传，急需的话@李老师"
 
             for group_name, user_name in self.group_usernames.items():
                 if not user_name:
