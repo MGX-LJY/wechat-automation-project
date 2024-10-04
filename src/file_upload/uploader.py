@@ -226,7 +226,9 @@ class Uploader:
                 # 如果当前时间已过10点半，定时到明天的10点半
                 next_notification_time += datetime.timedelta(days=1)
             time_to_wait = (next_notification_time - now).total_seconds()
-            logging.info(f"等待 {time_to_wait} 秒后发送每日通知。")
+            hours, remainder = divmod(time_to_wait, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            logging.info(f"等待 {int(hours)} 小时 {int(minutes)} 分钟 {int(seconds)} 秒后发送每日通知。")
             time.sleep(time_to_wait)
             self.send_daily_notification()
 
