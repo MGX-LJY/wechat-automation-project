@@ -1,7 +1,7 @@
 import os
 import logging
 import datetime
-from lib import itchat  # 确保使用修改后的 itchat
+from lib import itchat
 import threading
 import time
 
