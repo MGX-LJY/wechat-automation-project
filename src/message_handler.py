@@ -5,6 +5,9 @@ import logging
 from urllib.parse import urlparse, urlunparse
 
 class MessageHandler:
+    """
+    消息处理器，用于处理微信消息，提取URL并调用AutoClicker
+    """
     def __init__(self, config, error_handler, monitor_groups):
         self.regex = config.get('regex', r'https?://[^\s#"]+')
         self.validation = config.get('validation', True)

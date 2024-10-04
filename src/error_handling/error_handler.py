@@ -1,6 +1,8 @@
 # src/error_handling/error_handler.py
 
 import logging
+import traceback
+
 
 class Notifier:
     def __init__(self, config):
@@ -19,7 +21,7 @@ class Notifier:
         实现微信消息发送逻辑
         """
         try:
-            import itchat
+            from lib import itchat
             # 确保已登录
             if not itchat.check_login():
                 logging.error("尚未登录微信，无法发送通知")
@@ -44,7 +46,8 @@ class Notifier:
             itchat.send(message, toUserName=user_name)
             logging.info(f"已发送通知消息给 {recipient}")
         except Exception as e:
-            logging.error("发送通知消息时发生错误")
+            logging.error(f"发送通知消息时发生错误: {e}")
+
 
 class ErrorHandler:
     def __init__(self, notifier, log_callback=None):
@@ -57,3 +60,11 @@ class ErrorHandler:
         if self.log_callback:
             self.log_callback("网络异常")
         self.notifier.notify("网络异常")
+        if exception:
+            self.send_exception_details(exception)
+
+    def send_exception_details(self, exception):
+        # 记录详细的异常信息
+        exception_details = ''.join(traceback.format_exception(None, exception, exception.__traceback__))
+        logging.error(f"详细异常信息: {exception_details}")
+        self.notifier.notify(f"详细异常信息: {exception_details}")
