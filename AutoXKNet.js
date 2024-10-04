@@ -1,12 +1,9 @@
 // ==UserScript==
 // @name         自动下载学科网
 // @namespace    http://tampermonkey.net/
-// @version      7.3
-// @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。
+// @version      7.4
+// @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。添加自动登录功能，当下载次数达到上限时，自动切换账号。
 // @match        *://*.zxxk.com/*
-// @require      https://raw.githubusercontent.com/MGX-LJY/wechat-automation-project/refs/heads/main/AutoXKNet.js
-// @updateURL    https://raw.githubusercontent.com/MGX-LJY/wechat-automation-project/refs/heads/main/AutoXKNet.js
-// @downloadURL  https://raw.githubusercontent.com/MGX-LJY/wechat-automation-project/refs/heads/main/AutoXKNet.js
 // @grant        none
 // ==/UserScript==
 
@@ -20,6 +17,15 @@
     const ERROR_BOX_SELECTOR = '.ppt-error-box'; // 错误提示框的类名
     const ERROR_CLOSE_BUTTON_SELECTOR = '.icon-guanbi1'; // 错误提示框中关闭按钮的类名
 
+    // 新增选择器
+    const LIMIT_DIALOG_SELECTOR = '.risk-control-dialog'; // 下载次数上限提示框的类名
+    const LIMIT_CONFIRM_BUTTON_SELECTOR = '.dialog-footer .btn'; // 上限提示框中的确认按钮
+    const LOGOUT_BUTTON_SELECTOR = '.dl-quit'; // 退出按钮的类名
+    const LOGIN_BUTTON_SELECTOR = '.login-btn'; // 登录按钮的类名
+    const USERNAME_INPUT_SELECTOR = '#username'; // 用户名输入框的ID
+    const PASSWORD_INPUT_SELECTOR = '#password'; // 密码输入框的ID
+    const LOGIN_SUBMIT_BUTTON_SELECTOR = '#accountLoginBtn'; // 登录提交按钮的ID
+
     // 配置参数
     const CLICK_INTERVAL = 5000; // 每个按钮点击的间隔时间（毫秒）
     const ERROR_CHECK_INTERVAL = 10000; // 错误提示框检查的间隔时间（毫秒）
@@ -31,21 +37,22 @@
     let downloadStarted = false; // 标记是否已成功启动下载
     let errorCheckIntervalId = null; // 错误检查的定时器ID
     let pageCloseTimeoutId = null; // 页面关闭的定时器ID
+    let accountIndex = 0; // 当前使用的账号索引
+
+    // 账号列表（请在这里填写您的账号信息）
+    const accounts = [
+        { username: '13143019361', password: '428199Li@' },
+        { username: '19061531853', password: '428199Li@' },
+        { username: '16600076291', password: '428199Li@' },
+        { username: '15512733826', password: '428199Li@' },
+    ];
 
     /**
      * 通知用户
      * @param {string} message - 要显示的消息
      */
     function notifyUser(message) {
-        if (Notification.permission === 'granted') {
-            new Notification(message);
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    new Notification(message);
-                }
-            });
-        }
+        console.log(message);
     }
 
     /**
@@ -220,6 +227,26 @@
             return;
         }
 
+        // 检查是否出现下载次数上限提示
+        const limitDialog = document.querySelector(LIMIT_DIALOG_SELECTOR);
+        if (limitDialog && limitDialog.style.display !== 'none') {
+            console.log('检测到下载次数达到上限的提示。');
+
+            // 点击确认按钮关闭提示框
+            const confirmButton = limitDialog.querySelector(LIMIT_CONFIRM_BUTTON_SELECTOR);
+            if (confirmButton) {
+                clickButton(confirmButton, '下载次数上限提示框确认按钮', () => {
+                    // 开始自动切换账号
+                    switchAccount();
+                });
+            } else {
+                console.log('未找到下载次数上限提示框的确认按钮。');
+            }
+
+            return;
+        }
+
+        // 处理其他错误提示框
         const errorBoxes = document.querySelectorAll(ERROR_BOX_SELECTOR);
         if (errorBoxes.length === 0) return;
 
@@ -245,6 +272,84 @@
                 clearInterval(errorCheckIntervalId);
                 errorCheckIntervalId = null;
             }
+        }
+    }
+
+    /**
+     * 自动切换账号
+     */
+    function switchAccount() {
+        console.log('开始切换账号。');
+
+        // 点击退出按钮
+        const logoutButton = document.querySelector(LOGOUT_BUTTON_SELECTOR);
+        if (logoutButton) {
+            clickButton(logoutButton, '退出按钮', () => {
+                // 点击登录按钮
+                const loginButton = document.querySelector(LOGIN_BUTTON_SELECTOR);
+                if (loginButton) {
+                    clickButton(loginButton, '登录按钮', () => {
+                        // 填写登录信息并提交
+                        fillLoginForm();
+                    });
+                } else {
+                    console.log('未找到登录按钮。');
+                }
+            });
+        } else {
+            console.log('未找到退出按钮。可能已退出。');
+            // 直接尝试登录
+            const loginButton = document.querySelector(LOGIN_BUTTON_SELECTOR);
+            if (loginButton) {
+                clickButton(loginButton, '登录按钮', () => {
+                    fillLoginForm();
+                });
+            } else {
+                console.log('未找到登录按钮。');
+            }
+        }
+    }
+
+    /**
+     * 填写登录表单并提交
+     */
+    function fillLoginForm() {
+        console.log('开始填写登录表单。');
+
+        // 获取当前账号
+        const account = accounts[accountIndex];
+        if (!account) {
+            console.log('没有更多账号可供切换。');
+            return;
+        }
+
+        // 填写用户名和密码
+        const usernameInput = document.querySelector(USERNAME_INPUT_SELECTOR);
+        const passwordInput = document.querySelector(PASSWORD_INPUT_SELECTOR);
+
+        if (usernameInput && passwordInput) {
+            usernameInput.value = account.username;
+            passwordInput.value = account.password;
+
+            // 点击登录提交按钮
+            const loginSubmitButton = document.querySelector(LOGIN_SUBMIT_BUTTON_SELECTOR);
+            if (loginSubmitButton) {
+                clickButton(loginSubmitButton, '登录提交按钮', () => {
+                    console.log(`已尝试使用账号 ${account.username} 登录。`);
+
+                    // 更新账号索引，准备下次使用下一个账号
+                    accountIndex = (accountIndex + 1) % accounts.length;
+
+                    // 等待一段时间后重新尝试下载
+                    setTimeout(() => {
+                        processDownload();
+                    }, CLICK_INTERVAL + Math.random() * 2000);
+                });
+            } else {
+                console.log('未找到登录提交按钮。');
+            }
+        } else {
+            console.log('未找到用户名或密码输入框。');
         }
     }
 
