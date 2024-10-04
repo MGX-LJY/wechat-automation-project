@@ -10,9 +10,9 @@
     - [2. MessageHandler](#2-messagehandler)
     - [3. AutoClicker](#3-autoclicker)
     - [4. Uploader](#4-uploader)
-    - [5. DownloadWatcher](#6-downloadwatcher)
-    - [6. ErrorHandler](#7-errorhandler)
-    - [7. Notifier](#8-notifier)
+    - [5. DownloadWatcher](#5-downloadwatcher)
+    - [6. ErrorHandler](#6-errorhandler)
+    - [7. Notifier](#7-notifier)
 4. [工作流程](#工作流程)
 5. [配置说明](#配置说明)
 6. [部署与设置](#部署与设置)
@@ -111,7 +111,7 @@
 3. **触发上传**：调用Uploader模块，将检测到的文件上传到微信群组。
 4. **异常处理**：在监控过程中发生异常时，通过ErrorHandler模块记录并处理错误。
 
-### 7. ErrorHandler
+### 6. ErrorHandler
 
 **作用**：
 
@@ -124,7 +124,7 @@
 3. **通知发送**：通过Notifier模块，向指定的接收者发送错误通知，确保及时响应和修复问题。
 4. **状态检查**：在发送通知前，确认微信的登录状态，避免因微信未登录导致进一步的错误。
 
-### 8. Notifier
+### 7. Notifier
 
 **作用**：
 
@@ -197,38 +197,6 @@
 - 配置文件必须为有效的JSON格式，不能包含注释。
 - 确保所有路径和群组名称与实际情况一致，避免因配置错误导致功能失效。
 - 根据企业微信的具体文件大小限制，调整上传逻辑和配置参数。
-
-## 部署与设置
-
-### 1. 环境准备
-
-- **操作系统**：建议使用稳定的Linux发行版或macOS。
-- **Python版本**：Python 3.6及以上版本。
-- **依赖库**：确保安装所需的Python库，如`itchat`、`PyDrive`、`requests`等。
-
-### 2. 安装依赖
-
-使用`pip`安装所需的Python库：
-
-```bash
-pip install itchat PyDrive requests
-```
-
-### 3. 配置文件编辑
-
-- 创建并编辑`config.json`文件，填入相应的配置信息。
-- 确保所有路径、群组名称和其他配置项正确无误。
-
-### 4. 运行系统
-
-启动主程序：
-
-```bash
-python app.py
-```
-
-首次运行时，系统会生成微信登录二维码，需使用微信扫描登录。登录成功后，系统将开始监听指定群组的消息，并监控下载目录。
-
 
 ## 未来规划
 
