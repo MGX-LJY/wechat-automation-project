@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         自动下载学科网
 // @namespace    http://tampermonkey.net/
-// @version      7.2
+// @version      7.3
 // @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。
 // @match        *://*.zxxk.com/*
 // @grant        none
