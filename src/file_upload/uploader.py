@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import datetime
 from lib import itchat
@@ -14,12 +15,14 @@ class Uploader:
         self.retry_delay = 5  # 重试间隔时间（秒）
         self.alert_size = 25 * 1024 * 1024  # 25MB的阈值
 
-        # 添加计数属性
-        self.remaining_count = config.get('total_available_count', 760)  # 假设初始剩余量为100
-        self.daily_download_counts = {}  # 用于记录每日的下载量
+        # 计数器配置文件路径
+        self.counts_file = config.get('counts_file', 'counts.json')
+
+        # 从计数器配置文件中加载计数器数据
+        self.load_counters()
 
         # 启动每日通知的定时器线程
-        notification_thread = threading.Thread(target=self.notification_scheduler)
+        notification_thread = threading.Thread(target=self.notification_scheduler, daemon=True)
         notification_thread.daemon = True  # 守护线程，主线程退出时一同退出
         notification_thread.start()
 
@@ -137,6 +140,47 @@ class Uploader:
             logging.error("发送提醒消息时发生网络问题")
             self.error_handler.handle_exception()
 
+    def load_counters(self):
+        """
+        从计数器配置文件中加载计数器数据
+        """
+        if os.path.exists(self.counts_file):
+            try:
+                with open(self.counts_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.remaining_count = data.get('remaining_count', 711)
+                    self.daily_download_counts = {
+                        datetime.datetime.strptime(k, '%Y-%m-%d').date(): v
+                        for k, v in data.get('daily_download_counts', {}).items()
+                    }
+                    logging.info("计数器数据已从配置文件加载")
+            except Exception as e:
+                logging.error(f"加载计数器配置文件时发生错误：{e}")
+                # 如果加载失败，使用默认值
+                self.remaining_count = 711
+                self.daily_download_counts = {}
+        else:
+            logging.info("未找到计数器配置文件，使用默认计数器值")
+            self.remaining_count = 711
+            self.daily_download_counts = {}
+
+    def save_counters(self):
+        """
+        将计数器数据保存到计数器配置文件
+        """
+        try:
+            data = {
+                'remaining_count': self.remaining_count,
+                'daily_download_counts': {
+                    k.strftime('%Y-%m-%d'): v for k, v in self.daily_download_counts.items()
+                }
+            }
+            with open(self.counts_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            logging.info("计数器数据已保存到配置文件")
+        except Exception as e:
+            logging.error(f"保存计数器配置文件时发生错误：{e}")
+
     def deduct_and_record(self):
         """
         扣除一份资料并记录下载量
@@ -155,6 +199,9 @@ class Uploader:
             self.remaining_count = 0  # 确保不为负数
 
         logging.info(f"扣除一份资料。日期：{download_date}，下载量：{self.daily_download_counts[download_date]}，剩余量：{self.remaining_count}")
+
+        # 保存计数器数据
+        self.save_counters()
 
     def get_download_date(self, now):
         """
@@ -179,6 +226,7 @@ class Uploader:
                 # 如果当前时间已过10点半，定时到明天的10点半
                 next_notification_time += datetime.timedelta(days=1)
             time_to_wait = (next_notification_time - now).total_seconds()
+            logging.info(f"等待 {time_to_wait} 秒后发送每日通知。")
             time.sleep(time_to_wait)
             self.send_daily_notification()
 
@@ -201,10 +249,13 @@ class Uploader:
             try:
                 itchat.send(message, toUserName=user_name)
                 logging.info(f"发送每日通知到群组 '{group_name}': {message}")
-            except Exception:
-                logging.error("发送每日通知时发生网络问题")
-                self.error_handler.handle_exception()
+            except Exception as e:
+                logging.error("发送每日通知时发生网络问题", exc_info=True)
+                self.error_handler.handle_exception(e)
 
-        # 发送完通知后，重置该日期的下载量
+         # 发送完通知后，重置该日期的下载量
         if report_date in self.daily_download_counts:
             del self.daily_download_counts[report_date]
+
+        # 保存计数器数据
+        self.save_counters()
