@@ -405,7 +405,7 @@ urllib3.exceptions.ProxyError: ('Unable to connect to proxy', RemoteDisconnected
 {
     "wechat": {
         "login_qr_path": "qr.png",
-        "monitor_groups": ["🐠【学虎】课件下载"]
+        "monitor_groups": [""]
     },
     "url": {
         "regex": "https?://[^\\s]+",
@@ -428,7 +428,7 @@ urllib3.exceptions.ProxyError: ('Unable to connect to proxy', RemoteDisconnected
         "stable_time": 10
     },
     "upload": {
-        "target_groups": ["🐠【学虎】课件下载"]
+        "target_groups": [""]
     },
     "logging": {
         "level": "INFO",
@@ -436,7 +436,7 @@ urllib3.exceptions.ProxyError: ('Unable to connect to proxy', RemoteDisconnected
     },
     "error_notification": {
         "method": "wechat",
-        "recipient": "李老师呀"
+        "recipient": ""
     },
     "itchat": {
         "qr_check": {
