@@ -44,16 +44,16 @@ class Notifier:
             itchat.send(message, toUserName=user_name)
             logging.info(f"已发送通知消息给 {recipient}")
         except Exception as e:
-            logging.error(f"发送通知消息时发生错误: {e}")
+            logging.error("发送通知消息时发生错误")
 
 class ErrorHandler:
     def __init__(self, notifier, log_callback=None):
         self.notifier = notifier
         self.log_callback = log_callback
 
-    def handle_exception(self, exception):
-        logging.exception("异常信息:")
-        error_message = f"系统异常: {exception}"
+    def handle_exception(self, exception=None):
+        # 仅记录简短的错误信息
+        logging.error("网络异常")
         if self.log_callback:
-            self.log_callback(error_message)
-        self.notifier.notify(error_message)
+            self.log_callback("网络异常")
+        self.notifier.notify("网络异常")

@@ -81,8 +81,7 @@ class Uploader:
                     time.sleep(self.retry_delay)
                 else:
                     logging.error("上传失败，网络问题")
-                    self.error_handler.handle_exception()
-
+                    self.error_handler.handle_exception(e)
     def wait_for_file_stability(self, file_path, stable_time=5):
         """
         等待文件大小稳定
