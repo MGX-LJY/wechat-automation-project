@@ -41,7 +41,12 @@
         "stable_time": 5
     },
     "upload": {
-        "target_groups": ["🐠【学虎】课件下载"]
+        "target_groups": ["debug"],
+        "counts_file": "counts.json",
+        "total_available_count": 711,
+        "max_retries": 3,
+        "retry_delay": 5,
+        "alert_size": 26214400
     },
     "logging": {
         "level": "INFO",
