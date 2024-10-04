@@ -4,6 +4,9 @@
 // @version      7.3
 // @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。
 // @match        *://*.zxxk.com/*
+// @require      https://raw.githubusercontent.com/MGX-LJY/wechat-automation-project/refs/heads/main/AutoXKNet.js
+// @updateURL    https://raw.githubusercontent.com/MGX-LJY/wechat-automation-project/refs/heads/main/AutoXKNet.js
+// @downloadURL  https://raw.githubusercontent.com/MGX-LJY/wechat-automation-project/refs/heads/main/AutoXKNet.js
 // @grant        none
 // ==/UserScript==
 
