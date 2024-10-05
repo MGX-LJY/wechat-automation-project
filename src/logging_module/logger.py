@@ -1,9 +1,8 @@
 # src/logging_module.py
 import logging
 import os
-from logging import Formatter, StreamHandler
-from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, timedelta
+from logging import Formatter, StreamHandler
 
 class SimpleErrorFilter(logging.Filter):
     def filter(self, record):
