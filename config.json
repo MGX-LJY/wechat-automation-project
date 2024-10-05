@@ -1,7 +1,7 @@
 {
     "wechat": {
         "login_qr_path": "qr.png",
-        "monitor_groups": ["🐠【学虎】课件下载"]
+        "monitor_groups": ["download"]
     },
     "url": {
         "regex": "https?://[^\\s#]+",
@@ -42,7 +42,7 @@
         "stable_time": 5
     },
     "upload": {
-        "target_groups": ["🐠【学虎】课件下载"],
+        "target_groups": ["download"],
         "counts_file": "counts.json"
     },
     "logging": {
