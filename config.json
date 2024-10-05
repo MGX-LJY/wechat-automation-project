@@ -9,6 +9,8 @@
     },
     "download": {
         "download_path": "/Users/martinezdavid/Downloads",
+        "browser": "chromium",
+        "headless": true,
         "allowed_extensions": [
             ".pdf",
             ".docx",
@@ -65,5 +67,24 @@
             "max_retries": 5,
             "retry_interval": 2
         }
-    }
+    },
+    "accounts": [
+        { "username": "13143019361", "password": "428199Li@" },
+        { "username": "19061531853", "password": "428199Li@" },
+        { "username": "16600076291", "password": "428199Li@" },
+        { "username": "15512733826", "password": "428199Li@" }
+    ],
+    "selectors": {
+        "download_button": ".download-btn",
+        "iframe": "iframe[id^='layui-layer-iframe']",
+        "confirm_button": ".balance-payment-btn",
+        "logout_button": ".dl-quit",
+        "login_button": ".login-btn",
+        "username_input": "#username",
+        "password_input": "#password",
+        "login_submit_button": "#accountLoginBtn"
+    },
+    "max_retries": 3,
+    "max_error_handling": 5,
+    "page_close_delay": 300
 }

@@ -1,0 +1,92 @@
+2024-10-05 20:09:32,989 - ERROR - 加载配置文件失败: [Errno 2] No such file or directory: 'config.json'
+2024-10-05 20:11:14,356 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:11:14,357 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:13:20,678 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:13:20,678 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:14:51,315 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:14:51,315 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:17:40,238 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:17:40,239 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:17:40,967 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:19:23,247 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:19:23,248 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:19:23,967 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:21:50,610 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:21:50,610 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:21:51,332 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:23:24,430 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:23:24,430 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:23:25,135 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'accept_download'
+2024-10-05 20:23:40,793 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:23:40,793 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:23:41,395 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'download_path'
+2024-10-05 20:23:57,756 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:23:57,756 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:23:58,220 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:24:07,308 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:24:07,309 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:24:07,570 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'download_path'
+2024-10-05 20:26:48,584 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:26:48,585 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:26:59,801 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+
+2024-10-05 20:26:59,802 - INFO - 重试下载，当前重试次数: 1
+2024-10-05 20:27:09,804 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+
+2024-10-05 20:27:09,804 - INFO - 重试下载，当前重试次数: 2
+2024-10-05 20:27:19,808 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+
+2024-10-05 20:27:19,808 - INFO - 重试下载，当前重试次数: 3
+2024-10-05 20:27:19,808 - ERROR - 下载失败，超过最大重试次数。
+2024-10-05 20:27:19,809 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-05 20:27:47,475 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:27:47,476 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:27:48,183 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'download_path'
+2024-10-05 20:28:58,902 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:28:58,903 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:30:29,580 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:30:29,581 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:31:14,423 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:31:14,424 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:31:15,170 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:31:27,614 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:31:27,614 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:31:28,237 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:32:41,684 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:32:41,684 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:33:17,225 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:33:17,226 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:33:17,923 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'base_downloads_path'
+2024-10-05 20:34:25,689 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:34:25,690 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:34:26,440 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:37:21,409 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:37:21,410 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:37:22,177 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:37:53,935 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:37:53,937 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:37:54,481 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:40:45,236 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:40:45,237 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:40:45,996 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:42:20,641 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:42:20,642 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:42:21,349 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:42:22,192 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:42:22,192 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:42:22,464 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:42:23,358 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:42:23,359 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:42:23,631 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:46:53,831 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:46:53,832 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:46:54,557 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-05 20:51:03,047 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:51:03,049 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-05 20:51:03,802 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
