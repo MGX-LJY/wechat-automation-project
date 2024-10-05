@@ -127,6 +127,7 @@ class AutoClicker:
             logging.info(f"计时器启动，等待 {self.close_wait_time} 秒后关闭浏览器")
             time.sleep(self.close_wait_time)
             self.close_safari()
+            self.open_blank_tab()  # 新增：在关闭浏览器后打开一个空白标签页
         except Exception as e:
             logging.error(f"计时器运行时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -149,6 +150,19 @@ class AutoClicker:
                 logging.info("Safari 已成功关闭")
         except Exception as e:
             logging.error(f"关闭 Safari 时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+
+    def open_blank_tab(self):
+        """
+        打开一个空白的 Safari 标签页，以确保后续链接可以正常打开。
+        """
+        try:
+            logging.info("打开一个空白的 Safari 标签页以确保后续链接可以正常打开")
+            webbrowser.get('safari').open('about:blank')
+            time.sleep(2)  # 等待 Safari 打开空白标签页
+            logging.info("空白标签页已成功打开")
+        except Exception as e:
+            logging.error(f"打开空白标签页时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def get_remaining_batches(self):
