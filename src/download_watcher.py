@@ -112,7 +112,7 @@ class DownloadWatcher:
         self.upload_callback = upload_callback
         self.allowed_extensions = allowed_extensions or [
             '.pdf', '.docx', '.xlsx',
-            '.ppt', '.pptx',
+            '.ppt', '.pptx', '.wps',
             '.zip', '.rar', '.7z',
             '.mp4', '.avi', '.mkv',
             '.mp3', '.wav', '.aac',

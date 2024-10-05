@@ -30,7 +30,8 @@
             ".bz2",
             ".mov",
             ".flv",
-            ".wmv"
+            ".wmv",
+            ".wps"
         ],
         "temporary_extensions": [
             ".crdownload",
