@@ -17,13 +17,13 @@ from src.notification.notifier import Notifier
 
 def main():
     try:
-        # 初始化日志
-        setup_logging()
-        logging.info("应用启动")
-
         # 加载配置
         config = ConfigManager.load_config('config.json')
         logging.info("配置文件加载成功")
+
+        # 初始化日志
+        setup_logging(config)
+        logging.info("应用启动")
 
         # 初始化通知模块
         notifier = Notifier(config.get('error_notification', {}))

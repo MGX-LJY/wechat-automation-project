@@ -30,7 +30,8 @@
             ".bz2",
             ".mov",
             ".flv",
-            ".wmv"
+            ".wmv",
+            ".wps"
         ],
         "temporary_extensions": [
             ".crdownload",
@@ -45,8 +46,15 @@
         "counts_file": "counts.json"
     },
     "logging": {
+        "directory": "logs",
+        "file": "app.log",
         "level": "INFO",
-        "file": "logs/app.log"
+        "file_level": "INFO",
+        "console_level": "DEBUG",
+        "backup_count": 30,
+        "encoding": "utf-8",
+        "third_party_libs": ["requests", "urllib3", "itchat"],
+        "third_party_libs_level": "ERROR"
     },
     "error_notification": {
         "method": "wechat",

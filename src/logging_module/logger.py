@@ -1,6 +1,8 @@
+# src/logging_module.py
 import logging
 import os
-from logging.handlers import TimedRotatingFileHandler
+from datetime import datetime, timedelta
+from logging import Formatter, StreamHandler
 
 class SimpleErrorFilter(logging.Filter):
     def filter(self, record):
@@ -9,36 +11,130 @@ class SimpleErrorFilter(logging.Filter):
             return False  # 返回 False 表示过滤掉这条日志
         return True
 
-def setup_logging():
-    log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    log_file = os.path.join(log_dir, "app.log")
+class DateBasedFileHandler(logging.Handler):
+    def __init__(self, log_dir, backup_days=30, encoding='utf-8'):
+        super().__init__()
+        self.log_dir = log_dir
+        self.backup_days = backup_days
+        self.encoding = encoding
+        os.makedirs(self.log_dir, exist_ok=True)
+        self.current_date = datetime.utcnow().strftime('%Y-%m-%d')  # 使用UTC时间
+        self.log_file = os.path.join(self.log_dir, f"{self.current_date}.log")
+        self.file_handler = logging.FileHandler(self.log_file, encoding=self.encoding)
+        self.file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        self.addFilter(SimpleErrorFilter())
 
-    # 使用 TimedRotatingFileHandler 实现每日日志轮转
-    file_handler = TimedRotatingFileHandler(
-        log_file,
-        when="midnight",      # 每天午夜进行轮转
-        interval=1,           # 时间间隔为 1（单位由 when 参数决定）
-        backupCount=7,        # 保留最近 7 天的日志，防止日志冗余
-        encoding='utf-8'
-    )
-    file_handler.suffix = "%Y-%m-%d"  # 添加日期后缀，方便管理
+    def emit(self, record):
+        new_date = datetime.utcnow().strftime('%Y-%m-%d')  # 使用UTC时间
+        if new_date != self.current_date:
+            self.file_handler.close()
+            self.current_date = new_date
+            self.log_file = os.path.join(self.log_dir, f"{self.current_date}.log")
+            self.file_handler = logging.FileHandler(self.log_file, encoding=self.encoding)
+            self.file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.addFilter(SimpleErrorFilter())
+            self.cleanup_old_logs()
+        self.file_handler.emit(record)
 
-    logging.basicConfig(
-        level=logging.INFO,  # 设置全局日志级别为 INFO
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            file_handler,
-            logging.StreamHandler()
-        ]
-    )
+    def cleanup_old_logs(self):
+        """删除超过backup_days天的日志文件"""
+        cutoff_date = datetime.utcnow() - timedelta(days=self.backup_days)
+        for filename in os.listdir(self.log_dir):
+            if filename.endswith('.log'):
+                try:
+                    date_str = filename.rstrip('.log')
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d')
+                    if file_date < cutoff_date:
+                        os.remove(os.path.join(self.log_dir, filename))
+                        logging.debug(f"删除旧日志文件: {filename}")
+                except ValueError:
+                    # 文件名不符合日期格式，跳过
+                    logging.warning(f"跳过不符合日期格式的日志文件: {filename}")
+
+    def setLevel(self, level):
+        self.file_handler.setLevel(level)
+
+    def setFormatter(self, fmt):
+        self.file_handler.setFormatter(fmt)
+
+    def close(self):
+        self.file_handler.close()
+        super().close()
+
+def setup_logging(config: dict) -> logging.Logger:
+    """
+    初始化日志系统
+    :param config: 配置字典，包含日志相关配置
+    """
+    log_dir = config.get('logging', {}).get('directory', 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+
+    # 创建日志记录器
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, config.get('logging', {}).get('level', 'INFO').upper(), logging.INFO))
+
+    # 日志格式
+    formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # 获取并确保 backup_count 是整数
+    backup_count = config.get('logging', {}).get('backup_count', 30)
+    if not isinstance(backup_count, int):
+        try:
+            backup_count = int(backup_count)
+        except (ValueError, TypeError):
+            logging.warning(f"Invalid backup_count '{backup_count}' in config. Using default value 30.")
+            backup_count = 30  # 默认值
+
+    # 获取并确保 encoding 是 str 或 None
+    encoding = config.get('logging', {}).get('encoding', 'utf-8')
+    if isinstance(encoding, str):
+        if encoding.lower() == 'none':
+            encoding = None
+    else:
+        logging.warning(f"Invalid encoding '{encoding}' in config. Using default 'utf-8'.")
+        encoding = 'utf-8'
+
+    # 文件处理器：DateBasedFileHandler 实现每天日志文件以日期命名，并保留最近30天的日志
+    try:
+        file_handler = DateBasedFileHandler(
+            log_dir=log_dir,
+            backup_days=backup_count,
+            encoding=encoding
+        )
+    except Exception as e:
+        logging.error(f"Failed to initialize DateBasedFileHandler: {e}")
+        raise
+
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(getattr(logging, config.get('logging', {}).get('file_level', 'INFO').upper(), logging.INFO))
+    logger.addHandler(file_handler)
+
+    # 控制台处理器
+    console_level = config.get('logging', {}).get('console_level', 'DEBUG').upper()
+    console_level = getattr(logging, console_level, logging.DEBUG)
+    console_handler = StreamHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(console_level)
+    console_handler.addFilter(SimpleErrorFilter())
+    logger.addHandler(console_handler)
+
     logging.info("日志系统初始化成功")
 
     # 设置第三方库的日志级别为 ERROR，减少详细日志输出
-    logging.getLogger('requests').setLevel(logging.ERROR)
-    logging.getLogger('urllib3').setLevel(logging.ERROR)
-    logging.getLogger('itchat').setLevel(logging.ERROR)
+    for lib in config.get('logging', {}).get('third_party_libs', ['requests', 'urllib3', 'itchat']):
+        lib_level = getattr(logging, config.get('logging', {}).get('third_party_libs_level', 'ERROR').upper(), logging.ERROR)
+        logging.getLogger(lib).setLevel(lib_level)
 
-    # 添加自定义过滤器到根记录器
-    logging.getLogger().addFilter(SimpleErrorFilter())
+    return logger
+
+def load_config(config_path: str = 'config.json') -> dict:
+    """
+    加载配置文件
+    :param config_path: 配置文件路径
+    :return: 配置字典
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"配置文件 {config_path} 不存在。")
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    return config
