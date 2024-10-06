@@ -1,4 +1,4 @@
 /.idea
 *.xml
 /logs
-/.counts.json
+/counts.json
