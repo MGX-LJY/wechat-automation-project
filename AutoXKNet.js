@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         自动下载学科网
 // @namespace    http://tampermonkey.net/
-// @version      7.6
-// @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。添加自动登录功能，当下载次数达到上限时，自动切换账号。若未找到关键元素，每隔20秒刷新页面，除非页面包含“教辅”两个字。
+// @version      7.5
+// @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。添加自动登录功能，当下载次数达到上限时，自动切换账号。若20秒内未检测到下载成功或特定提示，自动刷新页面。
 // @match        *://*.zxxk.com/*
 // @grant        none
 // ==/UserScript==
@@ -26,20 +26,26 @@
     const PASSWORD_INPUT_SELECTOR = '#password'; // 密码输入框的ID
     const LOGIN_SUBMIT_BUTTON_SELECTOR = '#accountLoginBtn'; // 登录提交按钮的ID
 
+    // 新增选择器用于检测下载成功
+    const DOWNLOAD_SUCCESS_SELECTOR = '.success-pic'; // 下载成功图片的类名
+    const DOWNLOAD_SUCCESS_TEXT_SELECTOR = '.tip-pic'; // 下载成功提示文本的类名
+    const HIGH_END_USER_TEXT = '尊敬的高端用户，文件极速下载中...'; // 高端用户提示文本
+    const JIAOFU_TEXT = '教辅'; // 教辅提示文本
+
     // 配置参数
     const CLICK_INTERVAL = 5000; // 每个按钮点击的间隔时间（毫秒）
     const ERROR_CHECK_INTERVAL = 10000; // 错误提示框检查的间隔时间（毫秒）
-    const REFRESH_INTERVAL = 20000; // 页面刷新间隔时间（毫秒）
     const MAX_RETRIES = 3; // 按钮点击最大重试次数
     const MAX_ERROR_HANDLING = 5; // 最大错误处理次数
     const PAGE_CLOSE_DELAY = 5 * 60 * 1000; // 5分钟后关闭页面
+    const REFRESH_DELAY = 20000; // 20秒后刷新页面
 
     let errorHandlingCount = 0; // 当前错误处理次数
     let downloadStarted = false; // 标记是否已成功启动下载
     let errorCheckIntervalId = null; // 错误检查的定时器ID
     let pageCloseTimeoutId = null; // 页面关闭的定时器ID
     let accountIndex = 0; // 当前使用的账号索引
-    let refreshIntervalId = null; // 页面刷新定时器ID
+    let refreshTimeoutId = null; // 页面刷新定时器ID
 
     // 账号列表（请在这里填写您的账号信息）
     const accounts = [
@@ -55,12 +61,10 @@
      */
     function notifyUser(message) {
         console.log(message);
-        // 如果需要浏览器通知，可以取消下面的注释
-        /*
+        // 如果需要浏览器通知，可以在这里添加
         if (Notification.permission === 'granted') {
             new Notification(message);
         }
-        */
     }
 
     /**
@@ -95,14 +99,6 @@
     }
 
     /**
-     * 检查页面是否包含“教辅”两个字
-     * @returns {boolean} - 如果包含返回true，否则返回false
-     */
-    function containsTeachingAid() {
-        return document.body.innerText.includes('教辅');
-    }
-
-    /**
      * 处理下载流程
      */
     function processDownload(retryCount = 0) {
@@ -113,21 +109,11 @@
 
         const downloadButton = document.querySelector(DOWNLOAD_BUTTON_SELECTOR);
         if (!downloadButton) {
-            console.log('未找到下载按钮。');
-
-            if (containsTeachingAid()) {
-                console.log('页面包含“教辅”字样，不执行刷新操作。');
-                // 根据需求，这里可以选择做其他操作或完全不做
-                return;
-            }
-
-            console.log('将每隔20秒刷新页面尝试。');
+            console.log('未找到下载按钮。请检查选择器是否正确。');
+            // 如果未找到下载按钮，可以考虑刷新页面
             schedulePageRefresh();
             return;
         }
-
-        // 如果找到了下载按钮，取消页面刷新定时器
-        cancelPageRefresh();
 
         clickButton(downloadButton, '下载按钮', (error) => {
             if (error) return;
@@ -140,7 +126,8 @@
                 .catch(() => {
                     console.log('未找到弹窗 iframe，下载流程结束。');
                     // 可能下载已启动，尝试检测下载是否成功
-                    // 这里可以添加额外的检测逻辑
+                    // 在此处启动下载成功检测
+                    monitorDownloadSuccess();
                 });
         });
     }
@@ -170,7 +157,12 @@
                         clearTimeout(pageCloseTimeoutId);
                         pageCloseTimeoutId = null;
                     }
-                    cancelPageRefresh();
+
+                    // 取消刷新定时器，因为下载已启动
+                    if (refreshTimeoutId) {
+                        clearTimeout(refreshTimeoutId);
+                        refreshTimeoutId = null;
+                    }
 
                     // 关闭页面（如果需要）
                     setTimeout(() => {
@@ -188,6 +180,8 @@
                     }, CLICK_INTERVAL);
                 } else {
                     console.log('已达到最大重试次数，停止处理。');
+                    // 可以考虑刷新页面
+                    schedulePageRefresh();
                 }
             }
         } catch (e) {
@@ -203,6 +197,8 @@
                 }, CLICK_INTERVAL);
             } else {
                 console.log('已达到最大重试次数，停止处理。');
+                // 可以考虑刷新页面
+                schedulePageRefresh();
             }
         }
     }
@@ -400,33 +396,82 @@
     }
 
     /**
-     * 安排页面每隔20秒刷新一次
+     * 监控下载是否成功
      */
-    function schedulePageRefresh() {
-        if (refreshIntervalId) return; // 已经安排过刷新
+    function monitorDownloadSuccess() {
+        console.log('开始监控下载是否成功。');
 
-        console.log('安排每隔20秒刷新页面。');
-        refreshIntervalId = setInterval(() => {
-            if (containsTeachingAid()) {
-                console.log('页面包含“教辅”字样，不执行刷新操作。');
-                // 取消刷新安排
-                cancelPageRefresh();
-                return;
-            }
-            console.log('未找到关键元素，刷新页面。');
-            window.location.reload();
-        }, REFRESH_INTERVAL);
+        // 设置20秒的定时器
+        scheduleDownloadSuccessCheck();
     }
 
     /**
-     * 取消页面刷新安排
+     * 设置20秒后检查下载状态
      */
-    function cancelPageRefresh() {
-        if (refreshIntervalId) {
-            clearInterval(refreshIntervalId);
-            refreshIntervalId = null;
-            console.log('取消页面刷新安排。');
+    function scheduleDownloadSuccessCheck() {
+        if (refreshTimeoutId) return; // 避免多次设置
+
+        refreshTimeoutId = setTimeout(() => {
+            console.log('20秒后检查下载状态。');
+            checkDownloadStatus();
+        }, REFRESH_DELAY);
+    }
+
+    /**
+     * 检查下载状态，如果未检测到成功或特定提示，则刷新页面
+     */
+    function checkDownloadStatus() {
+        // 检查下载成功的图片
+        const successPic = document.querySelector(DOWNLOAD_SUCCESS_SELECTOR);
+
+        // 检查下载成功的提示文本
+        const successTextElement = document.querySelector(DOWNLOAD_SUCCESS_TEXT_SELECTOR);
+        const successText = successTextElement ? successTextElement.textContent.trim() : '';
+
+        // 检查特定的文本内容
+        const highEndUserPresent = checkTextInPage(HIGH_END_USER_TEXT);
+        const jiaofuPresent = checkTextInPage(JIAOFU_TEXT);
+
+        if (successPic || successText.includes('下载成功') || successText.includes('文件极速下载中') || highEndUserPresent || jiaofuPresent) {
+            console.log('检测到下载成功或特定提示，不执行刷新。');
+            downloadStarted = true;
+
+            // 取消刷新定时器
+            if (refreshTimeoutId) {
+                clearTimeout(refreshTimeoutId);
+                refreshTimeoutId = null;
+            }
+
+            // 继续后续操作（如关闭页面）
+            setTimeout(() => {
+                console.log('下载已启动，准备关闭页面。');
+                tryCloseWindow();
+            }, CLICK_INTERVAL);
+        } else {
+            console.log('未检测到下载成功或特定提示，刷新页面。');
+            window.location.reload();
         }
+    }
+
+    /**
+     * 在整个页面中搜索特定文本
+     * @param {string} text - 要搜索的文本
+     * @returns {boolean} - 是否找到文本
+     */
+    function checkTextInPage(text) {
+        return document.body.innerText.includes(text);
+    }
+
+    /**
+     * 设置20秒后刷新页面
+     */
+    function schedulePageRefresh() {
+        if (refreshTimeoutId) return; // 避免多次设置
+
+        refreshTimeoutId = setTimeout(() => {
+            console.log('20秒后未检测到下载成功或特定提示，刷新页面。');
+            window.location.reload();
+        }, REFRESH_DELAY);
     }
 
     // 请求浏览器通知权限
