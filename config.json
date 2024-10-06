@@ -11,6 +11,7 @@
         "download_path": "/Users/martinezdavid/Downloads",
         "browser": "chromium",
         "headless": false,
+        "storage_state_dir": "storage_states",
         "allowed_extensions": [
             ".pdf",
             ".docx",
@@ -69,10 +70,10 @@
         }
     },
     "accounts": [
-        { "username": "13143019361", "password": "428199Li@" },
-        { "username": "19061531853", "password": "428199Li@" },
-        { "username": "16600076291", "password": "428199Li@" },
-        { "username": "15512733826", "password": "428199Li@" }
+        { "username": "13143019361", "password": "428199Li@", "storage_state": "account1.json" },
+        { "username": "19061531853", "password": "428199Li@", "storage_state": "account2.json" },
+        { "username": "16600076291", "password": "428199Li@", "storage_state": "account3.json" },
+        { "username": "15512733826", "password": "428199Li@", "storage_state": "account4.json" }
     ],
     "selectors": {
         "download_button": "a#btnSoftDownload.download-btn",
@@ -80,7 +81,7 @@
         "confirm_button": ".balance-payment-btn",
         "errorBox": ".ppt-error-box",
         "errorCloseBtn": ".icon-guanbi1",
-        "limitDialog": ".risk-control-dialog",
+        "limitDialog": "div[data-v-23290b24][data-v-3f7a1f7d]",
         "limitConfirmBtn": ".dialog-footer .btn",
         "logoutBtn": ".dl-quit",
         "loginBtn": ".login-btn",
@@ -88,10 +89,10 @@
         "password": "#password",
         "loginSubmit": "#accountLoginBtn"
     },
+    "click_interval": 5,
     "max_retries": 3,
     "max_error_handling": 5,
     "page_close_delay": 300,
     "script_timeout": 20,
-    "error_check_interval": 10,
-    "click_interval": 5
+    "error_check_interval": 10
 }
