@@ -90,3 +90,207 @@ waiting for locator(".download-btn") to be visible
 2024-10-05 20:51:03,047 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
 2024-10-05 20:51:03,049 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
 2024-10-05 20:51:03,802 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-06 07:38:09,316 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:38:09,316 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:38:10,142 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-06 07:38:21,098 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:38:21,098 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:38:21,393 - ERROR - 初始化浏览器上下文时出错: Browser.new_context() got an unexpected keyword argument 'downloads_path'
+2024-10-06 07:44:38,931 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:44:38,931 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:44:40,130 - ERROR - 下载过程出现异常: 未找到下载按钮。
+2024-10-06 07:44:40,130 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 07:44:40,132 - ERROR - 下载过程出现异常: 未找到下载按钮。
+2024-10-06 07:44:40,133 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 07:44:40,134 - ERROR - 下载过程出现异常: 未找到下载按钮。
+2024-10-06 07:44:40,134 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 07:44:40,134 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 07:44:40,134 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-06 07:44:42,671 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:44:42,671 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:44:43,258 - ERROR - 下载过程出现异常: 未找到下载按钮。
+2024-10-06 07:44:43,258 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 07:44:43,260 - ERROR - 下载过程出现异常: 未找到下载按钮。
+2024-10-06 07:44:43,260 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 07:44:43,262 - ERROR - 下载过程出现异常: 未找到下载按钮。
+2024-10-06 07:44:43,262 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 07:44:43,262 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 07:44:43,262 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-06 07:47:32,132 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:47:32,132 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:47:43,704 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+
+2024-10-06 07:47:43,830 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172063.png
+2024-10-06 07:47:43,830 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 07:47:53,831 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+
+2024-10-06 07:47:53,893 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172073.png
+2024-10-06 07:47:53,893 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 07:48:03,895 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+
+2024-10-06 07:48:03,967 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172083.png
+2024-10-06 07:48:03,967 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 07:48:03,967 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 07:48:03,967 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-06 07:49:01,768 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:49:01,769 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:49:14,417 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+
+2024-10-06 07:49:14,574 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172154.png
+2024-10-06 07:49:14,574 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 07:49:24,577 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+
+2024-10-06 07:49:24,672 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172164.png
+2024-10-06 07:49:24,672 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 07:49:34,674 - ERROR - 下载过程出现异常: Page.wait_for_selector: Timeout 10000ms exceeded.
+Call log:
+waiting for locator(".download-btn") to be visible
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+  -   locator resolved to 4 elements. Proceeding with the first one: <a data-xop-login="" id="btnSoftDownload" class="download-btn " data-download="47553279" name="doc_download_button" href="javascript:void(0);" data-login-event="download">立即下载</a>
+
+2024-10-06 07:49:34,771 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172174.png
+2024-10-06 07:49:34,771 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 07:49:34,771 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 07:49:34,771 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-06 07:54:36,309 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:54:36,309 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:54:49,176 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:54:49,177 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:55:08,208 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:55:08,208 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:56:59,151 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:56:59,152 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:57:02,871 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 07:57:02,967 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728172622.png
+2024-10-06 07:57:02,967 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 07:59:40,339 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 07:59:40,340 - ERROR - 加载配置文件失败: Expecting ',' delimiter: line 44 column 27 (char 965)
+2024-10-06 08:05:29,377 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:05:29,378 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:05:33,909 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:05:34,679 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173133.png
+2024-10-06 08:05:34,679 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 08:05:34,689 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:05:34,747 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173134.png
+2024-10-06 08:05:34,747 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 08:05:34,762 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:05:34,829 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173134.png
+2024-10-06 08:05:34,829 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 08:05:34,839 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:05:34,962 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173134.png
+2024-10-06 08:05:34,962 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 08:05:34,962 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-06 08:05:59,915 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:05:59,915 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:06:04,286 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:06:04,385 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173164.png
+2024-10-06 08:06:04,385 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 08:06:04,396 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:06:04,464 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173164.png
+2024-10-06 08:06:04,464 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 08:06:04,474 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:06:04,543 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173164.png
+2024-10-06 08:06:04,543 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 08:06:04,558 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:06:04,626 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173164.png
+2024-10-06 08:06:04,626 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 08:06:04,627 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'
+2024-10-06 08:08:53,635 - ERROR - 加载配置文件失败: [Errno 2] No such file or directory: 'config.json'
+2024-10-06 08:08:55,250 - ERROR - 加载配置文件失败: [Errno 2] No such file or directory: 'config.json'
+2024-10-06 08:09:13,261 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:09:13,262 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:09:16,728 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:09:16,872 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173356.png
+2024-10-06 08:09:16,872 - INFO - 重试下载，当前重试次数: 1
+2024-10-06 08:09:16,903 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:09:16,974 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173356.png
+2024-10-06 08:09:16,974 - INFO - 重试下载，当前重试次数: 2
+2024-10-06 08:09:16,986 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:09:17,057 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173356.png
+2024-10-06 08:09:17,057 - INFO - 重试下载，当前重试次数: 3
+2024-10-06 08:09:17,067 - ERROR - 下载过程出现异常: Locator.filter() got an unexpected keyword argument 'state'
+2024-10-06 08:09:17,141 - INFO - 已保存页面截图: /Users/martinezdavid/Downloads/screenshot_1728173357.png
+2024-10-06 08:09:17,141 - ERROR - 下载失败，超过最大重试次数。
+2024-10-06 08:09:17,141 - ERROR - 监控页面时出现异常: 'Page' object has no attribute 'wait_for_close'

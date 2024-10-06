@@ -10,7 +10,7 @@
     "download": {
         "download_path": "/Users/martinezdavid/Downloads",
         "browser": "chromium",
-        "headless": true,
+        "headless": false,
         "allowed_extensions": [
             ".pdf",
             ".docx",
@@ -75,16 +75,23 @@
         { "username": "15512733826", "password": "428199Li@" }
     ],
     "selectors": {
-        "download_button": ".download-btn",
+        "download_button": "a#btnSoftDownload.download-btn",
         "iframe": "iframe[id^='layui-layer-iframe']",
         "confirm_button": ".balance-payment-btn",
-        "logout_button": ".dl-quit",
-        "login_button": ".login-btn",
-        "username_input": "#username",
-        "password_input": "#password",
-        "login_submit_button": "#accountLoginBtn"
+        "errorBox": ".ppt-error-box",
+        "errorCloseBtn": ".icon-guanbi1",
+        "limitDialog": ".risk-control-dialog",
+        "limitConfirmBtn": ".dialog-footer .btn",
+        "logoutBtn": ".dl-quit",
+        "loginBtn": ".login-btn",
+        "username": "#username",
+        "password": "#password",
+        "loginSubmit": "#accountLoginBtn"
     },
     "max_retries": 3,
     "max_error_handling": 5,
-    "page_close_delay": 300
+    "page_close_delay": 300,
+    "script_timeout": 20,
+    "error_check_interval": 10,
+    "click_interval": 5
 }
