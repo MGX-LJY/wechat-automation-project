@@ -157,8 +157,8 @@ class AutoClicker:
         打开一个空白的 Safari 标签页，以确保后续链接可以正常打开。
         """
         try:
-            logging.info("打开一个空白的 Safari 标签页以确保后续链接可以正常打开")
-            webbrowser.get('safari').open('about:blank')
+            logging.info("使用 'open' 命令打开一个空白的 Safari 标签页")
+            subprocess.run(['open', '-a', 'Safari', 'about:blank'])
             time.sleep(2)  # 等待 Safari 打开空白标签页
             logging.info("空白标签页已成功打开")
         except Exception as e:

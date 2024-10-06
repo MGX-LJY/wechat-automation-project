@@ -28,12 +28,12 @@
 
     // 配置参数
     const CONFIG = {
-        clickInterval: 5000,// 毫秒
-        errorCheckInterval: 10000,// 毫秒
+        clickInterval: 5000, // 毫秒
+        errorCheckInterval: 10000, // 毫秒
         maxRetries: 3,
         maxErrorHandling: 5,
         pageCloseDelay: 5 * 60 * 1000, // 5分钟
-        scriptTimeout: 20000,// 20秒
+        scriptTimeout: 20000, // 20秒
     };
 
     // 账号列表（请在这里填写您的账号信息）
@@ -229,6 +229,20 @@
      * 初始化脚本
      */
     const init = () => {
+        // 检查当前是否在移动端
+        if (window.location.hostname === "m.zxxk.com") {
+            const currentPath = window.location.pathname; // 例如: /soft/42922760.html
+            const softidMatch = currentPath.match(/\/soft\/(\d+)\.html/);
+            if (softidMatch) {
+                const softid = softidMatch[1];
+                const desktopUrl = `https://www.zxxk.com/soft/softdownload?softid=${softid}`;
+                notify(`检测到移动端页面，正在跳转到桌面端: ${desktopUrl}`);
+                window.location.href = desktopUrl;
+                return; // 跳转后停止执行后续脚本
+            }
+        }
+
+        // 仅在桌面端设置刷新超时
         processDownload();
 
         state.errorCheckInterval = setInterval(handleError, CONFIG.errorCheckInterval);
