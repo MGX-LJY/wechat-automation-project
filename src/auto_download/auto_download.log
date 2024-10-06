@@ -1691,3 +1691,11 @@ attempting scroll into view action
 2024-10-06 08:29:43,621 - INFO - 登录提交按钮已点击。
 2024-10-06 08:29:43,621 - INFO - 已尝试使用账号 13143019361 登录。
 2024-10-06 08:29:48,882 - ERROR - [Errno 2] No such file or directory: 'storage_states/account1.json'
+2024-10-06 08:34:47,826 - INFO - Loading config from: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:34:47,827 - INFO - 配置文件加载成功: /Users/martinezdavid/Documents/MG/code/wechat-automation-project/config.json
+2024-10-06 08:34:48,789 - INFO - 未找到存储状态文件，将进行首次登录。
+2024-10-06 08:34:51,160 - INFO - 未登录，开始登录流程。
+2024-10-06 08:34:51,445 - INFO - 登录按钮已点击。
+2024-10-06 08:34:54,266 - INFO - 登录提交按钮已点击。
+2024-10-06 08:34:54,266 - INFO - 已尝试使用账号 13143019361 登录。
+2024-10-06 08:34:59,515 - ERROR - [Errno 2] No such file or directory: 'storage_states/account1.json'
