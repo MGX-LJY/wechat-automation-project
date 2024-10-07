@@ -157,12 +157,27 @@ class AutoClicker:
         打开一个空白的 Safari 标签页，以确保后续链接可以正常打开。
         """
         try:
-            logging.info("使用 'open' 命令打开一个空白的 Safari 标签页")
-            subprocess.run(['open', '-a', 'Safari', 'about:blank'])
+            logging.info("使用 AppleScript 打开一个空白的 Safari 标签页")
+            apple_script = '''
+            tell application "Safari"
+                activate
+                if not (exists document 1) then
+                    make new document with properties {URL:"about:blank"}
+                else
+                    tell window 1
+                        make new tab with properties {URL:"about:blank"}
+                    end tell
+                end if
+            end tell
+            '''
+            subprocess.run(['osascript', '-e', apple_script], check=True)
             time.sleep(2)  # 等待 Safari 打开空白标签页
             logging.info("空白标签页已成功打开")
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
             logging.error(f"打开空白标签页时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+        except Exception as e:
+            logging.error(f"打开空白标签页时发生未知错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def get_remaining_batches(self):
