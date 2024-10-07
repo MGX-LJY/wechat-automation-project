@@ -1,5 +1,3 @@
-# src/notification/notifier.py
-
 import logging
 import itchat
 
@@ -7,7 +5,15 @@ class Notifier:
     def __init__(self, config):
         self.method = config.get('method')
         self.recipient_name = config.get('recipient')
-        # 移除 email 配置
+        self.ensure_wechat_login()
+
+    def ensure_wechat_login(self):
+        try:
+            # 自动登录，保持登录状态
+            itchat.auto_login(hotReload=True)
+            logging.info("已成功登录微信")
+        except Exception as e:
+            logging.error(f"微信登录失败: {e}")
 
     def send_notification(self, subject, message):
         if self.method == 'wechat':
@@ -18,7 +24,7 @@ class Notifier:
     def send_wechat(self, subject, message):
         try:
             # 确保已登录
-            if not itchat.get_friends():
+            if not itchat.get_friends(update=True):
                 logging.error("未登录微信，无法发送通知")
                 return
 
