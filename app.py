@@ -52,7 +52,7 @@ def main():
         uploader = Uploader(config['upload'], error_handler)
 
         # 初始化下载监控模块
-        download_path = config['download'].get('download_path', '/Users/martinezdavid/Downloads')
+        download_path = config['download'].get('download_path', '/Users/martinezdavid/Documents/MG/work/zxxkdownload')
         allowed_extensions = config['download'].get('allowed_extensions', ['.pdf', '.docx', '.xlsx'])
         download_watcher = DownloadWatcher(
             download_path,
