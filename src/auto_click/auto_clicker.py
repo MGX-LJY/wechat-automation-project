@@ -1,6 +1,5 @@
 # src/auto_click/auto_clicker.py
 
-import webbrowser
 import logging
 import time
 import subprocess
@@ -8,7 +7,7 @@ import threading
 from queue import Queue, Empty
 
 class AutoClicker:
-    def __init__(self, error_handler, batch_size=3, wait_time=60, collect_timeout=5, close_after_count=7, close_wait_time=240):
+    def __init__(self, error_handler, batch_size=4, wait_time=60, collect_timeout=5, close_after_count=8, close_wait_time=900):
         """
         初始化 AutoClicker。
 
@@ -35,6 +34,9 @@ class AutoClicker:
         self.processing_thread = threading.Thread(target=self.process_queue, daemon=True)
         self.processing_thread.start()
         logging.info("AutoClicker 初始化完成，处理线程已启动。")
+
+        # 下载完成回调，用于处理下载完成后的操作
+        self.downloads_completed = threading.Event()
 
     def add_urls(self, urls):
         """
@@ -95,14 +97,16 @@ class AutoClicker:
         """
         try:
             logging.info(f"打开URL: {url}")
-            webbrowser.get('safari').open(url)
+            subprocess.run(['open', '-a', 'Safari', url], check=True)
             time.sleep(2)  # 等待Safari打开标签页，防止过快打开
 
             # 更新已打开的URL计数
             self.increment_count()
-
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
             logging.error(f"打开URL时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+        except Exception as e:
+            logging.error(f"打开URL时发生未知错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def increment_count(self):
@@ -121,13 +125,13 @@ class AutoClicker:
 
     def close_timer(self):
         """
-        等待指定时间后关闭浏览器，并重置计数和计时器状态。
+        等待指定时间后关闭浏览器，并打开指定链接。
         """
         try:
             logging.info(f"计时器启动，等待 {self.close_wait_time} 秒后关闭浏览器")
             time.sleep(self.close_wait_time)
             self.close_safari()
-            self.open_blank_tab()  # 新增：在关闭浏览器后打开一个空白标签页
+            self.open_zxxk_page()  # 打开指定链接
         except Exception as e:
             logging.error(f"计时器运行时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -139,31 +143,64 @@ class AutoClicker:
 
     def close_safari(self):
         """
-        关闭 Safari 浏览器。
+        关闭 Safari 浏览器，并确保其已完全关闭。
         """
         try:
             logging.info("尝试关闭 Safari 浏览器")
-            result = subprocess.run(['osascript', '-e', 'tell application "Safari" to quit'], capture_output=True, text=True)
-            if result.returncode != 0:
-                logging.error(f"关闭 Safari 失败: {result.stderr.strip()}")
-            else:
-                logging.info("Safari 已成功关闭")
+            subprocess.run(['osascript', '-e', 'tell application "Safari" to quit'], check=True)
+            self.wait_until_safari_closed(timeout=10)
+            logging.info("Safari 已成功关闭")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"关闭 Safari 失败: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
         except Exception as e:
             logging.error(f"关闭 Safari 时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def open_blank_tab(self):
+    def wait_until_safari_closed(self, timeout=10):
         """
-        打开一个空白的 Safari 标签页，以确保后续链接可以正常打开。
+        等待 Safari 完全关闭。
+
+        :param timeout: 最大等待时间（秒）。
+        """
+        start_time = time.time()
+        while True:
+            # 使用 'pgrep' 检查 Safari 是否在运行
+            result = subprocess.run(['pgrep', 'Safari'], capture_output=True, text=True)
+            if result.returncode != 0:
+                # Safari 未运行
+                break
+            if time.time() - start_time > timeout:
+                logging.warning("等待 Safari 关闭超时。")
+                break
+            time.sleep(0.5)
+
+    def open_zxxk_page(self):
+        """
+        打开指定的 Safari 标签页以 https://www.zxxk.com。
         """
         try:
-            logging.info("使用 'open' 命令打开一个空白的 Safari 标签页")
-            subprocess.run(['open', '-a', 'Safari', 'about:blank'])
-            time.sleep(2)  # 等待 Safari 打开空白标签页
-            logging.info("空白标签页已成功打开")
-        except Exception as e:
-            logging.error(f"打开空白标签页时发生错误: {e}", exc_info=True)
+            logging.info("使用 'open' 命令打开 https://www.zxxk.com")
+            subprocess.run(['open', '-a', 'Safari', 'https://www.zxxk.com'], check=True)
+            time.sleep(2)  # 等待 Safari 打开标签页
+            logging.info("https://www.zxxk.com 已成功打开")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"打开 https://www.zxxk.com 时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
+        except Exception as e:
+            logging.error(f"打开 https://www.zxxk.com 时发生未知错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+
+    def on_download_complete(self, file_path):
+        """
+        下载完成的回调方法。
+
+        :param file_path: 下载完成的文件路径。
+        """
+        logging.info(f"下载完成: {file_path}")
+        # 根据需要执行上传或其他操作
+        # 例如，上传文件到群组或处理文件
+        # self.upload_file(file_path)
 
     def get_remaining_batches(self):
         """

@@ -26,7 +26,8 @@ def main():
         logging.info("应用启动")
 
         # 初始化通知模块
-        notifier = Notifier(config.get('error_notification', {}))
+        notifier_config = config.get('error_notification', {})
+        notifier = Notifier(notifier_config)
 
         # 初始化错误处理
         error_handler = ErrorHandler(notifier)
@@ -51,7 +52,7 @@ def main():
         uploader = Uploader(config['upload'], error_handler)
 
         # 初始化下载监控模块
-        download_path = config['download'].get('download_path', '/Users/your_username/Downloads')
+        download_path = config['download'].get('download_path', '/Users/martinezdavid/Downloads')
         allowed_extensions = config['download'].get('allowed_extensions', ['.pdf', '.docx', '.xlsx'])
         download_watcher = DownloadWatcher(
             download_path,

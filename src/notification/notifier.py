@@ -5,30 +5,40 @@ import itchat
 
 class Notifier:
     def __init__(self, config):
-        self.method = config.get('method')
-        self.recipient_name = config.get('recipient')
+        self.method = config.get('method', 'wechat')
+        self.recipient = config.get('recipient', '')
 
-    def send_notification(self, subject, message):
+    def notify(self, message):
         if self.method == 'wechat':
-            self.send_wechat(subject, message)
+            self.send_wechat(message)
         else:
             logging.warning(f"未知的通知方法: {self.method}")
 
-    def send_wechat(self, subject, message):
+    def send_wechat(self, message):
         try:
             # 确保已登录
-            if not itchat.get_friends():
-                logging.error("未登录微信，无法发送通知")
+            if not itchat.check_login():
+                logging.error("尚未登录微信，无法发送通知")
                 return
 
-            # 搜索好友
-            friends = itchat.search_friends(name=self.recipient_name)
-            if friends:
-                userName = friends[0]['UserName']
-                full_message = f"{subject}\n\n{message}"
-                itchat.send(full_message, toUserName=userName)
-                logging.info(f"微信通知已发送给 {self.recipient_name}")
-            else:
-                logging.error(f"未找到微信用户: {self.recipient_name}")
+            # 查找接收者的 UserName
+            user = itchat.search_friends(name=self.recipient)
+            if not user:
+                user = itchat.search_chatrooms(name=self.recipient)
+            if not user:
+                logging.error(f"未找到接收者: {self.recipient}")
+                # 增加日志列出所有好友和群聊名称
+                friends = itchat.get_friends(update=True)
+                logging.debug("好友列表:")
+                for friend in friends:
+                    logging.debug(f"好友: {friend['NickName']}")
+                chatrooms = itchat.get_chatrooms(update=True)
+                logging.debug("群聊列表:")
+                for chatroom in chatrooms:
+                    logging.debug(f"群聊: {chatroom['NickName']}")
+                return
+            user_name = user[0]['UserName']
+            itchat.send(message, toUserName=user_name)
+            logging.info(f"已发送通知消息给 {self.recipient}")
         except Exception as e:
-            logging.error(f"发送微信通知失败: {e}")
+            logging.error(f"发送通知消息时发生错误: {e}")

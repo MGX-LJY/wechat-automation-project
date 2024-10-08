@@ -9,7 +9,8 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用AutoClicker
     """
     def __init__(self, config, error_handler, monitor_groups):
-        self.regex = config.get('regex', r'https?://[^\s#"]+')
+        # 改进的正则表达式，排除尾部可能的引号或特殊字符
+        self.regex = config.get('regex', r'https?://[^\s"」]+')
         self.validation = config.get('validation', True)
         self.auto_clicker = None
         self.error_handler = error_handler
@@ -77,12 +78,18 @@ class MessageHandler:
 
     def clean_url(self, url):
         """
-        清理URL，去除片段部分
+        清理URL，去除片段部分和尾部的非URL字符
         """
         try:
+            # 去除片段部分
             parsed = urlparse(url)
             clean = parsed._replace(fragment='')
-            return urlunparse(clean)
+            cleaned_url = urlunparse(clean)
+
+            # 去除尾部非URL字符，如引号或特殊符号
+            cleaned_url = cleaned_url.rstrip('」””"\'')  # 根据需要添加更多字符
+
+            return cleaned_url
         except Exception as e:
             logging.error(f"清理URL时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
