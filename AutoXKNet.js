@@ -30,14 +30,16 @@
     const CLICK_INTERVAL = 5000; // 每个按钮点击的间隔时间（毫秒）
     const ERROR_CHECK_INTERVAL = 10000; // 错误提示框检查的间隔时间（毫秒）
     const MAX_RETRIES = 3; // 按钮点击最大重试次数
-    const MAX_ERROR_HANDLING = 5; // 最大错误处理次数
+    const MAX_ERROR_HANDLING = 3; // 最大错误处理次数
     const PAGE_CLOSE_DELAY = 5 * 60 * 1000; // 5分钟后关闭页面
+    const CONFIRM_BUTTON_TIMEOUT = 20000; // 20秒内未能点击确认按钮时刷新页面
 
     let errorHandlingCount = 0; // 当前错误处理次数
     let downloadStarted = false; // 标记是否已成功启动下载
     let errorCheckIntervalId = null; // 错误检查的定时器ID
     let pageCloseTimeoutId = null; // 页面关闭的定时器ID
     let accountIndex = 0; // 当前使用的账号索引
+    let confirmButtonTimeoutId = null; // 确认按钮点击的超时定时器ID
 
     // 账号列表（请在这里填写您的账号信息）
     const accounts = [
@@ -123,6 +125,16 @@
      * @param {number} retryCount - 当前重试次数
      */
     function handleIframe(iframe, retryCount) {
+        // 新增：设置确认按钮点击的超时定时器
+        if (confirmButtonTimeoutId) {
+            clearTimeout(confirmButtonTimeoutId);
+        }
+
+        confirmButtonTimeoutId = setTimeout(() => {
+            console.log('20秒内未能点击确认按钮，刷新页面。');
+            window.location.reload();
+        }, CONFIRM_BUTTON_TIMEOUT);
+
         try {
             const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
             if (!iframeDocument) throw new Error('无法访问 iframe 内部的文档。');
@@ -132,6 +144,12 @@
                 clickButton(confirmButton, '确认按钮', () => {
                     console.log('确认按钮已点击，下载流程完成。');
                     downloadStarted = true; // 标记下载已启动
+
+                    // 清除确认按钮点击的超时定时器
+                    if (confirmButtonTimeoutId) {
+                        clearTimeout(confirmButtonTimeoutId);
+                        confirmButtonTimeoutId = null;
+                    }
 
                     // 取消错误检查和页面关闭的定时器
                     if (errorCheckIntervalId) {
