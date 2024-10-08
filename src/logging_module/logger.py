@@ -1,15 +1,41 @@
 # src/logging_module.py
 import logging
 import os
+import json
 from datetime import datetime, timedelta
 from logging import Formatter, StreamHandler
+import requests
+from urllib3.exceptions import ProxyError as UrllibProxyError, MaxRetryError
+from http.client import RemoteDisconnected
 
-class SimpleErrorFilter(logging.Filter):
+
+class ReplaceNetworkErrorFilter(logging.Filter):
+    """
+    日志过滤器，用于将与网络相关的错误日志消息替换为“网络问题”。
+    """
+
     def filter(self, record):
-        # 检测是否为特定网络异常，过滤掉这些日志
-        if any(keyword in record.getMessage() for keyword in ['ProxyError', 'MaxRetryError', 'RemoteDisconnected']):
-            return False  # 返回 False 表示过滤掉这条日志
-        return True
+        # 检查日志记录中是否包含异常信息
+        if record.exc_info:
+            exc_type, exc_value, exc_tb = record.exc_info
+            # 检查是否是 ProxyError、MaxRetryError 或 RemoteDisconnected
+            if isinstance(exc_value, (requests.exceptions.ProxyError,
+                                      UrllibProxyError,
+                                      MaxRetryError,
+                                      RemoteDisconnected)):
+                # 替换日志消息
+                record.msg = '网络问题'
+                # 清除日志记录的参数
+                record.args = ()
+                # 移除异常信息，避免堆栈跟踪
+                record.exc_info = None
+        else:
+            # 如果没有异常信息，检查消息中是否包含特定关键词
+            if any(keyword in record.getMessage() for keyword in ['ProxyError', 'MaxRetryError', 'RemoteDisconnected']):
+                record.msg = '网络问题'
+                record.args = ()
+        return True  # 继续处理所有日志记录
+
 
 class DateBasedFileHandler(logging.Handler):
     def __init__(self, log_dir, backup_days=30, encoding='utf-8'):
@@ -22,7 +48,10 @@ class DateBasedFileHandler(logging.Handler):
         self.log_file = os.path.join(self.log_dir, f"{self.current_date}.log")
         self.file_handler = logging.FileHandler(self.log_file, encoding=self.encoding)
         self.file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        self.addFilter(SimpleErrorFilter())
+
+        # 添加替换过滤器
+        self.replace_network_filter = ReplaceNetworkErrorFilter()
+        self.file_handler.addFilter(self.replace_network_filter)
 
     def emit(self, record):
         new_date = datetime.utcnow().strftime('%Y-%m-%d')  # 使用UTC时间
@@ -32,7 +61,7 @@ class DateBasedFileHandler(logging.Handler):
             self.log_file = os.path.join(self.log_dir, f"{self.current_date}.log")
             self.file_handler = logging.FileHandler(self.log_file, encoding=self.encoding)
             self.file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-            self.addFilter(SimpleErrorFilter())
+            self.file_handler.addFilter(self.replace_network_filter)
             self.cleanup_old_logs()
         self.file_handler.emit(record)
 
@@ -60,6 +89,7 @@ class DateBasedFileHandler(logging.Handler):
     def close(self):
         self.file_handler.close()
         super().close()
+
 
 def setup_logging(config: dict) -> logging.Logger:
     """
@@ -115,17 +145,24 @@ def setup_logging(config: dict) -> logging.Logger:
     console_handler = StreamHandler()
     console_handler.setFormatter(formatter)
     console_handler.setLevel(console_level)
-    console_handler.addFilter(SimpleErrorFilter())
+
+    # 添加替换过滤器到控制台处理器
+    replace_network_filter = ReplaceNetworkErrorFilter()
+    console_handler.addFilter(replace_network_filter)
+
     logger.addHandler(console_handler)
 
     logging.info("日志系统初始化成功")
 
     # 设置第三方库的日志级别为 ERROR，减少详细日志输出
-    for lib in config.get('logging', {}).get('third_party_libs', ['requests', 'urllib3', 'itchat']):
-        lib_level = getattr(logging, config.get('logging', {}).get('third_party_libs_level', 'ERROR').upper(), logging.ERROR)
-        logging.getLogger(lib).setLevel(lib_level)
+    third_party_libs = config.get('logging', {}).get('third_party_libs', ['requests', 'urllib3', 'itchat'])
+    third_party_level = getattr(logging, config.get('logging', {}).get('third_party_libs_level', 'ERROR').upper(),
+                                logging.ERROR)
+    for lib in third_party_libs:
+        logging.getLogger(lib).setLevel(third_party_level)
 
     return logger
+
 
 def load_config(config_path: str = 'config.json') -> dict:
     """

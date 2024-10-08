@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         自动下载学科网
 // @namespace    http://tampermonkey.net/
-// @version      7.4
+// @version      7.5
 // @description  自动下载学科网（zxxk.com）的下载按钮和确认按钮，5分钟后自动关闭网页，防止占用内存。添加自动登录功能，当下载次数达到上限时，自动切换账号。
 // @match        *://*.zxxk.com/*
 // @grant        none
@@ -25,6 +25,9 @@
     const USERNAME_INPUT_SELECTOR = '#username'; // 用户名输入框的ID
     const PASSWORD_INPUT_SELECTOR = '#password'; // 密码输入框的ID
     const LOGIN_SUBMIT_BUTTON_SELECTOR = '#accountLoginBtn'; // 登录提交按钮的ID
+
+    // 新增选择器用于检测特定错误提示
+    const FREQUENT_REQUEST_ERROR_SELECTOR = '.dialog-content div[data-v-3f7a1f7d]'; // 特定错误提示的选择器
 
     // 配置参数
     const CLICK_INTERVAL = 5000; // 每个按钮点击的间隔时间（毫秒）
@@ -245,6 +248,14 @@
             return;
         }
 
+        // 检查是否出现特定的频繁请求错误提示
+        const frequentRequestErrorBox = document.querySelector(FREQUENT_REQUEST_ERROR_SELECTOR);
+        if (frequentRequestErrorBox && frequentRequestErrorBox.textContent.includes('您的支付下载请求过于频繁')) {
+            console.log('检测到下载请求过于频繁的提示，刷新页面。');
+            window.location.reload();
+            return; // 刷新页面后，后续代码不会执行
+        }
+
         // 检查是否出现下载次数上限提示
         const limitDialog = document.querySelector(LIMIT_DIALOG_SELECTOR);
         if (limitDialog && limitDialog.style.display !== 'none') {
@@ -280,6 +291,7 @@
             }
         });
 
+        // 检查是否已达到特定错误处理次数
         if (errorHandlingCount < MAX_ERROR_HANDLING) {
             // 等待一段时间后重新尝试下载
             console.log('尝试重新下载。');

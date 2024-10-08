@@ -23,6 +23,7 @@ def main():
 
         # 初始化日志
         setup_logging(config)
+        logging.info("配置文件加载成功")
         logging.info("应用启动")
 
         # 初始化通知模块
