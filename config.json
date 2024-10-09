@@ -57,7 +57,7 @@
     },
     "error_notification": {
         "method": "wechat",
-        "recipient": "文件传输助手"
+        "recipient": "李老师呀"
     },
     "itchat": {
         "qr_check": {
