@@ -105,6 +105,11 @@ class ItChatHandler:
                 logging.info(f"二维码已保存到 {self.qr_path}")
                 if self.log_callback:
                     self.log_callback(f"二维码已保存到 {self.qr_path}")
+
+                # 显示二维码
+                image = Image.open(BytesIO(qr_image_data))
+                image.show(title="微信登录二维码")
+
                 # 将二维码图像数据发送到GUI队列
                 if self.qr_queue:
                     self.qr_queue.put(qr_image_data)
