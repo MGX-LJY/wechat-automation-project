@@ -124,7 +124,7 @@ class Uploader:
         """
         try:
             filename = os.path.basename(file_path)
-            message = f"{filename} 超过25MB 晚上统一上传，急需的话@李老师"
+            message = f"{filename} 文件过大,急需的话@李老师呀,长时间没有回复打电话 15131531853"
 
             for group_name, user_name in self.group_usernames.items():
                 if not user_name:
