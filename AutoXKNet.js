@@ -47,9 +47,6 @@
     // 账号列表（请在这里填写您的账号信息）
     const accounts = [
         { username: '13143019361', password: '428199Li@' },
-        { username: '19061531853', password: '428199Li@' },
-        { username: '16600076291', password: '428199Li@' },
-        { username: '15512733826', password: '428199Li@' },
     ];
 
     /**
