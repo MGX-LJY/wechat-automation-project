@@ -7,12 +7,12 @@ import threading
 
 from src.config.config_manager import ConfigManager
 from src.itchat_module.itchat_handler import ItChatHandler
-from src.auto_click.auto_clicker import AutoClicker
-from src.download_watcher import DownloadWatcher
+from src.auto_download.auto_download import XKW  # 导入 XKW 类
 from src.file_upload.uploader import Uploader
 from src.logging_module.logger import setup_logging
 from src.error_handling.error_handler import ErrorHandler
 from src.notification.notifier import Notifier
+
 
 def main():
     try:
@@ -22,7 +22,7 @@ def main():
 
         # 初始化日志
         setup_logging(config)
-        logging.info("配置文件加载成功")
+        logging.info("日志系统初始化成功")
         logging.info("应用启动")
 
         # 初始化通知模块
@@ -32,48 +32,45 @@ def main():
         # 初始化错误处理
         error_handler = ErrorHandler(notifier)
 
-        # 初始化各模块
+        # 初始化 ItChatHandler
         itchat_handler = ItChatHandler(config['wechat'], error_handler)
+
+        # 初始化 XKW（自动下载模块），暂时不传递 uploader
+        download_path = config['download'].get('download_path', '/Users/martinezdavid/Documents/MG/work/zxxkdownload')
+        xkw = XKW(thread=3, work=True, download_dir=download_path)
+
+        # 绑定 XKW 到 ItChatHandler（通过 MessageHandler）
+        itchat_handler.set_auto_clicker(xkw)
+        logging.info("ItChatHandler 初始化完成并绑定 XKW")
+
         # 登录微信
         itchat_handler.login()
 
-        # 获取监控的群组列表
-        monitor_groups = config['wechat'].get('monitor_groups', [])
+        # 登录成功后，再初始化 Uploader
+        uploader = Uploader(config['upload'], config['error_notification'], error_handler)
 
-        # 初始化自动点击器
-        auto_clicker = AutoClicker(error_handler)
+        # 设置 Uploader 到 ItChatHandler 和 XKW
+        itchat_handler.set_uploader(uploader)
+        xkw.uploader = uploader
+        logging.info("Uploader 已绑定到 ItChatHandler 和 XKW")
 
-        # 绑定 AutoClicker 到 ItChatHandler（通过 MessageHandler）
-        itchat_handler.set_auto_clicker(auto_clicker)
-        logging.info("ItChatHandler 初始化完成并绑定 AutoClicker")
-
-        # 初始化上传器
-        uploader = Uploader(config['upload'], error_handler)
-
-        # 初始化下载监控模块
-        download_path = config['download'].get('download_path', '/Users/martinezdavid/Documents/MG/work/zxxkdownload')
-        allowed_extensions = config['download'].get('allowed_extensions', ['.pdf', '.docx', '.xlsx'])
-        download_watcher = DownloadWatcher(
-            download_path,
-            uploader.upload_file,
-            allowed_extensions=allowed_extensions
-        )
-
-        # 启动下载监控
-        watcher_thread = threading.Thread(target=download_watcher.start)
-        watcher_thread.daemon = True
-        watcher_thread.start()
+        # 启动微信消息监听线程
+        itchat_thread = threading.Thread(target=itchat_handler.run, daemon=True)
+        itchat_thread.start()
 
         # 注册信号处理，确保程序退出时停止下载监控
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
-            download_watcher.stop()
+            xkw.work = False  # 停止 XKW 的运行循环
+            itchat_handler.logout()
             sys.exit(0)
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # 启动微信消息监听
-        itchat_handler.run()
+        # 主线程保持运行
+        itchat_thread.join()
+
     except Exception as e:
         try:
             logging.critical(f"应用启动失败: {e}", exc_info=True)
@@ -81,6 +78,7 @@ def main():
             # 如果 logging 未导入，则直接打印错误
             print(f"应用启动失败: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

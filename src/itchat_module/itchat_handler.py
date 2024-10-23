@@ -9,8 +9,10 @@ from urllib.parse import urlparse, urlunparse
 from io import BytesIO
 from PIL import Image
 from lib import itchat
-from lib.itchat.content import TEXT, ATTACHMENT
-import logging
+from lib.itchat.content import TEXT, ATTACHMENT, SHARING  # 添加 SHARING 类型
+from src.file_upload.uploader import Uploader
+
+
 class ItChatHandler:
     def __init__(self, config, error_handler, log_callback=None, qr_queue=None):
         self.monitor_groups = config.get('monitor_groups', [])
@@ -24,13 +26,24 @@ class ItChatHandler:
 
         # 初始化消息处理器
         self.message_handler = MessageHandler(config, error_handler, self.monitor_groups)
-        # self.message_handler.set_auto_clicker(None)  # 初始时不设置 AutoClicker
+
+        # Uploader 实例将在外部传递
+        self.uploader = None  # 初始化为空，稍后通过主程序传递
+        self.message_handler.set_uploader(self.uploader)
+
+        logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
+
+    def set_uploader(self, uploader):
+        self.uploader = uploader
+        self.message_handler.set_uploader(uploader)
+        logging.info("Uploader 已绑定到消息处理器")
 
     def set_auto_clicker(self, auto_clicker):
         """
         设置 MessageHandler 的 AutoClicker 实例
         """
         self.message_handler.set_auto_clicker(auto_clicker)
+        logging.info("AutoClicker 已设置到消息处理器")
 
     def login(self):
         retries = 0
@@ -53,6 +66,12 @@ class ItChatHandler:
                 logging.info("微信登录成功")
                 if self.log_callback:
                     self.log_callback("微信登录成功")
+
+                # 加载好友和群组信息
+                itchat.get_friends(update=True)
+                itchat.get_chatrooms(update=True)
+                logging.info("好友和群组信息已加载")
+
                 self.login_event.set()
                 return  # 登录成功，退出方法
             except Exception as e:
@@ -70,7 +89,7 @@ class ItChatHandler:
 
     def run(self):
         # 注册文本和附件消息的处理函数
-        @itchat.msg_register([TEXT, ATTACHMENT], isGroupChat=True)
+        @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
         def handle_group_messages(msg):
             try:
                 # 更新群组列表
@@ -82,7 +101,7 @@ class ItChatHandler:
                     # 调用 MessageHandler 处理消息
                     self.message_handler.handle_message(msg)
             except Exception as e:
-                logging.error(f"处理群组消息时发生错误: {e}")
+                logging.error(f"处理群组消息时发生错误: {e}", exc_info=True)
                 if self.log_callback:
                     self.log_callback(f"处理群组消息时发生错误: {e}")
                 self.error_handler.handle_exception(e)
@@ -146,9 +165,10 @@ class ItChatHandler:
             logging.error(f"退出微信时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
+
 class MessageHandler:
     """
-    消息处理器，用于处理微信消息，提取URL并调用AutoClicker
+    消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
     def __init__(self, config, error_handler, monitor_groups):
@@ -158,9 +178,16 @@ class MessageHandler:
         self.auto_clicker = None
         self.error_handler = error_handler
         self.monitor_groups = monitor_groups
+        self.uploader = None  # 初始化为 None
 
     def set_auto_clicker(self, auto_clicker):
         self.auto_clicker = auto_clicker
+
+    def set_uploader(self, uploader):
+        """
+        设置 Uploader 实例
+        """
+        self.uploader = uploader
 
     def handle_message(self, msg):
         try:
@@ -187,6 +214,7 @@ class MessageHandler:
                 message_content = msg['Text'] if 'Text' in msg else getattr(msg, 'text', '')
             elif msg_type == 'Sharing':
                 message_content = msg['Url'] if 'Url' in msg else getattr(msg, 'url', '')
+                logging.debug(f"分享消息的 URL: {message_content}")
 
             logging.debug(f"处理消息内容: {message_content}")
 
@@ -196,26 +224,42 @@ class MessageHandler:
 
             # 使用正则表达式提取URL
             urls = re.findall(self.regex, message_content)
-            logging.info(f"识别到URL: {urls}")
+            logging.info(f"识别到 URL: {urls}")
 
-            # 处理和收集有效的URL
+            # 处理和收集有效的 URL
             valid_urls = []
             for url in urls:
                 clean_url = self.clean_url(url)
-                logging.debug(f"清理后的URL: {clean_url}")
+                logging.debug(f"清理后的 URL: {clean_url}")
 
                 if self.validation and not self.validate_url(clean_url):
-                    logging.warning(f"URL验证失败: {clean_url}")
+                    logging.warning(f"URL 验证失败: {clean_url}")
                     continue
 
                 valid_urls.append(clean_url)
 
-            # 将有效的URL添加到AutoClicker队列
+                # 从 URL 中提取 soft_id
+                match = re.search(r'/soft/(\d+)\.html', clean_url)
+                if match:
+                    soft_id = match.group(1)
+                    logging.info(f"从 URL 中提取到 soft_id: {soft_id}")
+
+                    # 将群组名称和 soft_id 传递给 Uploader
+                    if self.uploader:
+                        self.uploader.upload_group_id(group_name, soft_id)
+                        logging.info(f"上传群组名称和 soft_id 到 Uploader: {group_name}, {soft_id}")
+                    else:
+                        logging.warning("Uploader 未设置，无法上传群组和 soft_id 信息。")
+                else:
+                    logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
+
+            # 将有效的 URL 添加到 AutoClicker 队列
             if self.auto_clicker and valid_urls:
-                logging.debug(f"调用自动点击模块添加URL: {valid_urls}")
+                logging.debug(f"调用 AutoClicker 添加任务 URL: {valid_urls}")
                 for url in valid_urls:
                     self.auto_clicker.add_task(url)
-
+            else:
+                logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
         except Exception as e:
             logging.error(f"处理消息时发生错误: {e}", exc_info=True)
@@ -223,7 +267,7 @@ class MessageHandler:
 
     def clean_url(self, url):
         """
-        清理URL，去除片段部分和尾部的非URL字符
+        清理 URL，去除片段部分和尾部的非 URL 字符
         """
         try:
             # 去除片段部分
@@ -231,17 +275,17 @@ class MessageHandler:
             clean = parsed._replace(fragment='')
             cleaned_url = urlunparse(clean)
 
-            # 去除尾部非URL字符，如引号或特殊符号
+            # 去除尾部非 URL 字符，如引号或特殊符号
             cleaned_url = cleaned_url.rstrip('」””"\'')  # 根据需要添加更多字符
 
             return cleaned_url
         except Exception as e:
-            logging.error(f"清理URL时发生错误: {e}", exc_info=True)
+            logging.error(f"清理 URL 时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
-            return url  # 返回原始URL
+            return url  # 返回原始 URL
 
     def validate_url(self, url):
         """
-        简单的URL验证逻辑，可根据需求扩展
+        简单的 URL 验证逻辑，可根据需求扩展
         """
         return url.startswith('http://') or url.startswith('https://')
