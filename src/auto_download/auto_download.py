@@ -7,6 +7,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from DrissionPage import ChromiumPage, ChromiumOptions
+from DrissionPage.errors import ContextLostError
 
 BASE_DIR = os.path.dirname(__file__)
 DOWNLOAD_DIR = '/Users/martinezdavid/Documents/MG/work/zxxkdownload'  # 设置下载路径
@@ -104,10 +105,10 @@ class XKW:
             return
         logging.info(f"开始下载 {url}, 重试次数: {retry}")
         print("开始下载", url)
-        tab.listen.start(True, method="GET")
-        download.click(by_js=True)
-        print("clicked")
         try:
+            tab.listen.start(True, method="GET")
+            download.click(by_js=True)
+            print("clicked")
             for item in tab.listen.steps(timeout=5):
                 if item.url.startswith("https://files.zxxk.com/?mkey="):
                     # 停止页面加载
@@ -120,7 +121,7 @@ class XKW:
                     logging.warning("请求过于频繁，暂停1秒后重试。")
                     print("请求过于频繁，暂停1秒后重试。")
                     time.sleep(1)
-                    self.listener(tab, download, url, retry=retry+1, max_retries=max_retries)
+                    self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
                     return
             else:
                 # 等待页面加载完成
@@ -137,13 +138,18 @@ class XKW:
                 logging.warning(f"下载失败，尝试重新下载: {url}, 当前重试次数: {retry}")
                 print("下载失败 重新下载中", url)
                 time.sleep(5)  # 重试前等待5秒
-                self.listener(tab, download, url, retry=retry+1, max_retries=max_retries)
+                self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
+        except ContextLostError as e:
+            logging.warning(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}")
+            print(f"页面上下文丢失，重试下载: {url}")
+            time.sleep(5)
+            self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             print(f"下载过程中出错: {e}")
             # 出现异常，进行重试
             time.sleep(5)
-            self.listener(tab, download, url, retry=retry+1, max_retries=max_retries)
+            self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
 
     def download(self, url):
         try:
@@ -187,23 +193,35 @@ class XKW:
             logging.warning("任务队列为空，等待新任务。")
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
+            # 在发生异常时，确保 tab 被放回队列
+            if 'tab' in locals():
+                self.tabs.put(tab)
         finally:
-            self.tabs.put(tab)
+            if 'tab' in locals():
+                self.tabs.put(tab)
 
     def run(self):
         with ThreadPoolExecutor(max_workers=self.thread) as executor:
+            futures = []
             while self.work:
                 try:
                     url = self.task.get(timeout=5)  # 等待新任务
                     if url is None:
                         logging.info("接收到退出信号，停止下载管理。")
                         break
-                    executor.submit(self.download, url)
+                    future = executor.submit(self.download, url)
+                    futures.append(future)
                     logging.info(f"已提交下载任务到线程池: {url}")
                 except queue.Empty:
                     continue  # 没有任务，继续等待
                 except Exception as e:
                     logging.error(f"任务分发时出错: {e}", exc_info=True)
+            # 等待所有任务完成
+            for future in futures:
+                try:
+                    future.result()
+                except Exception as e:
+                    logging.error(f"下载任务中出现未捕获的异常: {e}", exc_info=True)
 
     def add_task(self, url):
         self.task.put(url)
