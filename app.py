@@ -7,7 +7,7 @@ import threading
 
 from src.config.config_manager import ConfigManager
 from src.itchat_module.itchat_handler import ItChatHandler
-from src.message_handler import MessageHandler
+from src.itchat_module.itchat_handler import MessageHandler
 from src.auto_click.auto_clicker import AutoClicker
 from src.download_watcher import DownloadWatcher
 from src.file_upload.uploader import Uploader
@@ -45,9 +45,9 @@ def main():
         auto_clicker = AutoClicker(error_handler)
 
         # 初始化消息处理器，并传递 monitor_groups
-        message_handler = MessageHandler(config['url'], error_handler, monitor_groups)
+        itchat_handler = MessageHandler(config['url'], error_handler, monitor_groups)
         logging.info("消息处理器初始化完成并绑定自动点击器")
-        message_handler.set_auto_clicker(auto_clicker)
+        itchat_handler.set_auto_clicker(auto_clicker)
 
         # 初始化上传器
         uploader = Uploader(config['upload'], error_handler)
