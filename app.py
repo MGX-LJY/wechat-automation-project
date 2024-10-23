@@ -7,7 +7,6 @@ import threading
 
 from src.config.config_manager import ConfigManager
 from src.itchat_module.itchat_handler import ItChatHandler
-from src.itchat_module.itchat_handler import MessageHandler
 from src.auto_click.auto_clicker import AutoClicker
 from src.download_watcher import DownloadWatcher
 from src.file_upload.uploader import Uploader
@@ -44,10 +43,9 @@ def main():
         # 初始化自动点击器
         auto_clicker = AutoClicker(error_handler)
 
-        # 初始化消息处理器，并传递 monitor_groups
-        itchat_handler = MessageHandler(config['url'], error_handler, monitor_groups)
-        logging.info("消息处理器初始化完成并绑定自动点击器")
+        # 绑定 AutoClicker 到 ItChatHandler（通过 MessageHandler）
         itchat_handler.set_auto_clicker(auto_clicker)
+        logging.info("ItChatHandler 初始化完成并绑定 AutoClicker")
 
         # 初始化上传器
         uploader = Uploader(config['upload'], error_handler)
@@ -60,9 +58,6 @@ def main():
             uploader.upload_file,
             allowed_extensions=allowed_extensions
         )
-
-        # 绑定模块间关系
-        itchat_handler.set_message_callback(message_handler.handle_message)
 
         # 启动下载监控
         watcher_thread = threading.Thread(target=download_watcher.start)

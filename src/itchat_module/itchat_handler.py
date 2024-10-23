@@ -1,4 +1,4 @@
-# src/itchat_module/itchat_module.py
+# src/itchat_module/itchat_handler.py
 
 import logging
 import os
@@ -10,12 +10,11 @@ from io import BytesIO
 from PIL import Image
 from lib import itchat
 from lib.itchat.content import TEXT, ATTACHMENT
-
+import logging
 class ItChatHandler:
     def __init__(self, config, error_handler, log_callback=None, qr_queue=None):
         self.monitor_groups = config.get('monitor_groups', [])
         self.error_handler = error_handler
-        self.message_callback = None
         self.qr_path = config.get('login_qr_path', 'qr.png')
         self.log_callback = log_callback
         self.max_retries = config.get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
@@ -25,11 +24,13 @@ class ItChatHandler:
 
         # 初始化消息处理器
         self.message_handler = MessageHandler(config, error_handler, self.monitor_groups)
-        self.message_handler.set_auto_clicker(None)  # 可以在外部设置 AutoClicker
+        # self.message_handler.set_auto_clicker(None)  # 初始时不设置 AutoClicker
 
-    def set_message_callback(self, callback):
-        self.message_callback = callback
-        self.message_handler.set_auto_clicker(callback)  # 假设 callback 是 AutoClicker 实例
+    def set_auto_clicker(self, auto_clicker):
+        """
+        设置 MessageHandler 的 AutoClicker 实例
+        """
+        self.message_handler.set_auto_clicker(auto_clicker)
 
     def login(self):
         retries = 0
@@ -78,8 +79,8 @@ class ItChatHandler:
                 logging.debug(f"收到群组消息，群名: {group_name}")
                 if group_name in self.monitor_groups:
                     logging.info(f"来自群组 {group_name} 的消息: {msg['Content']}")
-                    if self.message_callback:
-                        self.message_callback.handle_message(msg)
+                    # 调用 MessageHandler 处理消息
+                    self.message_handler.handle_message(msg)
             except Exception as e:
                 logging.error(f"处理群组消息时发生错误: {e}")
                 if self.log_callback:
@@ -102,7 +103,7 @@ class ItChatHandler:
         if status == '0':
             logging.info("QR code downloaded.")
             if self.log_callback:
-                self.log_callback("QR code downloaded.")
+                self.log_callback("QR code下载。")
             try:
                 qr_image_data = qrcode
                 # 保存二维码到文件
@@ -214,6 +215,7 @@ class MessageHandler:
                 logging.debug(f"调用自动点击模块添加URL: {valid_urls}")
                 for url in valid_urls:
                     self.auto_clicker.add_task(url)
+
 
         except Exception as e:
             logging.error(f"处理消息时发生错误: {e}", exc_info=True)
