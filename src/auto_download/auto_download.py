@@ -2,29 +2,30 @@ import os
 import queue
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from DrissionPage import ChromiumPage,ChromiumOptions
+from DrissionPage import ChromiumPage, ChromiumOptions
 
 BASE_DIR = os.path.dirname(__file__)
-DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads') # 配置下载路径
+DOWNLOAD_DIR = '/Users/martinezdavid/Documents/MG/work/zxxkdownload'  # 设置下载路径
 LOCK = threading.Lock()
 
+
 class XKW:
-    def __init__(self,thread=1,work=False):
-        self.thread=thread
-        self.work=work
+    def __init__(self, thread=1, work=False, download_dir=None):
+        self.thread = thread
+        self.work = work
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.co = ChromiumOptions()
         # self.co.headless() # 不打开浏览器窗口 需要先登录 然后再开启 无浏览器模式
-        self.co.no_imgs() # 不加载图片
-        self.co.set_download_path(DOWNLOAD_DIR)# 设置下载路径
+        self.co.no_imgs()  # 不加载图片
+        self.co.set_download_path(DOWNLOAD_DIR)  # 设置下载路径
         # self.co.set_argument('--no-sandbox')  # 无沙盒模式
         self.page = ChromiumPage(self.co)
 
-        print(self.page.address)
-        self.data = self.loads_data()
+        logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.url = "https://www.zxxk.com/soft/{xid}.html"
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
         self.suffix = {
@@ -67,92 +68,141 @@ class XKW:
         }
         self.make_tabs()
         if work:
-            self.manager = threading.Thread(target=self.run)
+            self.manager = threading.Thread(target=self.run, daemon=True)
             self.manager.start()
+            logging.info("XKW manager thread started.")
 
-    def close_tabs(self,tabs):
+    def close_tabs(self, tabs):
         for tab in tabs:
-            tab.close()
+            try:
+                tab.close()
+                logging.debug("Closed a browser tab.")
+            except Exception as e:
+                logging.error(f"关闭标签页时出错: {e}", exc_info=True)
 
     def make_tabs(self):
-        tabs = self.page.get_tabs()
-        print("tabs",tabs)
-        if len(tabs) < self.thread:
-            self.page.new_tab()
-            self.make_tabs()
-        elif len(tabs) > self.thread:
-            self.close_tabs(tabs[self.thread:])
-        else:
+        try:
+            tabs = self.page.get_tabs()
+            logging.debug(f"Current tabs: {tabs}")
+            while len(tabs) < self.thread:
+                self.page.new_tab()
+                tabs = self.page.get_tabs()
+                logging.debug(f"Added new tab. Total tabs: {len(tabs)}")
+            if len(tabs) > self.thread:
+                self.close_tabs(tabs[self.thread:])
+                tabs = self.page.get_tabs()[:self.thread]
             for tab in tabs:
                 self.tabs.put(tab)
+            logging.info(f"Initialized {self.thread} tabs for downloading.")
+        except Exception as e:
+            logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
-    def loads_data(self):
-        with open("aa.txt", 'r',encoding='utf-8') as f:
-            data = f.read()
-            l = re.findall('(https://www.zxxk.com/soft/\d+.html)', data)
-        return l
+    def listener(self, tab, download, url):
+        try:
+            logging.info(f"开始下载: {url}")
+            tab.listen.start(True, method="GET")
+            download.click(by_js=True)
+            logging.debug("Clicked download button.")
 
-    def listener(self,tab,download,url):
-        print("开始下载", url)
-        tab.listen.start(True, method="GET")
-        download.click(by_js=True)
-        print("clicked")
-        for item in tab.listen.steps(timeout=5):
-            if item.url.startswith("https://files.zxxk.com/?mkey="):
-                # 停止页面加载
-                tab.listen.stop()
-                tab.stop_loading()
-                print(item.url)
-                break
-        else:
-            print("下载失败 重新下载中", url)
-            iframe = tab.get_frame('#layui-layer-iframe100002')
-            if iframe:
-                a= iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                tab.listen.start(True, method="GET")
-                self.listener(a,url)
+            for item in tab.listen.steps(timeout=15):  # 增加超时时间
+                if item.url.startswith("https://files.zxxk.com/?mkey="):
+                    # 停止页面加载
+                    tab.listen.stop()
+                    tab.stop_loading()
+                    logging.info(f"下载链接获取成功: {item.url}")
+                    break
             else:
-                if tab.url.startswith("https://www.zxxk.com/soft/softdownload?softid="):
-                    print("已经完成了")
+                logging.warning(f"下载失败，尝试重新下载: {url}")
+                iframe = tab.get_frame('#layui-layer-iframe100002')
+                if iframe:
+                    a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                    if a:
+                        self.listener(a, url)
+                    else:
+                        logging.error("无法找到确认按钮，跳过下载。")
                 else:
-                    self.listener(download,url)
-                    print("未知错误 重新下载中")
-
+                    if tab.url.startswith("https://www.zxxk.com/soft/softdownload?softid="):
+                        logging.info("下载已完成或无需重复下载。")
+                    else:
+                        self.listener(download, url)
+                        logging.warning("未知错误，尝试重新下载。")
+        except Exception as e:
+            logging.error(f"监听下载时出错: {e}", exc_info=True)
 
     def download(self, url):
-        tab = self.tabs.get()
-        tab.get(url)
-        tab.stop_loading()
-        h1 = tab.s_ele("t:h1@@class=res-title clearfix")
-        suffix = h1.child("t:i@@class^iconfont")
-        class_name = suffix.attr("class").strip()
-        # print(self.suffix.get(class_name,"docx"))
-        title = h1.child("t:span")
-        # print(title.text)
-        download = tab("#btnSoftDownload") #下载按钮
+        try:
+            tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
+            logging.debug(f"获取到一个标签页用于下载: {tab}")
+            tab.get(url)
+            h1 = tab.s_ele("t:h1@@class=res-title clearfix")
+            if not h1:
+                logging.error(f"无法找到标题元素，跳过URL: {url}")
+                self.tabs.put(tab)
+                return
 
-        # with LOCK:
-        self.listener(tab,download,url)
-        self.tabs.put(tab)
+            suffix_element = h1.child("t:i@@class^iconfont")
+            if not suffix_element:
+                logging.warning(f"无法找到后缀元素，使用默认后缀 'docx'。")
+                suffix = "docx"
+            else:
+                class_name = suffix_element.attr("class").strip()
+                suffix = self.suffix.get(class_name, "docx")
+
+            title_element = h1.child("t:span")
+            if not title_element:
+                logging.warning(f"无法找到标题文本，使用默认标题。")
+                title = "未命名"
+            else:
+                title = title_element.text.strip()
+
+            download_button = tab("#btnSoftDownload")  # 下载按钮
+            if not download_button:
+                logging.error(f"无法找到下载按钮，跳过URL: {url}")
+                self.tabs.put(tab)
+                return
+
+            self.listener(tab, download_button, url)
+        except queue.Empty:
+            logging.warning("任务队列为空，等待新任务。")
+        except Exception as e:
+            logging.error(f"下载过程中出错: {e}", exc_info=True)
+        finally:
+            self.tabs.put(tab)
 
     def run(self):
-        with ThreadPoolExecutor(max_workers=self.thread) as t:
-            if self.work:
-                url = self.task.get()
-                t.submit(self.download, url)
-            else:
-                for url in self.data:
-                    t.submit(self.download,url)
-        # input("输入任意键退出") # 等待输入任意键退出 程序退出后 不会给软件命名 等待下载完成后再推出程序
+        with ThreadPoolExecutor(max_workers=self.thread) as executor:
+            futures = []
+            while True:
+                try:
+                    url = self.task.get(timeout=5)  # 等待新任务
+                    if url is None:
+                        logging.info("接收到退出信号，停止下载管理。")
+                        break
+                    future = executor.submit(self.download, url)
+                    futures.append(future)
+                except queue.Empty:
+                    if not self.work:
+                        logging.info("不再接受新任务，等待当前任务完成。")
+                        break
+                except Exception as e:
+                    logging.error(f"任务分发时出错: {e}", exc_info=True)
 
-    def add_task(self,url):
+            # 等待所有提交的任务完成
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logging.error(f"任务执行时出错: {e}", exc_info=True)
+
+    def add_task(self, url):
         self.task.put(url)
 
-
-if __name__ == '__main__':
-    # 测试使用  使用aa.txt文件中的链接进行下载
-    xkw = XKW(thread=3,work=False)
-    xkw.run()
-    # 正常工作 使用一下 需要调用 add_task 方法添加任务
-    # xkw = XKW(thread=3,work=True)
-    # xkw.add_task("https://www.zxxk.com/soft/1000000000.html")
+    def stop(self):
+        """
+        停止下载管理，发送退出信号。
+        """
+        self.task.put(None)
+        if self.manager.is_alive():
+            self.manager.join()
+        self.close_tabs(list(self.tabs.queue))
+        self.page.close()

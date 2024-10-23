@@ -6,3 +6,4 @@ qrcode>=6.1
 watchdog>=2.1.0
 PyQRCode~=1.2.1
 urllib3~=2.2.3
+drissionpage

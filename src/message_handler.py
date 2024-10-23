@@ -4,10 +4,12 @@ import re
 import logging
 from urllib.parse import urlparse, urlunparse
 
+
 class MessageHandler:
     """
     消息处理器，用于处理微信消息，提取URL并调用AutoClicker
     """
+
     def __init__(self, config, error_handler, monitor_groups):
         # 改进的正则表达式，排除尾部可能的引号或特殊字符
         self.regex = config.get('regex', r'https?://[^\s"」]+')
@@ -70,7 +72,9 @@ class MessageHandler:
             # 将有效的URL添加到AutoClicker队列
             if self.auto_clicker and valid_urls:
                 logging.debug(f"调用自动点击模块添加URL: {valid_urls}")
-                self.auto_clicker.add_urls(valid_urls)
+                for url in valid_urls:
+                    self.auto_clicker.add_task(url)
+
 
         except Exception as e:
             logging.error(f"处理消息时发生错误: {e}", exc_info=True)
