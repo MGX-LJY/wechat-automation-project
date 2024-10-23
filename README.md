@@ -10,9 +10,10 @@
     - [2. MessageHandler](#2-messagehandler)
     - [3. AutoClicker](#3-autoclicker)
     - [4. Uploader](#4-uploader)
-    - [5. DownloadWatcher](#5-downloadwatcher)
-    - [6. ErrorHandler](#6-errorhandler)
-    - [7. Notifier](#7-notifier)
+    - [5. auto_download](#5-auto_download)
+    - [6. DownloadWatcher](#6-downloadwatcher)
+    - [7. ErrorHandler](#7-errorhandler)
+    - [8. Notifier](#8-notifier)
 4. [工作流程](#工作流程)
 5. [配置说明](#配置说明)
 6. [部署与设置](#部署与设置)
@@ -51,6 +52,7 @@
 - 监听指定微信群组中的消息，并将消息传递给MessageHandler进行处理。
 - （实现多群组和多个人的监控和上传功能）
 - （连接上传功能，实现对应群组的文件上传功能）
+- （记录群组或个人发的链接 ID，并且传送到 upload_urls列表）
 
 **逻辑**：
 
@@ -103,9 +105,13 @@
 ### 5. auto_download
 **作用**：
 
-- 自动化下载文件，将下载的文件保存到本地，并记录文件对于 id
+- 自动化下载文件，将下载的文件保存到本地，并记录文件对于 id和对应文件的连接。
 
-### 5. DownloadWatcher
+**逻辑**：
+1. **文件下载**：，用谷歌浏览器自动化进行下载处理。
+2. **文件保存**：将下载的文件保存到本地，并记录文件对于 id和对应文件的连接。
+
+### 6. DownloadWatcher
 
 **作用**：
 
@@ -118,7 +124,7 @@
 3. **触发上传**：调用Uploader模块，将检测到的文件上传到微信群组。
 4. **异常处理**：在监控过程中发生异常时，通过ErrorHandler模块记录并处理错误。
 
-### 6. ErrorHandler
+### 7. ErrorHandler
 
 **作用**：
 
@@ -131,7 +137,7 @@
 3. **通知发送**：通过Notifier模块，向指定的接收者发送错误通知，确保及时响应和修复问题。
 4. **状态检查**：在发送通知前，确认微信的登录状态，避免因微信未登录导致进一步的错误。
 
-### 7. Notifier
+### 8. Notifier
 
 **作用**：
 
