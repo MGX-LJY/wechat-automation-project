@@ -1,6 +1,22 @@
 {
-    "remaining_count": 339,
-    "daily_download_counts": {
-        "2024-10-23": 59
+    "recipients": {
+        "测试": {
+            "remaining_count": 1000,
+            "daily_download_counts": {
+                "2024-10-25": 5
+            }
+        },
+        "🐠【学虎】课件下载": {
+            "remaining_count": 710,
+            "daily_download_counts": {
+                "2024-10-25": 1
+            }
+        },
+        "李老师呀": {
+            "remaining_count": 709,
+            "daily_download_counts": {
+                "2024-10-25": 2
+            }
+        }
     }
 }

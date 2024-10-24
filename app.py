@@ -58,11 +58,12 @@ def main():
         # 初始化自动点击器
         auto_clicker = AutoClicker(error_handler)
 
-        # 获取监控的群组列表
+        # 获取监控的群组和个人列表
         monitor_groups = main_config['wechat'].get('monitor_groups', [])
+        target_individuals = main_config['wechat'].get('target_individuals', [])
 
-        # 初始化消息处理器，并传递 monitor_groups
-        message_handler = MessageHandler(main_config.get('url', {}), error_handler, monitor_groups)
+        # 初始化消息处理器，并传递 monitor_groups 和 target_individuals
+        message_handler = MessageHandler(main_config.get('url', {}), error_handler, monitor_groups, target_individuals)
         logging.info("消息处理器初始化完成并绑定自动点击器")
         message_handler.set_auto_clicker(auto_clicker)
 

@@ -9,11 +9,15 @@ import threading
 import time
 import queue
 
+
 class Uploader:
     def __init__(self, upload_config, error_notification_config, error_handler):
         self.target_groups = upload_config.get('target_groups', [])
+        self.target_individuals = upload_config.get('target_individuals', [])  # 添加这一行
+        self.processed_soft_ids = set()  # 用于记录已处理的 soft_id
         self.error_handler = error_handler
         self.group_usernames = self._fetch_group_usernames()
+        self.individual_usernames = self._fetch_individual_usernames()  # 新增方法
         self.max_retries = 3  # 最大重试次数
         self.retry_delay = 5  # 重试间隔时间（秒）
         self.alert_size = 25 * 1024 * 1024  # 25MB的阈值
@@ -46,7 +50,16 @@ class Uploader:
         # 确保 itchat 已登录
         if not itchat.check_login():
             logging.info("ItChat 未登录，开始登录...")
+            login_thread = threading.Thread(target=self._login)
+            login_thread.start()
+
+    def _login(self):
+        try:
             itchat.auto_login(hotReload=True)  # 自动登录，保持会话
+            logging.info("ItChat 登录成功")
+        except Exception as e:
+            logging.error(f"ItChat 登录失败: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
 
     def _fetch_friend_username(self, friend_name):
         """
@@ -85,6 +98,19 @@ class Uploader:
                 logging.error(f"未找到群组: {group_name}. 当前群组列表: {all_group_names}")
                 group_usernames[group_name] = None  # 防止后续上传时找不到群组
         return group_usernames
+
+    def _fetch_individual_usernames(self):
+        """
+        获取目标个人的 UserName
+        """
+        individual_usernames = {}
+        for individual_name in self.target_individuals:
+            user_name = self._fetch_friend_username(individual_name)
+            if user_name:
+                individual_usernames[individual_name] = user_name
+            else:
+                individual_usernames[individual_name] = None
+        return individual_usernames
 
     def _fetch_user_or_group_username(self, name):
         """
@@ -127,9 +153,11 @@ class Uploader:
             self.error_handler.handle_exception(e)
 
     def add_upload_task(self, file_path, soft_id):
-        """
-        添加上传任务到队列
-        """
+        with self.lock:
+            if soft_id in self.processed_soft_ids:
+                logging.info(f"soft_id {soft_id} 已经添加到上传队列，跳过重复任务。")
+                return
+            self.processed_soft_ids.add(soft_id)
         self.upload_queue.put((file_path, soft_id))
         logging.info(f"添加上传任务: {file_path}, soft_id: {soft_id}")
         print(f"添加上传任务: {file_path}, soft_id: {soft_id}")
@@ -153,6 +181,10 @@ class Uploader:
         根据 soft_id 查找接收者并上传文件
         """
         try:
+            if not os.path.exists(file_path):
+                logging.error(f"文件不存在，无法上传: {file_path}")
+                return
+
             with self.lock:
                 recipient_name = self.softid_to_recipient.get(soft_id)
 
@@ -169,16 +201,17 @@ class Uploader:
             # 检查文件大小
             file_size = os.path.getsize(file_path)
             if file_size > self.alert_size:
-                logging.warning(f"文件 {file_path} 大小超过25MB，发送提醒消息。")
+                logging.warning(f"文件 {file_path} 大小 {file_size} 超过25MB，发送提醒消息。")
                 self.send_large_file_message(file_path, user_name)
                 return  # 不进行上传
 
             # 上传文件
             for attempt in range(1, self.max_retries + 1):
                 try:
-                    logging.info(f"正在上传文件: {file_path} 至接收者: {recipient_name}，尝试次数: {attempt}")
+                    logging.info(
+                        f"正在上传文件: {file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
                     itchat.send_file(file_path, toUserName=user_name)
-                    logging.info(f"文件已上传至接收者: {recipient_name}")
+                    logging.info(f"文件已上传至接收者: {recipient_name} (soft_id: {soft_id})")
                     time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
 
                     # 文件上传成功后删除文件
@@ -190,14 +223,14 @@ class Uploader:
                     return  # 上传成功，退出函数
                 except Exception as e:
                     if attempt < self.max_retries:
-                        logging.warning(f"上传失败，网络问题，稍后重试... (尝试次数: {attempt})")
+                        logging.warning(f"上传失败，网络问题，稍后重试... (尝试次数: {attempt}) - 错误: {e}")
                         time.sleep(self.retry_delay)
                     else:
-                        logging.error("上传失败，网络问题")
+                        logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误: {e}")
                         self.error_handler.handle_exception(e)
 
         except Exception as e:
-            logging.error("上传文件时发生错误", exc_info=True)
+            logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def delete_file(self, file_path):
@@ -302,7 +335,8 @@ class Uploader:
             if counters['remaining_count'] < 0:
                 counters['remaining_count'] = 0  # 确保不为负数
 
-            logging.info(f"扣除一份资料。接收者：{recipient_name}，日期：{download_date}，下载量：{counters['daily_download_counts'][download_date]}，剩余量：{counters['remaining_count']}")
+            logging.info(
+                f"扣除一份资料。接收者：{recipient_name}，日期：{download_date}，下载量：{counters['daily_download_counts'][download_date]}，剩余量：{counters['remaining_count']}")
 
             # 保存计数器数据
             self.save_counters()

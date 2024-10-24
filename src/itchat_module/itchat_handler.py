@@ -16,6 +16,7 @@ from src.file_upload.uploader import Uploader
 class ItChatHandler:
     def __init__(self, config, error_handler, log_callback=None, qr_queue=None):
         self.monitor_groups = config.get('monitor_groups', [])
+        self.target_individuals = config.get('target_individuals', [])  # 添加这一行
         self.error_handler = error_handler
         self.qr_path = config.get('login_qr_path', 'qr.png')
         self.log_callback = log_callback
@@ -25,7 +26,7 @@ class ItChatHandler:
         self.login_event = threading.Event()
 
         # 初始化消息处理器
-        self.message_handler = MessageHandler(config, error_handler, self.monitor_groups)
+        self.message_handler = MessageHandler(config, error_handler, self.monitor_groups, self.target_individuals)
 
         # Uploader 实例将在外部传递
         self.uploader = None  # 初始化为空，稍后通过主程序传递
@@ -88,7 +89,7 @@ class ItChatHandler:
         raise Exception("多次登录失败，应用启动失败。")
 
     def run(self):
-        # 注册文本和附件消息的处理函数
+        # 注册群组消息处理函数
         @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
         def handle_group_messages(msg):
             try:
@@ -104,6 +105,22 @@ class ItChatHandler:
                 logging.error(f"处理群组消息时发生错误: {e}", exc_info=True)
                 if self.log_callback:
                     self.log_callback(f"处理群组消息时发生错误: {e}")
+                self.error_handler.handle_exception(e)
+
+        # 注册个人消息处理函数
+        @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
+        def handle_individual_messages(msg):
+            try:
+                sender = msg['User']['NickName']
+                logging.debug(f"收到个人消息，发送者: {sender}")
+                if sender in self.target_individuals:
+                    logging.info(f"来自个人 {sender} 的消息: {msg['Content']}")
+                    # 调用 MessageHandler 处理消息
+                    self.message_handler.handle_message(msg)
+            except Exception as e:
+                logging.error(f"处理个人消息时发生错误: {e}", exc_info=True)
+                if self.log_callback:
+                    self.log_callback(f"处理个人消息时发生错误: {e}")
                 self.error_handler.handle_exception(e)
 
         try:
@@ -171,13 +188,13 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, config, error_handler, monitor_groups):
-        # 改进的正则表达式，排除尾部可能的引号或特殊字符
+    def __init__(self, config, error_handler, monitor_groups, target_individuals):
         self.regex = config.get('regex', r'https?://[^\s"」]+')
         self.validation = config.get('validation', True)
         self.auto_clicker = None
         self.error_handler = error_handler
         self.monitor_groups = monitor_groups
+        self.target_individuals = target_individuals
         self.uploader = None  # 初始化为 None
 
     def set_auto_clicker(self, auto_clicker):
@@ -191,11 +208,18 @@ class MessageHandler:
 
     def handle_message(self, msg):
         try:
-            # 获取群组名称
-            group_name = msg['User']['NickName'] if 'User' in msg else getattr(msg.user, 'NickName', '')
-            if group_name not in self.monitor_groups:
-                logging.debug(f"消息来自非监控群组: {group_name}")
-                return
+            # 获取消息来源类型
+            is_group = msg['IsGroupChat'] if 'IsGroupChat' in msg else getattr(msg, 'isGroupChat', False)
+            if is_group:
+                group_name = msg['User']['NickName']
+                if group_name not in self.monitor_groups:
+                    logging.debug(f"消息来自非监控群组: {group_name}")
+                    return
+            else:
+                sender = msg['User']['NickName']
+                if sender not in self.target_individuals:
+                    logging.debug(f"消息来自非监控个人: {sender}")
+                    return
 
             # 获取消息类型
             msg_type = msg['Type'] if 'Type' in msg else getattr(msg, 'type', '')
@@ -246,10 +270,11 @@ class MessageHandler:
 
                     # 将群组名称和 soft_id 传递给 Uploader
                     if self.uploader:
-                        self.uploader.upload_group_id(group_name, soft_id)
-                        logging.info(f"上传群组名称和 soft_id 到 Uploader: {group_name}, {soft_id}")
+                        recipient_name = group_name if is_group else sender
+                        self.uploader.upload_group_id(recipient_name, soft_id)
+                        logging.info(f"上传信息到 Uploader: {recipient_name}, {soft_id}")
                     else:
-                        logging.warning("Uploader 未设置，无法上传群组和 soft_id 信息。")
+                        logging.warning("Uploader 未设置，无法上传接收者和 soft_id 信息。")
                 else:
                     logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
 
