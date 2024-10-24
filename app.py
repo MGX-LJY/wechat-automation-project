@@ -1,5 +1,5 @@
 # app.py
-
+import json
 import logging
 import sys
 import signal
@@ -12,7 +12,6 @@ from src.file_upload.uploader import Uploader
 from src.logging_module.logger import setup_logging
 from src.error_handling.error_handler import ErrorHandler
 from src.notification.notifier import Notifier
-
 
 def main():
     try:
@@ -35,9 +34,16 @@ def main():
         # 初始化 ItChatHandler
         itchat_handler = ItChatHandler(config['wechat'], error_handler)
 
-        # 初始化 XKW（自动下载模块），暂时不传递 uploader
+        # 读取 counts.json 配置文件
+        with open('counts.json', 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # 创建 Uploader 实例
+        uploader = Uploader(upload_config, error_notification_config, error_handler)
+
+        # 初始化 XKW，传递 uploader
         download_path = config['download'].get('download_path', '/Users/martinezdavid/Documents/MG/work/zxxkdownload')
-        xkw = XKW(thread=3, work=True, download_dir=download_path)
+        xkw = XKW(thread=3, work=True, download_dir=download_path, uploader=uploader)
 
         # 绑定 XKW 到 ItChatHandler（通过 MessageHandler）
         itchat_handler.set_auto_clicker(xkw)

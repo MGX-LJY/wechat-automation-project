@@ -49,6 +49,7 @@
             "🐠【学虎】课件下载",
             "测试"
         ],
+        "default_recipient": "默认接收者",
         "counts_file": "counts.json"
     },
     "logging": {

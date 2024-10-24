@@ -5,16 +5,17 @@ import queue
 import re
 import time
 import logging
+import random
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from DrissionPage import ChromiumPage, ChromiumOptions
-from DrissionPage.errors import ContextLostError
+from DrissionPage.errors import ContextLostError, PageDisconnectedError
 from src.file_upload.uploader import Uploader
 from bs4 import BeautifulSoup
 
 
 BASE_DIR = os.path.dirname(__file__)
-DOWNLOAD_DIR = '/Users/martinezdavid/Documents/MG/work/zxxkdownload'  # 设置下载路径
+DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads') # 配置下载路径
 LOCK = threading.Lock()
 
 class XKW:
@@ -86,6 +87,14 @@ class XKW:
             except Exception as e:
                 logging.error(f"关闭标签页时出错: {e}", exc_info=True)
 
+    def get_tab(self):
+        try:
+            tab = self.tabs.get(timeout=5)
+            return tab
+        except queue.Empty:
+            logging.error("没有可用的浏览器标签页。")
+            return None
+
     def make_tabs(self):
         try:
             tabs = self.page.get_tabs()
@@ -103,39 +112,44 @@ class XKW:
         except Exception as e:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
-    def (self, url):
+    def download_file(self, tab, soft_id):
         """
-        执行下载任务
+        执行下载操作
         """
-        tab = self.get_tab()
         try:
-            soft_id, title = self.extract_id_and_title(tab, url)
-            if not soft_id or not title:
-                logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                return
-
-            # 下载文件
-            success = self.download_file(tab, soft_id)
-            if not success:
-                logging.error(f"下载文件失败，跳过 URL: {url}")
-                return
-
-            # 匹配下载的文件
-            file_path = self.match_downloaded_file(title, 'docx')  # 使用默认后缀
-            if not file_path:
-                logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
-                return
-
-            # 上传文件
-            if self.uploader:
-                self.uploader.upload_file(file_path, soft_id)
+            download_url = self.dls_url.format(xid=soft_id)
+            tab.get(download_url)
+            # 等待下载按钮出现并点击
+            download_button = tab.ele('css selector', '.btn-download')
+            if download_button:
+                download_button.click()
+                logging.info(f"已点击下载按钮，soft_id: {soft_id}")
+                # 等待下载完成（您可能需要根据实际情况调整）
+                time.sleep(5)
+                return True
             else:
-                logging.warning("Uploader 未设置，无法上传文件。")
-
+                logging.error(f"未找到下载按钮，soft_id: {soft_id}")
+                return False
         except Exception as e:
-            logging.error(f"下载任务时发生错误: {e}", exc_info=True)
-        finally:
-            tab.close()download_task
+            logging.error(f"下载文件时发生错误: {e}", exc_info=True)
+            return False
+
+    def match_downloaded_file(self, title, suffix):
+        """
+        在下载目录中匹配下载的文件
+        """
+        try:
+            download_dir = self.co.download_path
+            for file_name in os.listdir(download_dir):
+                if title in file_name and file_name.endswith(suffix):
+                    file_path = os.path.join(download_dir, file_name)
+                    logging.info(f"匹配到下载的文件: {file_path}")
+                    return file_path
+            logging.error(f"未能找到匹配的下载文件: {title}.{suffix}")
+            return None
+        except Exception as e:
+            logging.error(f"匹配下载文件时发生错误: {e}", exc_info=True)
+            return None
 
     def extract_id_and_title(self, tab, url):
         """
@@ -143,7 +157,7 @@ class XKW:
         """
         try:
             # 检查标签页是否有效
-            if tab.closed:
+            if not tab.is_connected:
                 logging.warning("标签页已关闭，重新获取标签页")
                 tab = self.get_tab()
 
@@ -257,9 +271,81 @@ class XKW:
             print(f"下载过程中出错: {e}")
             # 出现异常，进行重试
             time.sleep(5)
-            self.listener(tab, download, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
+            self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
 
-            return None, None
+    def download(self, url):
+        try:
+            import random  # 确保导入 random 模块
+            # 随机延迟1到3秒，防止请求过于频繁
+            delay = random.uniform(1, 3)
+            time.sleep(delay)
+
+            tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
+            logging.info(f"获取到一个标签页用于下载: {tab}")
+            tab.get(url)
+            h1 = tab.s_ele("t:h1@@class=res-title clearfix")
+            if not h1:
+                logging.error(f"无法找到标题元素，跳过URL: {url}")
+                self.tabs.put(tab)
+                return
+
+            suffix_element = h1.child("t:i@@class^iconfont")
+            if not suffix_element:
+                logging.warning(f"无法找到后缀元素，使用默认后缀 'docx'。")
+                suffix = "docx"
+            else:
+                class_name = suffix_element.attr("class").strip()
+                suffix = self.suffix.get(class_name, "docx")
+
+            title_element = h1.child("t:span")
+            if not title_element:
+                logging.warning(f"无法找到标题文本，使用默认标题。")
+                title = "未命名"
+            else:
+                title = title_element.text.strip()
+
+            # 从 URL 中提取 soft_id
+            match = re.search(r'/soft/(\d+)\.html', url)
+            if match:
+                soft_id = match.group(1)
+                logging.info(f"从 URL 中提取到 soft_id: {soft_id}")
+            else:
+                logging.error(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
+                self.tabs.put(tab)
+                return
+
+            download_button = tab("#btnSoftDownload")  # 下载按钮
+            if not download_button:
+                logging.error(f"无法找到下载按钮，跳过URL: {url}")
+                self.tabs.put(tab)
+                return
+
+            # 开始下载
+            success = self.listener(tab, download_button, url, title, suffix, soft_id)
+            if success:
+                # 匹配下载的文件
+                file_path = self.match_downloaded_file(title, suffix)
+                if not file_path:
+                    logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
+                else:
+                    # 将文件路径和 soft_id 传递给上传模块
+                    if self.uploader:
+                        self.uploader.add_upload_task(file_path, soft_id)
+                        logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                    else:
+                        logging.warning("Uploader 未设置，无法传递上传任务。")
+            else:
+                logging.error(f"下载失败，跳过 URL: {url}")
+        except queue.Empty:
+            logging.warning("任务队列为空，等待新任务。")
+        except Exception as e:
+            logging.error(f"下载过程中出错: {e}", exc_info=True)
+            # 在发生异常时，确保 tab 被放回队列
+            if 'tab' in locals():
+                self.tabs.put(tab)
+        finally:
+            if 'tab' in locals():
+                self.tabs.put(tab)
 
     def run(self):
         with ThreadPoolExecutor(max_workers=self.thread) as executor:
