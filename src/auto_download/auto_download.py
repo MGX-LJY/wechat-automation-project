@@ -10,7 +10,7 @@ import threading
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError
 from src.file_upload.uploader import Uploader
-from lxml import etree
+from bs4 import BeautifulSoup
 
 
 BASE_DIR = os.path.dirname(__file__)
@@ -103,7 +103,7 @@ class XKW:
         except Exception as e:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
-    def download_task(self, url):
+    def (self, url):
         """
         执行下载任务
         """
@@ -135,7 +135,7 @@ class XKW:
         except Exception as e:
             logging.error(f"下载任务时发生错误: {e}", exc_info=True)
         finally:
-            tab.close()
+            tab.close()download_task
 
     def extract_id_and_title(self, tab, url):
         """
@@ -158,13 +158,14 @@ class XKW:
             # 尝试从 <h1 class="res-title clearfix"> 中获取标题
             h1 = soup.find('h1', class_='res-title clearfix')
             if h1:
-                span = h1.find('span')
-                if span:
-                    title = span.get_text(strip=True)
-                    logging.info(f"从 h1.res-title span 中获取到标题: {title}")
+                # 优先从 h1 的 'title' 属性中获取标题
+                title = h1.get('title', '').strip()
+                if not title:
+                    # 如果没有 'title' 属性，从 h1 的文本内容中获取标题
+                    title = h1.get_text(separator=' ', strip=True)
+                    logging.info(f"从 h1 标签文本中获取到标题: {title}")
                 else:
-                    logging.error(f"无法从 h1.res-title 中找到 span 标签，URL: {url}")
-                    return None, None
+                    logging.info(f"从 h1 标签的 'title' 属性中获取到标题: {title}")
             else:
                 logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
                 return None, None
