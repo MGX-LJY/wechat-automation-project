@@ -40,6 +40,11 @@ class Uploader:
         notification_thread.start()
         logging.info("每日通知调度线程已启动")
 
+        # 确保 itchat 已登录
+        if not itchat.check_login():
+            logging.info("ItChat 未登录，开始登录...")
+            itchat.auto_login(hotReload=True)  # 自动登录，保持会话
+
     def _fetch_friend_username(self, friend_name):
         """
         获取好友的 UserName

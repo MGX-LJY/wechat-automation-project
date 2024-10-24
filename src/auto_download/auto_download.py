@@ -1,5 +1,3 @@
-# src/auto_download/auto_download.py
-
 import os
 import queue
 import re
@@ -11,12 +9,11 @@ import threading
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError, PageDisconnectedError
 from src.file_upload.uploader import Uploader
-from bs4 import BeautifulSoup
-
 
 BASE_DIR = os.path.dirname(__file__)
-DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads') # 配置下载路径
+DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')  # 配置下载路径
 LOCK = threading.Lock()
+
 
 class XKW:
     def __init__(self, thread=1, work=False, download_dir=None, uploader=None):
@@ -79,6 +76,9 @@ class XKW:
             self.manager.start()
             logging.info("XKW manager thread started.")
 
+    def get_tabs(self):
+        return self.page.tabs.get()  # 假设 ChromiumPage 有 tabs.get()
+
     def close_tabs(self, tabs):
         for tab in tabs:
             try:
@@ -87,44 +87,37 @@ class XKW:
             except Exception as e:
                 logging.error(f"关闭标签页时出错: {e}", exc_info=True)
 
-    def get_tab(self):
-        try:
-            tab = self.tabs.get(timeout=5)
-            return tab
-        except queue.Empty:
-            logging.error("没有可用的浏览器标签页。")
-            return None
-
     def make_tabs(self):
         try:
-            tabs = self.page.get_tabs()
+            tabs = self.get_tabs()  # 使用现有的方法获取标签页
             logging.debug(f"Current tabs: {tabs}")
             while len(tabs) < self.thread:
                 self.page.new_tab()
-                tabs = self.page.get_tabs()
+                tabs = self.get_tabs()
                 logging.debug(f"Added new tab. Total tabs: {len(tabs)}")
             if len(tabs) > self.thread:
                 self.close_tabs(tabs[self.thread:])
-                tabs = self.page.get_tabs()[:self.thread]
+                tabs = self.get_tabs()[:self.thread]
             for tab in tabs:
                 self.tabs.put(tab)
             logging.info(f"初始化 {self.thread} 个标签页用于下载。")
         except Exception as e:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
-    def download_file(self, tab, soft_id):
+    def download_file(self, soft_id):
         """
         执行下载操作
         """
         try:
             download_url = self.dls_url.format(xid=soft_id)
+            tab = self.tabs.get()
             tab.get(download_url)
             # 等待下载按钮出现并点击
             download_button = tab.ele('css selector', '.btn-download')
             if download_button:
                 download_button.click()
                 logging.info(f"已点击下载按钮，soft_id: {soft_id}")
-                # 等待下载完成（您可能需要根据实际情况调整）
+                # 等待下载完成（根据实际情况调整）
                 time.sleep(5)
                 return True
             else:
@@ -139,6 +132,9 @@ class XKW:
         在下载目录中匹配下载的文件
         """
         try:
+            if not title:
+                logging.error("标题为空，无法匹配下载文件")
+                return None
             download_dir = self.co.download_path
             for file_name in os.listdir(download_dir):
                 if title in file_name and file_name.endswith(suffix):
@@ -156,30 +152,22 @@ class XKW:
         从页面中提取 soft_id 和标题
         """
         try:
-            # 检查标签页是否有效
-            if not tab.is_connected:
-                logging.warning("标签页已关闭，重新获取标签页")
-                tab = self.get_tab()
-
+            # 尝试加载页面
             tab.get(url)
-            # 等待页面加载完成
-            tab.wait_load(10)
+            # 停止页面加载以加快速度
+            tab.stop_loading()
 
-            # 获取页面 HTML
-            page_html = tab.html
-            soup = BeautifulSoup(page_html, 'html.parser')
-
-            # 尝试从 <h1 class="res-title clearfix"> 中获取标题
-            h1 = soup.find('h1', class_='res-title clearfix')
+            # 使用提供的方法提取标题
+            h1 = tab.s_ele("t:h1@@class=res-title clearfix")
             if h1:
-                # 优先从 h1 的 'title' 属性中获取标题
-                title = h1.get('title', '').strip()
-                if not title:
-                    # 如果没有 'title' 属性，从 h1 的文本内容中获取标题
-                    title = h1.get_text(separator=' ', strip=True)
-                    logging.info(f"从 h1 标签文本中获取到标题: {title}")
+                suffix = h1.child("t:i@@class^iconfont")
+                title_element = h1.child("t:span")
+                if title_element:
+                    title = title_element.text.strip()
+                    logging.info(f"从 h1 标签中获取到标题: {title}")
                 else:
-                    logging.info(f"从 h1 标签的 'title' 属性中获取到标题: {title}")
+                    logging.error(f"无法从 h1 标签中获取到 span 元素，URL: {url}")
+                    return None, None
             else:
                 logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
                 return None, None
@@ -193,28 +181,33 @@ class XKW:
                 logging.error(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
                 return None, None
 
-            return soft_id, title.strip()
+            return soft_id, title
 
         except PageDisconnectedError as e:
             logging.error(f"页面连接断开，重新获取标签页。错误: {e}")
             # 重新获取标签页
-            tab = self.get_tab()
-            return self.extract_id_and_title(tab, url)
+            try:
+                tab = self.tabs.get(timeout=10)
+                return self.extract_id_and_title(tab, url)
+            except queue.Empty:
+                logging.error("无法重新获取标签页，跳过 URL")
+                return None, None
 
         except Exception as e:
             logging.error(f"提取 ID 和标题时出错: {e}", exc_info=True)
             return None, None
 
-    def listener(self, tab, download, url, title, suffix, soft_id, retry=0, max_retries=3):
+    def listener(self, tab, download_button, url, title, suffix, soft_id, retry=0, max_retries=3):
         if retry > max_retries:
             logging.error(f"超过最大重试次数，下载失败: {url}")
             print("超过最大重试次数，下载失败。")
-            return
+            return False  # 明确返回 False
+
         logging.info(f"开始下载 {url}, 重试次数: {retry}")
         print("开始下载", url)
         try:
             tab.listen.start(True, method="GET")
-            download.click(by_js=True)
+            download_button.click(by_js=True)
             print("clicked")
             for item in tab.listen.steps(timeout=5):
                 if item.url.startswith("https://files.zxxk.com/?mkey="):
@@ -235,16 +228,16 @@ class XKW:
                             self.uploader.upload_file(file_path, soft_id)
                         else:
                             logging.warning("Uploader 未设置，无法上传文件信息。")
+                        return True  # 明确返回 True
                     else:
                         logging.error(f"文件路径无效或文件不存在: {file_path}")
+                        return False  # 明确返回 False
 
-                    return
                 elif "20600001" in item.url:
                     logging.warning("请求过于频繁，暂停1秒后重试。")
                     print("请求过于频繁，暂停1秒后重试。")
                     time.sleep(1)
-                    self.listener(tab, download, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
-                    return
+                    return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
             else:
                 # 等待页面加载完成
                 time.sleep(2)
@@ -255,64 +248,54 @@ class XKW:
                         a.click()
                         logging.info("点击确认按钮成功。")
                         print("点击确认按钮成功。")
-                        return
+                        return False  # 根据实际情况返回
                 # 如果未找到确认按钮，进行重试
                 logging.warning(f"下载失败，尝试重新下载: {url}, 当前重试次数: {retry}")
                 print("下载失败 重新下载中", url)
                 time.sleep(5)  # 重试前等待5秒
-                self.listener(tab, download, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
+                return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
         except ContextLostError as e:
             logging.warning(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}")
             print(f"页面上下文丢失，重试下载: {url}")
             time.sleep(5)
-            self.listener(tab, download, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
+            return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             print(f"下载过程中出错: {e}")
             # 出现异常，进行重试
             time.sleep(5)
-            self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
+            return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
 
     def download(self, url):
         try:
-            import random  # 确保导入 random 模块
+            logging.info(f"准备下载 URL: {url}")
             # 随机延迟1到3秒，防止请求过于频繁
             delay = random.uniform(1, 3)
+            logging.debug(f"随机延迟 {delay:.2f} 秒")
             time.sleep(delay)
-
             tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
             logging.info(f"获取到一个标签页用于下载: {tab}")
             tab.get(url)
-            h1 = tab.s_ele("t:h1@@class=res-title clearfix")
+            h1 = self.extract_id_and_title(tab, url)
             if not h1:
-                logging.error(f"无法找到标题元素，跳过URL: {url}")
+                logging.error(f"无法提取 ID 和标题，跳过 URL: {url}")
                 self.tabs.put(tab)
                 return
 
-            suffix_element = h1.child("t:i@@class^iconfont")
+            soft_id, title = h1
+            if not title:
+                logging.error(f"标题为空，跳过 URL: {url}")
+                self.tabs.put(tab)
+                return
+
+            suffix_element = tab.s_ele("t:i@@class^iconfont")
             if not suffix_element:
                 logging.warning(f"无法找到后缀元素，使用默认后缀 'docx'。")
                 suffix = "docx"
             else:
                 class_name = suffix_element.attr("class").strip()
                 suffix = self.suffix.get(class_name, "docx")
-
-            title_element = h1.child("t:span")
-            if not title_element:
-                logging.warning(f"无法找到标题文本，使用默认标题。")
-                title = "未命名"
-            else:
-                title = title_element.text.strip()
-
-            # 从 URL 中提取 soft_id
-            match = re.search(r'/soft/(\d+)\.html', url)
-            if match:
-                soft_id = match.group(1)
-                logging.info(f"从 URL 中提取到 soft_id: {soft_id}")
-            else:
-                logging.error(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
-                self.tabs.put(tab)
-                return
+                logging.debug(f"提取到后缀: {suffix}")
 
             download_button = tab("#btnSoftDownload")  # 下载按钮
             if not download_button:
@@ -320,9 +303,11 @@ class XKW:
                 self.tabs.put(tab)
                 return
 
+            logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
             # 开始下载
             success = self.listener(tab, download_button, url, title, suffix, soft_id)
             if success:
+                logging.info(f"下载成功，开始处理上传任务: {url}")
                 # 匹配下载的文件
                 file_path = self.match_downloaded_file(title, suffix)
                 if not file_path:
