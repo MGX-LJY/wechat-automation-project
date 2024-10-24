@@ -1,18 +1,148 @@
+# src/auto_download/auto_download.py
+
 import os
 import queue
 import re
 import time
 import logging
 import random
-from concurrent.futures import ThreadPoolExecutor
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError, PageDisconnectedError
 from src.file_upload.uploader import Uploader
 
 BASE_DIR = os.path.dirname(__file__)
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')  # 配置下载路径
-LOCK = threading.Lock()
+
+
+class DownloadEventHandler(FileSystemEventHandler):
+    def __init__(self, xkw_instance, allowed_extensions=None, temporary_extensions=None, stable_time=5):
+        super().__init__()
+        self.xkw = xkw_instance
+        self.allowed_extensions = allowed_extensions or [
+            '.pdf', '.docx', '.doc', '.xlsx',
+            '.ppt', '.pptx',
+            '.zip', '.rar', '.7z',
+            '.mp4', '.avi', '.mkv',
+            '.mp3', '.wav', '.aac',
+            '.tar', '.gz', '.bz2',
+            '.mov', '.flv', '.wmv'
+        ]
+        self.temporary_extensions = temporary_extensions or [
+            '.crdownload', '.part', '.tmp', '.download'
+        ]
+        self.stable_time = stable_time  # 文件大小稳定的等待时间，单位：秒
+        self.files_in_progress = {}
+
+    def on_created(self, event):
+        if not event.is_directory:
+            file_path = event.src_path
+            _, ext = os.path.splitext(file_path)
+            ext = ext.lower()
+
+            if ext in self.temporary_extensions:
+                logging.debug(f"忽略临时文件创建: {file_path}")
+                return
+
+            if ext not in self.allowed_extensions:
+                logging.debug(f"文件 {file_path} 不在允许的类型中，跳过")
+                return
+
+            logging.info(f"检测到新文件: {file_path}")
+            # 启动一个线程来监控文件稳定性
+            threading.Thread(target=self._wait_for_file_stable, args=(file_path,), daemon=True).start()
+
+    def on_moved(self, event):
+        if not event.is_directory:
+            src_path = event.src_path
+            dest_path = event.dest_path
+            logging.debug(f"文件移动事件: 从 {src_path} 到 {dest_path}")
+
+            _, ext = os.path.splitext(dest_path)
+            ext = ext.lower()
+
+            if ext in self.temporary_extensions:
+                logging.debug(f"忽略临时文件移动: {dest_path}")
+                return
+
+            if ext not in self.allowed_extensions:
+                logging.debug(f"文件 {dest_path} 不在允许的类型中，跳过")
+                return
+
+            logging.info(f"检测到移动后的新文件: {dest_path}")
+            threading.Thread(target=self._wait_for_file_stable, args=(dest_path,), daemon=True).start()
+
+    def _wait_for_file_stable(self, file_path):
+        logging.debug(f"开始监控文件稳定性: {file_path}")
+        self.files_in_progress[file_path] = time.time()
+
+        while True:
+            current_time = time.time()
+            last_modified = self.files_in_progress.get(file_path, current_time)
+            if current_time - last_modified > self.stable_time:
+                # 文件已稳定
+                del self.files_in_progress[file_path]
+                logging.info(f"文件下载完成且稳定: {file_path}")
+                self.xkw.process_downloaded_file(file_path)
+                break
+            try:
+                # 检查文件是否被写入
+                with open(file_path, 'rb'):
+                    pass
+                self.files_in_progress[file_path] = current_time
+            except IOError:
+                # 文件仍在写入
+                pass
+            time.sleep(1)  # 每秒检查一次
+
+
+class DownloadWatcher:
+    def __init__(self, download_path, xkw_instance, allowed_extensions=None, temporary_extensions=None, stable_time=5):
+        self.download_path = os.path.abspath(download_path)
+        self.xkw = xkw_instance
+        self.allowed_extensions = allowed_extensions or [
+            '.pdf', '.docx', '.xlsx',
+            '.ppt', '.pptx',
+            '.zip', '.rar', '.7z',
+            '.mp4', '.avi', '.mkv',
+            '.mp3', '.wav', '.aac',
+            '.tar', '.gz', '.bz2',
+            '.mov', '.flv', '.wmv'
+        ]
+        self.temporary_extensions = temporary_extensions or [
+            '.crdownload', '.part', '.tmp', '.download'
+        ]
+        self.stable_time = stable_time
+        self.observer = Observer()
+        self.event_handler = DownloadEventHandler(
+            self.xkw,
+            allowed_extensions=self.allowed_extensions,
+            temporary_extensions=self.temporary_extensions,
+            stable_time=self.stable_time
+        )
+
+    def start(self):
+        try:
+            self.observer.schedule(
+                self.event_handler,
+                self.download_path,
+                recursive=False
+            )
+            self.observer.start()
+            logging.info(f"开始监控下载目录: {self.download_path}")
+            # 保持线程运行
+            self.observer.join()
+        except Exception as e:
+            logging.error(f"无法启动下载监控: {e}", exc_info=True)
+            self.observer.stop()
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
+        logging.info("停止监控下载目录")
 
 
 class XKW:
@@ -30,6 +160,7 @@ class XKW:
         self.page = ChromiumPage(self.co)
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
+        logging.info(f"设置的下载目录为: {self.co.download_path}")
         self.url = "https://www.zxxk.com/soft/{xid}.html"
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
         self.suffix = {
@@ -70,11 +201,29 @@ class XKW:
             "iconfont icon-html-3": "html",
             "iconfont icon-iso-3": "iso",
         }
+        self.softid_to_recipient = {}
+        self.lock = threading.Lock()  # 添加锁以确保线程安全
         self.make_tabs()
         if self.work:
             self.manager = threading.Thread(target=self.run, daemon=True)
             self.manager.start()
             logging.info("XKW manager thread started.")
+
+        # 初始化下载监控
+        self.download_watcher = DownloadWatcher(
+            self.co.download_path,
+            self,
+            allowed_extensions=self.suffix.values(),
+            temporary_extensions=['.crdownload', '.part', '.tmp', '.download'],
+            stable_time=5
+        )
+        # 将 DownloadWatcher 的 start 方法运行在一个单独的线程中
+        self.download_watcher_thread = threading.Thread(target=self.download_watcher.start, daemon=True)
+        self.download_watcher_thread.start()
+        logging.info("DownloadWatcher 已启动并运行在独立线程中。")
+
+    def get_tabs(self):
+        return self.page.tabs
 
     def close_tabs(self, tabs):
         for tab in tabs:
@@ -100,49 +249,6 @@ class XKW:
             logging.info(f"Initialized {self.thread} tabs for downloading.")
         except Exception as e:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
-
-    def download_file(self, soft_id):
-        """
-        执行下载操作
-        """
-        try:
-            download_url = self.dls_url.format(xid=soft_id)
-            tab = self.tabs.get()
-            tab.get(download_url)
-            # 等待下载按钮出现并点击
-            download_button = tab.ele('css selector', '.btn-download')
-            if download_button:
-                download_button.click()
-                logging.info(f"已点击下载按钮，soft_id: {soft_id}")
-                # 等待下载完成（根据实际情况调整）
-                time.sleep(5)
-                return True
-            else:
-                logging.error(f"未找到下载按钮，soft_id: {soft_id}")
-                return False
-        except Exception as e:
-            logging.error(f"下载文件时发生错误: {e}", exc_info=True)
-            return False
-
-    def match_downloaded_file(self, title, suffix):
-        """
-        在下载目录中匹配下载的文件
-        """
-        try:
-            if not title:
-                logging.error("标题为空，无法匹配下载文件")
-                return None
-            download_dir = self.co.download_path
-            for file_name in os.listdir(download_dir):
-                if title in file_name and file_name.endswith(suffix):
-                    file_path = os.path.join(download_dir, file_name)
-                    logging.info(f"匹配到下载的文件: {file_path}")
-                    return file_path
-            logging.error(f"未能找到匹配的下载文件: {title}.{suffix}")
-            return None
-        except Exception as e:
-            logging.error(f"匹配下载文件时发生错误: {e}", exc_info=True)
-            return None
 
     def extract_id_and_title(self, tab, url):
         """
@@ -206,35 +312,21 @@ class XKW:
             tab.listen.start(True, method="GET")
             download_button.click(by_js=True)
             print("clicked")
-            for item in tab.listen.steps(timeout=5):
+            # 等待下载链接获取
+            for item in tab.listen.steps(timeout=30):
                 if item.url.startswith("https://files.zxxk.com/?mkey="):
                     # 停止页面加载
                     tab.listen.stop()
                     tab.stop_loading()
                     logging.info(f"下载链接获取成功: {item.url}")
                     print(item.url)
-
-                    # 匹配下载的文件
-                    file_path = self.match_downloaded_file(title, suffix)
-                    if file_path and os.path.exists(file_path):
-                        filename = os.path.basename(file_path)
-                        logging.info(f"下载完成文件: {filename}, ID: {soft_id}")
-
-                        # 将 file_path + soft_id 传递给 Uploader
-                        if self.uploader:
-                            self.uploader.upload_file(file_path, soft_id)
-                        else:
-                            logging.warning("Uploader 未设置，无法上传文件信息。")
-                        return True  # 明确返回 True
-                    else:
-                        logging.error(f"文件路径无效或文件不存在: {file_path}")
-                        return False  # 明确返回 False
-
+                    return True  # 明确返回 True
                 elif "20600001" in item.url:
                     logging.warning("请求过于频繁，暂停1秒后重试。")
                     print("请求过于频繁，暂停1秒后重试。")
                     time.sleep(1)
-                    return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
+                    return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1,
+                                         max_retries=max_retries)
             else:
                 # 等待页面加载完成
                 time.sleep(2)
@@ -261,14 +353,46 @@ class XKW:
             print(f"下载过程中出错: {e}")
             # 出现异常，进行重试
             time.sleep(5)
-            return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
+            return self.listener(tab, download_button, url, title, suffix, soft_id, retry=retry + 1,
+                                 max_retries=max_retries)
+
+    def process_downloaded_file(self, file_path):
+        """
+        处理下载完成的文件
+        """
+        try:
+            filename = os.path.basename(file_path)
+            logging.info(f"处理下载完成的文件: {filename}")
+
+            # 根据文件名提取 soft_id
+            match = re.search(r'(\d+)', filename)
+            if match:
+                soft_id = match.group(1)
+                logging.info(f"从文件名中提取到 soft_id: {soft_id}")
+            else:
+                logging.error(f"无法从文件名中提取 soft_id: {filename}")
+                return
+
+            with self.lock:
+                recipient = self.softid_to_recipient.get(soft_id)
+                if not recipient:
+                    logging.error(f"未找到 soft_id {soft_id} 对应的接收者，无法上传文件。")
+                    return
+
+            logging.info(f"准备上传文件: {file_path} 至接收者: {recipient}")
+
+            # 上传文件
+            if self.uploader:
+                self.uploader.upload_file(file_path, soft_id)
+            else:
+                logging.warning("Uploader 未设置，无法上传文件信息。")
+        except Exception as e:
+            logging.error("处理下载完成的文件时发生错误", exc_info=True)
 
     def download(self, url):
         try:
-            logging.info(f"准备下载 URL: {url}")
             # 随机延迟1到3秒，防止请求过于频繁
             delay = random.uniform(1, 3)
-            logging.debug(f"随机延迟 {delay:.2f} 秒")
             time.sleep(delay)
             tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
             logging.info(f"获取到一个标签页用于下载: {tab}")
@@ -304,18 +428,8 @@ class XKW:
             # 开始下载
             success = self.listener(tab, download_button, url, title, suffix, soft_id)
             if success:
-                logging.info(f"下载成功，开始处理上传任务: {url}")
-                # 匹配下载的文件
-                file_path = self.match_downloaded_file(title, suffix)
-                if not file_path:
-                    logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
-                else:
-                    # 将文件路径和 soft_id 传递给上传模块
-                    if self.uploader:
-                        self.uploader.add_upload_task(file_path, soft_id)
-                        logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                    else:
-                        logging.warning("Uploader 未设置，无法传递上传任务。")
+                logging.info(f"下载请求已发送，等待文件下载完成: {url}")
+                # 下载完成后由 DownloadWatcher 处理
             else:
                 logging.error(f"下载失败，跳过 URL: {url}")
         except queue.Empty:
@@ -354,3 +468,8 @@ class XKW:
 
     def add_task(self, url):
         self.task.put(url)
+
+    def shutdown(self):
+        self.work = False
+        self.download_watcher.stop()
+        logging.info("XKW 已关闭下载监控。")
