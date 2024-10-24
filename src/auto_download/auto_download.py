@@ -10,7 +10,7 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError
 
 BASE_DIR = os.path.dirname(__file__)
-DOWNLOAD_DIR = '/Users/martinezdavid/Documents/MG/work/zxxkdownload'  # 设置下载路径
+DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads') # 配置下载路径
 LOCK = threading.Lock()
 
 class XKW:
@@ -20,9 +20,9 @@ class XKW:
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.co = ChromiumOptions()
-        # self.co.headless()  # 不打开浏览器窗口，需要先登录然后再开启无浏览器模式
-        self.co.no_imgs()  # 不加载图片
-        self.co.set_download_path(download_dir or DOWNLOAD_DIR)  # 设置下载路径
+        # self.co.headless() # 不打开浏览器窗口 需要先登录 然后再开启 无浏览器模式
+        self.co.no_imgs() # 不加载图片
+        self.co.set_download_path(DOWNLOAD_DIR)# 设置下载路径
         # self.co.set_argument('--no-sandbox')  # 无沙盒模式
         self.page = ChromiumPage(self.co)
 
