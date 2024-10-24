@@ -7,6 +7,7 @@ import datetime
 from lib import itchat
 import threading
 import time
+import queue
 
 class Uploader:
     def __init__(self, upload_config, error_notification_config, error_handler):
@@ -34,6 +35,12 @@ class Uploader:
         # 获取错误通知的个人账号 UserName
         self.error_recipient = error_notification_config.get('recipient')
         self.error_recipient_username = self._fetch_friend_username(self.error_recipient)
+
+        # 初始化上传任务队列
+        self.upload_queue = queue.Queue()
+        self.upload_thread = threading.Thread(target=self.process_uploads, daemon=True)
+        self.upload_thread.start()
+        logging.info("上传任务处理线程已启动")
 
         # 保留每日通知系统，不需要修改
         notification_thread = threading.Thread(target=self.notification_scheduler, daemon=True)
@@ -123,6 +130,28 @@ class Uploader:
             logging.error("维护 soft_id 到接收者映射时发生错误", exc_info=True)
             self.error_handler.handle_exception(e)
 
+    def add_upload_task(self, file_path, soft_id):
+        """
+        添加上传任务到队列
+        """
+        self.upload_queue.put((file_path, soft_id))
+        logging.info(f"添加上传任务: {file_path}, soft_id: {soft_id}")
+        print(f"添加上传任务: {file_path}, soft_id: {soft_id}")
+
+    def process_uploads(self):
+        """
+        处理上传队列中的任务
+        """
+        while True:
+            try:
+                file_path, soft_id = self.upload_queue.get()
+                self.upload_file(file_path, soft_id)
+                self.upload_queue.task_done()
+            except Exception as e:
+                logging.error(f"处理上传任务时出错: {e}", exc_info=True)
+                print(f"处理上传任务时出错: {e}")
+                self.error_handler.handle_exception(e)
+
     def upload_file(self, file_path, soft_id):
         """
         根据 soft_id 查找接收者并上传文件
@@ -157,7 +186,7 @@ class Uploader:
                     return  # 上传成功，退出函数
                 except Exception as e:
                     if attempt < self.max_retries:
-                        logging.warning("上传失败，网络问题，稍后重试...")
+                        logging.warning(f"上传失败，网络问题，稍后重试... (尝试次数: {attempt})")
                         time.sleep(self.retry_delay)
                     else:
                         logging.error("上传失败，网络问题")

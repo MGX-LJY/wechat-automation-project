@@ -31,7 +31,6 @@ class AutoClicker:
         self.downloader = XKW(
             thread=3,  # 根据需要调整线程数
             work=True,
-            download_dir=download_dir,  # 传递下载目录
         )
         logging.info("AutoDownload (XKW) 实例已初始化。")
 

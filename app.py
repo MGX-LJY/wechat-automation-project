@@ -48,7 +48,7 @@ def main():
 
         # 初始化 XKW，传递 uploader
         download_path = counts_config.get('download', {}).get('download_path', '/Users/martinezdavid/Documents/MG/work/zxxkdownload')
-        xkw = XKW(thread=3, work=True, download_dir=download_path, uploader=uploader)
+        xkw = XKW(thread=3, work=True, uploader=uploader)
         logging.info("XKW 初始化完成")
 
         # 绑定 XKW 到 ItChatHandler（通过 MessageHandler）
@@ -84,7 +84,6 @@ def main():
             logging.info('接收到退出信号，正在停止程序...')
             xkw.work = False  # 停止 XKW 的运行循环
             itchat_handler.logout()
-            uploader.shutdown()  # 关闭 Uploader
             sys.exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
