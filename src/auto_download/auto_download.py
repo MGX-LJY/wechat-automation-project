@@ -66,17 +66,14 @@ class XKW:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
     def match_downloaded_file(self, title):
-        print(f"进入 match_downloaded_file 函数，标题: {title}")
         logging.debug(f"开始匹配下载的文件，标题: {title}")
 
         try:
             if not title:
                 logging.error("标题为空，无法匹配下载文件")
-                print("标题为空，无法匹配下载文件")
                 return None
 
             download_dir = self.co.download_path
-            print(f"下载目录: {download_dir}")
             logging.debug(f"下载目录: {download_dir}")
 
             max_wait_time = 600  # 最大等待时间（秒），即10分钟
@@ -92,10 +89,8 @@ class XKW:
             pattern = re.compile(pattern_string, re.IGNORECASE)
 
             while elapsed_time < max_wait_time:
-                print("当前下载目录下的文件:")
                 logging.debug("当前下载目录下的文件:")
                 for file_name in os.listdir(download_dir):
-                    print(f" - {file_name}")
                     logging.debug(f" - {file_name}")
 
                     # 直接使用正则表达式进行匹配
@@ -105,24 +100,19 @@ class XKW:
                             # 检查文件是否下载完成
                             if self.is_file_download_complete(file_path):
                                 logging.info(f"匹配到下载的文件: {file_path}")
-                                print(f"匹配到下载的文件: {file_path}")
                                 return file_path
                             else:
                                 logging.debug(f"文件 {file_path} 尚未下载完成，等待中...")
-                                print(f"文件 {file_path} 尚未下载完成，等待中...")
                 # 未找到文件，等待一段时间后重试
                 time.sleep(retry_interval)
                 elapsed_time += retry_interval
                 logging.debug(f"未找到匹配的文件 '{title}'，等待 {retry_interval} 秒后重试... (已等待 {elapsed_time}/{max_wait_time} 秒)")
-                print(f"未找到匹配的文件 '{title}'，等待 {retry_interval} 秒后重试... (已等待 {elapsed_time}/{max_wait_time} 秒)")
 
             # 超过最大等待时间，放弃匹配
             logging.error(f"在 {max_wait_time} 秒内未能找到匹配的下载文件: {title}")
-            print(f"在 {max_wait_time} 秒内未能找到匹配的下载文件: {title}")
             return None
         except Exception as e:
             logging.error(f"匹配下载文件时发生错误: {e}", exc_info=True)
-            print(f"匹配下载文件时发生错误: {e}")
             return None
 
     def is_file_download_complete(self, file_path):
@@ -137,11 +127,9 @@ class XKW:
                 return True
             else:
                 logging.debug(f"文件 {file_path} 大小变化，可能正在下载中。")
-                print(f"文件 {file_path} 大小变化，可能正在下载中。")
                 return False
         except Exception as e:
             logging.error(f"检查文件下载完成时发生错误: {e}", exc_info=True)
-            print(f"检查文件下载完成时发生错误: {e}")
             return False
 
     def extract_id_and_title(self, tab, url):
@@ -162,14 +150,11 @@ class XKW:
                 if title_element:
                     title = title_element.text.strip()
                     logging.info(f"从 h1 标签中获取到标题: {title}")
-                    print(f"从 h1 标签中获取到标题: {title}")
                 else:
                     logging.error(f"无法从 h1 标签中获取到 span 元素，URL: {url}")
-                    print(f"无法从 h1 标签中获取到 span 元素，URL: {url}")
                     return None, None
             else:
                 logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
-                print(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
                 return None, None
 
             # 从 URL 中提取 soft_id
@@ -177,29 +162,24 @@ class XKW:
             if match:
                 soft_id = match.group(1)
                 logging.info(f"从 URL 中提取到 soft_id: {soft_id}")
-                print(f"从 URL 中提取到 soft_id: {soft_id}")
             else:
                 logging.error(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
-                print(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
                 return None, None
 
             return soft_id, title
 
         except ContextLostError as e:
             logging.error(f"页面上下文丢失，重新获取标签页。错误: {e}")
-            print(f"页面上下文丢失，重新获取标签页。错误: {e}")
             # 重新获取标签页
             try:
                 tab = self.tabs.get(timeout=10)
                 return self.extract_id_and_title(tab, url)
             except queue.Empty:
                 logging.error("无法重新获取标签页，跳过 URL")
-                print("无法重新获取标签页，跳过 URL")
                 return None, None
 
         except Exception as e:
             logging.error(f"提取 ID 和标题时出错: {e}", exc_info=True)
-            print(f"提取 ID 和标题时出错: {e}")
             return None, None
 
     def listener(self, tab, download_button, url, title, soft_id, retry=0, max_retries=3):
@@ -297,68 +277,50 @@ class XKW:
 
     def download(self, url):
         try:
-            logging.info(f"准备下载 URL: {url}")
-            print(f"准备下载 URL: {url}")
-            # 随机延迟1到3秒，防止请求过于频繁
             delay = random.uniform(1, 3)
             logging.debug(f"随机延迟 {delay:.2f} 秒")
-            print(f"随机延迟 {delay:.2f} 秒")
             time.sleep(delay)
             tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
-            logging.info(f"获取到一个标签页用于下载: {tab}")
-            print(f"获取到一个标签页用于下载: {tab}")
             tab.get(url)
             soft_id, title = self.extract_id_and_title(tab, url)
             if not soft_id or not title:
                 logging.error(f"无法提取 ID 和标题，跳过 URL: {url}")
-                print(f"无法提取 ID 和标题，跳过 URL: {url}")
                 self.tabs.put(tab)
                 return
 
             download_button = tab("#btnSoftDownload")  # 下载按钮
             if not download_button:
                 logging.error(f"无法找到下载按钮，跳过URL: {url}")
-                print(f"无法找到下载按钮，跳过URL: {url}")
                 self.tabs.put(tab)
                 return
 
             logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
-            print(f"准备点击下载按钮，soft_id: {soft_id}")
             # 开始下载
             success = self.listener(tab, download_button, url, title, soft_id)
             if success:
                 logging.info(f"下载成功，开始处理上传任务: {url}")
-                print(f"下载成功，开始处理上传任务: {url}")
                 # 匹配下载的文件
                 file_path = self.match_downloaded_file(title)
                 if not file_path:
                     logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
-                    print(f"匹配下载的文件失败，跳过 URL: {url}")
                 else:
                     # 将文件路径和 soft_id 传递给上传模块
                     if self.uploader:
                         try:
                             self.uploader.add_upload_task(file_path, soft_id)  # 使用 add_upload_task
                             logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                            print(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                         except AttributeError as ae:
                             logging.error(f"上传过程中发生 AttributeError: {ae}", exc_info=True)
-                            print(f"上传过程中发生 AttributeError: {ae}")
                         except Exception as e:
                             logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
-                            print(f"添加上传任务时发生错误: {e}")
                     else:
                         logging.warning("Uploader 未设置，无法传递上传任务。")
-                        print("Uploader 未设置，无法传递上传任务。")
             else:
                 logging.error(f"下载失败，跳过 URL: {url}")
-                print(f"下载失败，跳过 URL: {url}")
         except queue.Empty:
             logging.warning("任务队列为空，等待新任务。")
-            print("任务队列为空，等待新任务。")
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
-            print(f"下载过程中出错: {e}")
             # 在发生异常时，确保 tab 被放回队列
             if 'tab' in locals():
                 self.tabs.put(tab)
@@ -396,4 +358,3 @@ class XKW:
     def add_task(self, url):
         self.task.put(url)
         logging.info(f"添加新下载任务: {url}")
-        print(f"添加新下载任务: {url}")
