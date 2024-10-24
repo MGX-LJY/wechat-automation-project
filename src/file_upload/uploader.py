@@ -177,9 +177,6 @@ class Uploader:
                 self.error_handler.handle_exception(e)
 
     def upload_file(self, file_path, soft_id):
-        """
-        根据 soft_id 查找接收者并上传文件
-        """
         try:
             if not os.path.exists(file_path):
                 logging.error(f"文件不存在，无法上传: {file_path}")
@@ -189,7 +186,6 @@ class Uploader:
                 recipient_name = self.softid_to_recipient.get(soft_id)
 
             if not recipient_name:
-                # 由于不再有默认接收者，直接记录错误并返回
                 logging.error(f"未找到 soft_id {soft_id} 对应的接收者，且无默认接收者。")
                 return
 
@@ -198,24 +194,40 @@ class Uploader:
                 logging.error(f"接收者 '{recipient_name}' 的 UserName 未找到，无法上传文件。")
                 return
 
-            # 检查文件大小
-            file_size = os.path.getsize(file_path)
+            # 重命名文件
+            original_file_path = file_path  # 保存原始文件路径
+            directory, original_filename = os.path.split(file_path)
+            new_filename = f"[{soft_id}]{original_filename}"
+            new_file_path = os.path.join(directory, new_filename)
+
+            try:
+                os.rename(file_path, new_file_path)
+                logging.info(f"文件已重命名为: {new_file_path}")
+            except Exception as e:
+                logging.error(f"重命名文件时发生错误: {e}", exc_info=True)
+                self.error_handler.handle_exception(e)
+                return  # 无法重命名文件，退出上传
+
+            # 检查重命名后的文件大小
+            file_size = os.path.getsize(new_file_path)
             if file_size > self.alert_size:
-                logging.warning(f"文件 {file_path} 大小 {file_size} 超过25MB，发送提醒消息。")
-                self.send_large_file_message(file_path, user_name)
+                logging.warning(f"文件 {new_file_path} 大小 {file_size} 超过25MB，发送提醒消息。")
+                self.send_large_file_message(new_file_path, user_name)
+                # 删除重命名后的文件
+                self.delete_file(new_file_path)
                 return  # 不进行上传
 
             # 上传文件
             for attempt in range(1, self.max_retries + 1):
                 try:
                     logging.info(
-                        f"正在上传文件: {file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
-                    itchat.send_file(file_path, toUserName=user_name)
+                        f"正在上传文件: {new_file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
+                    itchat.send_file(new_file_path, toUserName=user_name)
                     logging.info(f"文件已上传至接收者: {recipient_name} (soft_id: {soft_id})")
                     time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
 
                     # 文件上传成功后删除文件
-                    self.delete_file(file_path)
+                    self.delete_file(new_file_path)
 
                     # 扣除并记录下载量
                     self.deduct_and_record(recipient_name)
@@ -228,7 +240,8 @@ class Uploader:
                     else:
                         logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误: {e}")
                         self.error_handler.handle_exception(e)
-
+                        # 删除重命名后的文件
+                        self.delete_file(new_file_path)
         except Exception as e:
             logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)

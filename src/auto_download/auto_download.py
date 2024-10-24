@@ -86,7 +86,6 @@ class XKW:
             # 处理标题：去除所有非中文字符和数字字符
             processed_title = re.sub(r'[^\u4e00-\u9fa5\d]', '', title)
             logging.debug(f"处理后的标题: {processed_title}")
-            print(f"处理后的标题: {processed_title}")
 
             # 创建一个更灵活的正则表达式，允许任意字符在关键字符之间
             pattern_string = '.*'.join(re.escape(char) for char in processed_title)
