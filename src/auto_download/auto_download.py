@@ -10,7 +10,7 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError
 
 BASE_DIR = os.path.dirname(__file__)
-DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads') # 配置下载路径
+DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')  # 配置下载路径
 LOCK = threading.Lock()
 
 class XKW:
@@ -20,13 +20,13 @@ class XKW:
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.co = ChromiumOptions()
-        # self.co.headless() # 不打开浏览器窗口 需要先登录 然后再开启 无浏览器模式
-        self.co.no_imgs() # 不加载图片
-        self.co.set_download_path(DOWNLOAD_DIR)# 设置下载路径
+        # self.co.headless()  # 不打开浏览器窗口 需要先登录 然后再开启 无浏览器模式
+        self.co.no_imgs()  # 不加载图片
+        self.co.set_download_path(DOWNLOAD_DIR)  # 设置下载路径
         # self.co.set_argument('--no-sandbox')  # 无沙盒模式
         self.page = ChromiumPage(self.co)
 
-        logging.info(f"ChromiumPage initialized with address: {self.page.address}")
+        logging.info(f"ChromiumPage 初始化，地址: {self.page.address}")
         self.url = "https://www.zxxk.com/soft/{xid}.html"
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
         self.suffix = {
@@ -71,85 +71,88 @@ class XKW:
         if self.work:
             self.manager = threading.Thread(target=self.run, daemon=True)
             self.manager.start()
-            logging.info("XKW manager thread started.")
+            logging.info("XKW 管理线程已启动。")
 
     def close_tabs(self, tabs):
         for tab in tabs:
             try:
                 tab.close()
-                logging.debug("Closed a browser tab.")
+                logging.debug("关闭了一个浏览器标签页。")
             except Exception as e:
                 logging.error(f"关闭标签页时出错: {e}", exc_info=True)
 
     def make_tabs(self):
         try:
             tabs = self.page.get_tabs()
-            logging.debug(f"Current tabs: {tabs}")
+            logging.debug(f"当前标签页: {tabs}")
             while len(tabs) < self.thread:
                 self.page.new_tab()
                 tabs = self.page.get_tabs()
-                logging.debug(f"Added new tab. Total tabs: {len(tabs)}")
+                logging.debug(f"添加新标签页。总标签页数: {len(tabs)}")
             if len(tabs) > self.thread:
                 self.close_tabs(tabs[self.thread:])
                 tabs = self.page.get_tabs()[:self.thread]
             for tab in tabs:
                 self.tabs.put(tab)
-            logging.info(f"Initialized {self.thread} tabs for downloading.")
+            logging.info(f"初始化了 {self.thread} 个标签页用于下载。")
         except Exception as e:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
     def listener(self, tab, download, url, retry=0, max_retries=3):
-        if retry > max_retries:
-            logging.error(f"超过最大重试次数，下载失败: {url}")
-            print("超过最大重试次数，下载失败。")
-            return
-        logging.info(f"开始下载 {url}, 重试次数: {retry}")
-        print("开始下载", url)
-        try:
-            tab.listen.start(True, method="GET")
-            download.click(by_js=True)
-            print("clicked")
-            for item in tab.listen.steps(timeout=5):
-                if item.url.startswith("https://files.zxxk.com/?mkey="):
-                    # 停止页面加载
-                    tab.listen.stop()
-                    tab.stop_loading()
-                    logging.info(f"下载链接获取成功: {item.url}")
-                    print(item.url)
-                    return
-                elif "20600001" in item.url:
-                    logging.warning("请求过于频繁，暂停1秒后重试。")
-                    print("请求过于频繁，暂停1秒后重试。")
-                    time.sleep(1)
-                    self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
-                    return
-            else:
-                # 等待页面加载完成
-                time.sleep(2)
-                iframe = tab.get_frame('#layui-layer-iframe100002')
-                if iframe:
-                    a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                    if a:
-                        a.click()
-                        logging.info("点击确认按钮成功。")
-                        print("点击确认按钮成功。")
+        while retry <= max_retries:
+            if retry > max_retries:
+                logging.error(f"超过最大重试次数，下载失败: {url}")
+                print("超过最大重试次数，下载失败。")
+                return
+            logging.info(f"开始下载 {url}, 重试次数: {retry}")
+            print("开始下载", url)
+            try:
+                tab.listen.start(True, method="GET")
+                download.click(by_js=True)
+                print("点击下载按钮")
+                for item in tab.listen.steps(timeout=10):
+                    if item.url.startswith("https://files.zxxk.com/?mkey="):
+                        # 停止页面加载
+                        tab.listen.stop()
+                        tab.stop_loading()
+                        logging.info(f"下载链接获取成功: {item.url}")
+                        print("下载链接:", item.url)
                         return
-                # 如果未找到确认按钮，进行重试
-                logging.warning(f"下载失败，尝试重新下载: {url}, 当前重试次数: {retry}")
-                print("下载失败 重新下载中", url)
-                time.sleep(5)  # 重试前等待5秒
-                self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
-        except ContextLostError as e:
-            logging.warning(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}")
-            print(f"页面上下文丢失，重试下载: {url}")
-            time.sleep(5)
-            self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
-        except Exception as e:
-            logging.error(f"下载过程中出错: {e}", exc_info=True)
-            print(f"下载过程中出错: {e}")
-            # 出现异常，进行重试
-            time.sleep(5)
-            self.listener(tab, download, url, retry=retry + 1, max_retries=max_retries)
+                    elif "20600001" in item.url:
+                        logging.warning("请求过于频繁，暂停1秒后重试。")
+                        print("请求过于频繁，暂停1秒后重试。")
+                        time.sleep(1)
+                        retry += 1
+                        break  # 退出for循环，进行重试
+                else:
+                    # 等待页面加载完成
+                    time.sleep(2)
+                    iframe = tab.get_frame('#layui-layer-iframe100002')
+                    if iframe:
+                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                        if a:
+                            a.click()
+                            logging.info("点击确认按钮成功。")
+                            print("点击确认按钮成功。")
+                            # 点击确认后，继续监听下载链接
+                            continue
+                    # 如果未找到确认按钮，进行重试
+                    logging.warning(f"下载失败，尝试重新下载: {url}, 当前重试次数: {retry}")
+                    print("下载失败，重新下载中", url)
+                    time.sleep(5)  # 重试前等待5秒
+                    retry += 1
+            except ContextLostError as e:
+                logging.warning(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}")
+                print(f"页面上下文丢失，重试下载: {url}")
+                time.sleep(5)
+                retry += 1
+            except Exception as e:
+                logging.error(f"下载过程中出错: {e}", exc_info=True)
+                print(f"下载过程中出错: {e}")
+                # 出现异常，进行重试
+                time.sleep(5)
+                retry += 1
+        logging.error(f"下载任务最终失败: {url}")
 
     def download(self, url):
         try:
