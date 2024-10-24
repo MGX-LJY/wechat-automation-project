@@ -5,14 +5,12 @@ import queue
 import re
 import time
 import logging
-import random
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError
 from src.file_upload.uploader import Uploader
-from bs4 import BeautifulSoup
-from DrissionPage.errors import PageDisconnectedError
+from lxml import etree
 
 
 BASE_DIR = os.path.dirname(__file__)
@@ -203,7 +201,7 @@ class XKW:
             tab.listen.start(True, method="GET")
             download.click(by_js=True)
             print("clicked")
-            for item in tab.listen.steps(timeout=30):  # 增加超时时间
+            for item in tab.listen.steps(timeout=5):
                 if item.url.startswith("https://files.zxxk.com/?mkey="):
                     # 停止页面加载
                     tab.listen.stop()
@@ -260,48 +258,7 @@ class XKW:
             time.sleep(5)
             self.listener(tab, download, url, title, suffix, soft_id, retry=retry + 1, max_retries=max_retries)
 
-    def download(self, url):
-        try:
-            # 随机延迟1到3秒，防止请求过于频繁
-            delay = random.uniform(1, 3)
-            time.sleep(delay)
-
-            tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
-            logging.info(f"获取到一个标签页用于下载: {tab}")
-            soft_id, title = self.extract_id_and_title(tab, url)
-            if not soft_id or not title:
-                logging.error(f"提取 soft_id 或标题失败，跳过URL: {url}")
-                self.tabs.put(tab)
-                return
-
-            # 获取下载按钮
-            download_button = tab("#btnSoftDownload")  # 下载按钮
-            if not download_button:
-                logging.error(f"无法找到下载按钮，跳过URL: {url}")
-                self.tabs.put(tab)
-                return
-
-            # 获取文件后缀
-            suffix_element = tab.s_ele("t:h1@@class=res-title clearfix").child("t:i@@class^iconfont")
-            if not suffix_element:
-                logging.warning(f"无法找到后缀元素，使用默认后缀 'docx'。")
-                suffix = "docx"
-            else:
-                class_name = suffix_element.attr("class").strip()
-                suffix = self.suffix.get(class_name, "docx")
-
-            # 开始下载，并传递 title, suffix, soft_id
-            self.listener(tab, download_button, url, title, suffix, soft_id)
-        except queue.Empty:
-            logging.warning("任务队列为空，等待新任务。")
-        except Exception as e:
-            logging.error(f"下载过程中出错: {e}", exc_info=True)
-            # 在发生异常时，确保 tab 被放回队列
-            if 'tab' in locals():
-                self.tabs.put(tab)
-        finally:
-            if 'tab' in locals():
-                self.tabs.put(tab)
+            return None, None
 
     def run(self):
         with ThreadPoolExecutor(max_workers=self.thread) as executor:
@@ -328,17 +285,3 @@ class XKW:
 
     def add_task(self, url):
         self.task.put(url)
-
-    def construct_file_path(self, title, suffix):
-        """
-        根据标题和后缀构建文件路径
-        """
-        # 构建预期的文件名，替换可能的非法字符
-        sanitized_title = re.sub(r'[\\/*?:"<>|]', "_", title)
-        expected_filename = f"{sanitized_title}.{suffix}"
-        file_path = os.path.join(DOWNLOAD_DIR, expected_filename)
-        if os.path.exists(file_path):
-            return file_path
-        else:
-            logging.error(f"未找到预期的文件: {file_path}")
-            return None
