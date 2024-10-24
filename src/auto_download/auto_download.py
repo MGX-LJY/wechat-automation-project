@@ -76,9 +76,6 @@ class XKW:
             self.manager.start()
             logging.info("XKW manager thread started.")
 
-    def get_tabs(self):
-        return self.page.tabs.get()  # 假设 ChromiumPage 有 tabs.get()
-
     def close_tabs(self, tabs):
         for tab in tabs:
             try:
@@ -89,18 +86,18 @@ class XKW:
 
     def make_tabs(self):
         try:
-            tabs = self.get_tabs()  # 使用现有的方法获取标签页
+            tabs = self.page.get_tabs()
             logging.debug(f"Current tabs: {tabs}")
             while len(tabs) < self.thread:
                 self.page.new_tab()
-                tabs = self.get_tabs()
+                tabs = self.page.get_tabs()
                 logging.debug(f"Added new tab. Total tabs: {len(tabs)}")
             if len(tabs) > self.thread:
                 self.close_tabs(tabs[self.thread:])
-                tabs = self.get_tabs()[:self.thread]
+                tabs = self.page.get_tabs()[:self.thread]
             for tab in tabs:
                 self.tabs.put(tab)
-            logging.info(f"初始化 {self.thread} 个标签页用于下载。")
+            logging.info(f"Initialized {self.thread} tabs for downloading.")
         except Exception as e:
             logging.error(f"初始化标签页时出错: {e}", exc_info=True)
 
