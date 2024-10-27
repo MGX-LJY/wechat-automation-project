@@ -1,7 +1,17 @@
 {
     "wechat": {
         "login_qr_path": "qr.png",
-        "monitor_groups": ["🐠【学虎】课件下载"]
+        "monitor_groups": [
+            "🐠【学虎】课件下载",
+            "网校通群"
+
+        ],
+        "target_individuals": [
+            "李老师呀"
+        ],
+        "admins": [
+            "李老师呀"
+        ]
     },
     "url": {
         "regex": "https?://[^\\s#]+",
@@ -42,14 +52,21 @@
         "stable_time": 5
     },
     "upload": {
-        "target_groups": ["🐠【学虎】课件下载"],
+        "target_groups": [
+            "🐠【学虎】课件下载",
+            "网校通群"
+
+        ],
+        "target_individuals": [
+            "李老师呀"
+        ],
         "counts_file": "counts.json"
     },
     "logging": {
         "directory": "logs",
         "level": "INFO",
         "file_level": "INFO",
-        "console_level": "DEBUG",
+        "console_level": "INFO",
         "backup_count": 30,
         "encoding": "utf-8",
         "third_party_libs": ["requests", "urllib3", "itchat"],
