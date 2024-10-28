@@ -203,7 +203,6 @@ class Uploader:
 
             try:
                 os.rename(file_path, new_file_path)
-                logging.info(f"文件已重命名为: {new_file_path}")
             except Exception as e:
                 logging.error(f"重命名文件时发生错误: {e}", exc_info=True)
                 self.error_handler.handle_exception(e)
@@ -252,7 +251,6 @@ class Uploader:
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                logging.info(f"已删除上传的文件: {file_path}")
             else:
                 logging.warning(f"尝试删除的文件不存在: {file_path}")
         except Exception as e:

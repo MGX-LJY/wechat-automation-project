@@ -18,7 +18,7 @@
         "validation": true
     },
     "download": {
-        "download_path": "/Users/martinezdavid/Documents/MG/work/zxxkdownload",
+        "download_path": "src/auto_download/Downloads",
         "allowed_extensions": [
             ".pdf",
             ".docx",
