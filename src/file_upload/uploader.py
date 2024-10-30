@@ -365,7 +365,7 @@ class Uploader:
             self.error_handler.handle_exception(e)
             return f"添加接收者时发生错误: {e}"
 
-    def delete_recipient_method(self, recipient_name: str) -> str:
+    def delete_recipient(self, recipient_name: str) -> str:
         """
         删除一个接收者。
         """
@@ -383,7 +383,7 @@ class Uploader:
             self.error_handler.handle_exception(e)
             return f"删除接收者时发生错误: {e}"
 
-    def update_remaining_count_method(self, recipient_name: str, count_change: int) -> str:
+    def update_remaining_count(self, recipient_name: str, count_change: int) -> str:
         """
         更新接收者的剩余次数。
         """
@@ -403,7 +403,7 @@ class Uploader:
             self.error_handler.handle_exception(e)
             return f"更新剩余次数时发生错误: {e}"
 
-    def get_recipient_info_method(self, recipient_name: str) -> Optional[dict]:
+    def get_recipient_info(self, recipient_name: str) -> Optional[dict]:
         """
         获取指定接收者的信息。
         """
@@ -422,7 +422,7 @@ class Uploader:
             self.error_handler.handle_exception(e)
             return None
 
-    def get_all_recipients_method(self) -> List[str]:
+    def get_all_recipients(self) -> List[str]:
         """
         获取所有接收者的名称列表。
         """
