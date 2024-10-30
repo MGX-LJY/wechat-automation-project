@@ -241,7 +241,7 @@ class MessageHandler:
             if not message_content:
                 return
 
-            # 如果发送者是管理员，检查是否为查询命令
+            # 如果发送者是管理员，检查是否为查询命令或其他管理员命令
             if sender in self.admins:
                 if self.is_query_logs_command(message_content):
                     if self.notifier:
@@ -253,6 +253,13 @@ class MessageHandler:
                     return  # 处理完命令后返回
                 elif self.is_query_browser_command(message_content):
                     self.handle_query_browser_command()
+                    return
+                else:
+                    # 处理其他管理员命令
+                    response = self.handle_admin_command(message_content)
+                    if response:
+                        if self.notifier:
+                            self.notifier.notify(response)
                     return
 
             # 对于非管理员的消息，处理URL
