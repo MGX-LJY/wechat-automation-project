@@ -4,7 +4,7 @@ import os
 import json
 import logging
 import datetime
-from lib import itchat
+from wxauto import WeChat
 import threading
 import time
 import queue
@@ -19,7 +19,6 @@ class Uploader:
         self.individual_usernames = {}
         self.max_retries = 3
         self.retry_delay = 5
-        self.alert_size = 25 * 1024 * 1024  # 25MB的阈值
 
         # 计数器配置文件路径
         self.counts_file = upload_config.get('counts_file', 'counts.json')
@@ -31,9 +30,9 @@ class Uploader:
         self.softid_to_recipient = {}
         self.lock = threading.Lock()  # 添加锁以确保线程安全
 
-        # 获取错误通知的个人账号 UserName
+        # 获取错误通知的个人账号名称
         self.error_recipient = error_notification_config.get('recipient')
-        self.error_recipient_username = self._fetch_friend_username(self.error_recipient)
+        self.error_recipient_name = self.error_recipient  # 直接使用名称
 
         # 初始化上传任务队列
         self.upload_queue = queue.Queue()
@@ -46,11 +45,28 @@ class Uploader:
         notification_thread.start()
         logging.info("每日通知调度线程已启动")
 
-        # 确保 itchat 已登录
-        if not itchat.check_login():
-            logging.info("ItChat 未登录，开始登录...")
-            login_thread = threading.Thread(target=self._login)
-            login_thread.start()
+        # 初始化 wxauto WeChat 实例
+        self.wx = WeChat()
+        self.initialize_usernames()
+        logging.info("wxauto WeChat 实例已初始化")
+
+        # 确保微信已登录
+        if not self.wx.is_logged_in():
+            logging.info("微信未登录，开始登录...")
+            self.wx.start()
+            self.wait_for_login()
+
+    def wait_for_login(self, timeout=300):
+        """
+        等待用户完成微信登录，最多等待 timeout 秒
+        """
+        start_time = time.time()
+        while not self.wx.is_logged_in():
+            if time.time() - start_time > timeout:
+                logging.error("微信登录超时")
+                raise TimeoutError("微信登录超时")
+            time.sleep(1)
+        logging.info("微信登录成功")
 
     def initialize_usernames(self):
         """
@@ -59,50 +75,28 @@ class Uploader:
         self.group_usernames = self._fetch_group_usernames()
         self.individual_usernames = self._fetch_individual_usernames()
 
-    def _login(self):
-        try:
-            itchat.auto_login(hotReload=True)  # 自动登录，保持会话
-            logging.info("ItChat 登录成功")
-        except Exception as e:
-            logging.error(f"ItChat 登录失败: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-
-    def _fetch_friend_username(self, friend_name):
-        """
-        获取好友的 UserName
-        """
-        if not friend_name:
-            logging.error("未在配置中找到 error_recipient")
-            return None
-
-        friends = itchat.search_friends(name=friend_name)
-        if not friends:
-            # 打印所有好友的名字以供调试
-            all_friends = itchat.get_friends(update=True)
-            all_friend_names = [friend['NickName'] for friend in all_friends]
-            logging.error(f"未找到好友: {friend_name}. 当前好友列表: {all_friend_names}")
-            return None
-
-        user_name = friends[0]['UserName']
-        logging.info(f"找到好友 '{friend_name}' 的 UserName: {user_name}")
-        return user_name
-
     def _fetch_group_usernames(self):
         """
         获取目标群组的 UserName
         """
         group_usernames = {}
         for group_name in self.target_groups:
-            groups = itchat.search_chatrooms(name=group_name)
-            if groups:
-                group_usernames[group_name] = groups[0]['UserName']
-                logging.info(f"找到群组 '{group_name}' 的 UserName: {groups[0]['UserName']}")
-            else:
-                # 打印所有群组的名字以供调试
-                all_groups = itchat.get_chatrooms(update=True)
-                all_group_names = [group['NickName'] for group in all_groups]
-                logging.error(f"未找到群组: {group_name}. 当前群组列表: {all_group_names}")
-                group_usernames[group_name] = None  # 防止后续上传时找不到群组
+            try:
+                groups = self.wx.search_chatrooms(name=group_name)
+                if groups:
+                    group = groups[0]
+                    group_usernames[group_name] = group.UserName
+                    logging.info(f"找到群组 '{group_name}' 的 UserName: {group.UserName}")
+                else:
+                    # 打印所有群组的名字以供调试
+                    all_groups = self.wx.get_all_chatrooms()
+                    all_group_names = [group.NickName for group in all_groups]
+                    logging.error(f"未找到群组: {group_name}. 当前群组列表: {all_group_names}")
+                    group_usernames[group_name] = None  # 防止后续上传时找不到群组
+            except Exception as e:
+                logging.error(f"获取群组 '{group_name}' 时发生错误: {e}", exc_info=True)
+                group_usernames[group_name] = None
+                self.error_handler.handle_exception(e)
         return group_usernames
 
     def _fetch_individual_usernames(self):
@@ -111,11 +105,18 @@ class Uploader:
         """
         individual_usernames = {}
         for individual_name in self.target_individuals:
-            user_name = self._fetch_friend_username(individual_name)
-            if user_name:
-                individual_usernames[individual_name] = user_name
-            else:
+            try:
+                user = self.wx.search_friends(name=individual_name)
+                if user:
+                    individual_usernames[individual_name] = user.UserName
+                    logging.info(f"找到好友 '{individual_name}' 的 UserName: {user.UserName}")
+                else:
+                    individual_usernames[individual_name] = None
+                    logging.error(f"未找到好友: {individual_name}")
+            except Exception as e:
+                logging.error(f"获取好友 '{individual_name}' 时发生错误: {e}", exc_info=True)
                 individual_usernames[individual_name] = None
+                self.error_handler.handle_exception(e)
         return individual_usernames
 
     def _fetch_user_or_group_username(self, name):
@@ -123,18 +124,26 @@ class Uploader:
         获取好友或群组的 UserName
         """
         # 尝试作为好友查找
-        friends = itchat.search_friends(name=name)
-        if friends:
-            user_name = friends[0]['UserName']
-            logging.info(f"找到好友 '{name}' 的 UserName: {user_name}")
-            return user_name
+        try:
+            user = self.wx.search_friends(name=name)
+            if user:
+                user_name = user.UserName
+                logging.info(f"找到好友 '{name}' 的 UserName: {user_name}")
+                return user_name
+        except Exception as e:
+            logging.error(f"搜索好友 '{name}' 时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
 
         # 尝试作为群组查找
-        groups = itchat.search_chatrooms(name=name)
-        if groups:
-            user_name = groups[0]['UserName']
-            logging.info(f"找到群组 '{name}' 的 UserName: {user_name}")
-            return user_name
+        try:
+            groups = self.wx.search_chatrooms(name=name)
+            if groups:
+                user_name = groups[0].UserName
+                logging.info(f"找到群组 '{name}' 的 UserName: {user_name}")
+                return user_name
+        except Exception as e:
+            logging.error(f"搜索群组 '{name}' 时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
 
         # 未找到
         logging.error(f"未找到好友或群组: {name}")
@@ -190,7 +199,12 @@ class Uploader:
                 logging.error(f"未找到 soft_id {soft_id} 对应的接收者，且无默认接收者。")
                 return
 
-            user_name = self._fetch_user_or_group_username(recipient_name)
+            # 获取接收者的 UserName
+            if recipient_name in self.target_groups:
+                user_name = self.group_usernames.get(recipient_name)
+            else:
+                user_name = self.individual_usernames.get(recipient_name)
+
             if not user_name:
                 logging.error(f"接收者 '{recipient_name}' 的 UserName 未找到，无法上传文件。")
                 return
@@ -203,24 +217,18 @@ class Uploader:
 
             try:
                 os.rename(file_path, new_file_path)
+                logging.info(f"文件重命名为: {new_file_path}")
             except Exception as e:
                 logging.error(f"重命名文件时发生错误: {e}", exc_info=True)
                 self.error_handler.handle_exception(e)
                 return  # 无法重命名文件，退出上传
-
-            # 检查重命名后的文件大小
-            file_size = os.path.getsize(new_file_path)
-            if file_size > self.alert_size:
-                logging.warning(f"文件 {new_file_path} 大小 {file_size} 超过25MB，发送提醒消息。")
-                self.send_large_file_message(new_file_path, user_name)
-                return  # 不进行上传
 
             # 上传文件
             for attempt in range(1, self.max_retries + 1):
                 try:
                     logging.info(
                         f"正在上传文件: {new_file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
-                    itchat.send_file(new_file_path, toUserName=user_name)
+                    self.wx.SendFiles(filepath=new_file_path, who=recipient_name)
                     logging.info(f"文件已上传至接收者: {recipient_name} (soft_id: {soft_id})")
                     time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
 
@@ -251,24 +259,11 @@ class Uploader:
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
+                logging.info(f"删除文件: {file_path}")
             else:
                 logging.warning(f"尝试删除的文件不存在: {file_path}")
         except Exception as e:
             logging.error(f"删除文件 {file_path} 时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-
-    def send_large_file_message(self, file_path, user_name):
-        """
-        发送超过25MB的文件上传提醒消息到指定群组或个人账号。
-        """
-        try:
-            filename = os.path.basename(file_path)
-            message = f"{filename} 文件过大，可以等晚上一起上传，着急的话@李老师，如果不在直接打电话 15131531853."
-
-            itchat.send(message, toUserName=user_name)
-            logging.info(f"发送提醒消息到接收者: {user_name} - {message}")
-        except Exception as e:
-            logging.error("发送提醒消息时发生网络问题", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def load_counters(self):
@@ -364,7 +359,6 @@ class Uploader:
             # 10点半之前算作当天的下载量
             return now.date()
 
-    # 保留每日通知系统，不需要修改
     def notification_scheduler(self):
         """
         定时器，每天晚上10点半发送通知
@@ -397,14 +391,18 @@ class Uploader:
                 message = f"今天下载量是 {download_count}，剩余量是 {counters['remaining_count']}"
 
                 # 获取接收者的 UserName
-                user_name = self._fetch_user_or_group_username(recipient_name)
+                if recipient_name in self.target_groups:
+                    user_name = self.group_usernames.get(recipient_name)
+                else:
+                    user_name = self.individual_usernames.get(recipient_name)
+
                 if not user_name:
                     logging.error(f"接收者 '{recipient_name}' 的 UserName 未找到，无法发送每日通知。")
                     continue
 
                 # 发送到群组或个人账号
                 try:
-                    itchat.send(message, toUserName=user_name)
+                    self.wx.SendMsg(msg=message, who=recipient_name)
                     logging.info(f"发送每日通知到接收者 '{recipient_name}': {message}")
                 except Exception as e:
                     logging.error(f"发送每日通知到接收者 '{recipient_name}' 时发生网络问题", exc_info=True)
