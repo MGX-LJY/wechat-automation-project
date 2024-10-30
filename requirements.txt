@@ -6,5 +6,4 @@ watchdog>=2.1.0
 PyQRCode~=1.2.1
 urllib3~=2.2.3
 DrissionPage~=4.1.0.9
-wxauto~=3.9.11.17.5
 pillow~=11.0.0
