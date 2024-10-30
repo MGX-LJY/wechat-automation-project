@@ -60,7 +60,7 @@
         "target_individuals": [
             "李老师呀"
         ],
-    "database_path": "path/to/your/counters.db"
+        "database_path": "C:/Users/Administrator/PycharmProjects/wechat-automation-project/src/file_upload/counters.db"
     },
     "logging": {
         "directory": "logs",
