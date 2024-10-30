@@ -72,16 +72,12 @@ def main():
         itchat_handler.login()
         logging.info("微信登录完成")
 
-        # 11. 初始化 Uploader 的用户名
-        uploader.initialize_usernames()
-        logging.info("Uploader 的群组和个人 UserName 已初始化")
-
-        # 12. 启动微信消息监听线程
+        # 11. 启动微信消息监听线程
         itchat_thread = threading.Thread(target=itchat_handler.run, daemon=True)
         itchat_thread.start()
         logging.info("微信消息监听线程已启动")
 
-        # 13. 注册信号处理，确保程序退出时停止下载监控和登出微信
+        # 12. 注册信号处理，确保程序退出时停止下载监控和登出微信
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
             xkw.work = False  # 停止 XKW 的运行循环

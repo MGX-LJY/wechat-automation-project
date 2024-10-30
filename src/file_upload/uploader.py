@@ -4,7 +4,7 @@ import os
 import json
 import logging
 import datetime
-from wxauto import Wechat
+from wxauto.wxauto import WeChat
 import threading
 import time
 import queue
@@ -48,11 +48,6 @@ class Uploader:
         self.wx = Wechat()
         self.initialize_wechat()
         logging.info("wxauto WeChat 实例已初始化")
-
-        # 确保微信已运行
-        if not self.wx.IsWechatRunning():
-            logging.error("微信客户端未运行。请确保微信已启动并登录。")
-            raise RuntimeError("微信客户端未运行。请确保微信已启动并登录。")
 
     def initialize_wechat(self):
         """
