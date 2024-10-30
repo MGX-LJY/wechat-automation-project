@@ -1,7 +1,7 @@
 import os
 import logging
 import datetime
-from wxauto.wxauto import WeChat
+from lib.wxauto.wxauto import WeChat
 import threading
 import time
 import queue

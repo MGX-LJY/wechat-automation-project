@@ -72,6 +72,7 @@ def main():
         itchat_handler.login()
         logging.info("微信登录完成")
 
+        # 12. 启动微信消息监听线程
         # 11. 启动微信消息监听线程
         itchat_thread = threading.Thread(target=itchat_handler.run, daemon=True)
         itchat_thread.start()
