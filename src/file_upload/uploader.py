@@ -1,13 +1,12 @@
-# src/file_upload/uploader.py
-
 import os
-import json
 import logging
 import datetime
 from wxauto.wxauto import WeChat
 import threading
 import time
 import queue
+import sqlite3
+
 
 class Uploader:
     def __init__(self, upload_config, error_notification_config, error_handler):
@@ -20,17 +19,18 @@ class Uploader:
         self.max_retries = 3
         self.retry_delay = 5
 
-        # 计数器配置文件路径
-        self.counts_file = upload_config.get('counts_file', 'counts.json')
+        # 数据库配置
+        self.db_path = upload_config.get('database_path', 'counters.db')
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.cursor = self.conn.cursor()
+        self.initialize_database()
+        logging.info("SQLite 数据库已初始化")
 
-        # 从计数器配置文件中加载计数器数据
-        self.load_counters()
-
-        # 维护 soft_id 到 recipient（群组或个人）的映射
+        # 维护 soft_id 到 recipient 映射
         self.softid_to_recipient = {}
-        self.lock = threading.Lock()  # 添加锁以确保线程安全
+        self.lock = threading.Lock()  # 确保线程安全
 
-        # 获取错误通知的个人账号名称
+        # 获取错误通知接收者
         self.error_recipient = error_notification_config.get('recipient')
 
         # 初始化上传任务队列
@@ -39,31 +39,61 @@ class Uploader:
         self.upload_thread.start()
         logging.info("上传任务处理线程已启动")
 
-        # 保留每日通知系统
+        # 启动每日通知调度器
         notification_thread = threading.Thread(target=self.notification_scheduler, daemon=True)
         notification_thread.start()
         logging.info("每日通知调度线程已启动")
 
         # 初始化 wxauto WeChat 实例
-        self.wx = Wechat()
+        self.wx = WeChat()
         self.initialize_wechat()
         logging.info("wxauto WeChat 实例已初始化")
 
+    def initialize_database(self):
+        """
+        如果表不存在，则创建它们。
+        """
+        try:
+            # 创建 recipients 表
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS recipients (
+                    name TEXT PRIMARY KEY,
+                    remaining_count INTEGER DEFAULT 711
+                )
+            ''')
+
+            # 创建 daily_downloads 表
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS daily_downloads (
+                    recipient_name TEXT,
+                    download_date DATE,
+                    download_count INTEGER DEFAULT 0,
+                    PRIMARY KEY (recipient_name, download_date),
+                    FOREIGN KEY (recipient_name) REFERENCES recipients(name)
+                )
+            ''')
+
+            self.conn.commit()
+            logging.info("数据库表已创建或已存在")
+        except Exception as e:
+            logging.error(f"初始化数据库时出错：{e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+
     def initialize_wechat(self):
         """
-        确保微信客户端已运行，并切换到主页面
+        确保微信客户端已运行，并切换到主页面。
         """
         try:
             self.wx.SwitchToChat()
             logging.info("已切换到微信聊天页面")
             time.sleep(1)  # 等待界面切换完成
         except Exception as e:
-            logging.error(f"初始化微信界面时发生错误: {e}", exc_info=True)
+            logging.error(f"初始化微信界面时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def _fetch_user_or_group_name(self, name):
         """
-        确认接收者名称是否在目标列表中
+        确认接收者名称是否在目标列表中。
         """
         if name in self.group_names or name in self.individual_names:
             return name
@@ -73,7 +103,7 @@ class Uploader:
 
     def upload_group_id(self, recipient_name, soft_id):
         """
-        接收群组或个人名称和 soft_id，并维护 soft_id 到 recipient_name 的映射
+        接收群组或个人名称和 soft_id，并维护映射关系。
         """
         try:
             user_name = self._fetch_user_or_group_name(recipient_name)
@@ -85,6 +115,13 @@ class Uploader:
                 # 维护 soft_id 到 recipient_name 的映射
                 self.softid_to_recipient[soft_id] = recipient_name
                 logging.info(f"映射 soft_id {soft_id} 到接收者 '{recipient_name}'")
+
+                # 确保接收者存在于数据库中
+                self.cursor.execute('''
+                    INSERT OR IGNORE INTO recipients (name, remaining_count)
+                    VALUES (?, 711)
+                ''', (recipient_name,))
+                self.conn.commit()
         except Exception as e:
             logging.error("维护 soft_id 到接收者映射时发生错误", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -97,7 +134,7 @@ class Uploader:
 
     def process_uploads(self):
         """
-        处理上传队列中的任务
+        处理上传队列中的任务。
         """
         while True:
             try:
@@ -105,13 +142,13 @@ class Uploader:
                 self.upload_file(file_path, soft_id)
                 self.upload_queue.task_done()
             except Exception as e:
-                logging.error(f"处理上传任务时出错: {e}", exc_info=True)
+                logging.error(f"处理上传任务时出错：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
 
     def upload_file(self, file_path, soft_id):
         try:
             if not os.path.exists(file_path):
-                logging.error(f"文件不存在，无法上传: {file_path}")
+                logging.error(f"文件不存在，无法上传：{file_path}")
                 return
 
             with self.lock:
@@ -133,16 +170,17 @@ class Uploader:
                 logging.info(f"切换到接收者 '{user_name}' 的聊天窗口")
                 time.sleep(1)  # 等待界面切换完成
             except Exception as e:
-                logging.error(f"切换聊天窗口失败: {e}", exc_info=True)
+                logging.error(f"切换聊天窗口失败：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
                 return
 
-            # 发送文件
+            # 发送文件，带重试机制
             for attempt in range(1, self.max_retries + 1):
                 try:
-                    logging.info(f"正在上传文件: {file_path} 至接收者: {user_name} (soft_id: {soft_id})，尝试次数: {attempt}")
+                    logging.info(
+                        f"正在上传文件：{file_path} 至接收者：{user_name} (soft_id: {soft_id})，尝试次数：{attempt}")
                     self.wx.SendFiles(filepath=file_path, who=user_name)
-                    logging.info(f"文件已上传至接收者: {user_name} (soft_id: {soft_id})")
+                    logging.info(f"文件已上传至接收者：{user_name} (soft_id: {soft_id})")
                     time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
 
                     # 文件上传成功后删除文件
@@ -154,114 +192,84 @@ class Uploader:
                     return  # 上传成功，退出函数
                 except Exception as e:
                     if attempt < self.max_retries:
-                        logging.warning(f"上传失败，网络问题，稍后重试... (尝试次数: {attempt}) - 错误: {e}")
+                        logging.warning(f"上传失败，网络问题，稍后重试... (尝试次数：{attempt}) - 错误：{e}")
                         time.sleep(self.retry_delay)
                     else:
-                        logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误: {e}")
+                        logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误：{e}")
                         self.error_handler.handle_exception(e)
                         # 上传失败后不删除文件，以便后续重试或手动处理
         except Exception as e:
-            logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误: {e}", exc_info=True)
+            logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def delete_file(self, file_path):
         """
-        删除指定的文件
+        删除指定的文件。
         """
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                logging.info(f"删除文件: {file_path}")
+                logging.info(f"删除文件：{file_path}")
             else:
-                logging.warning(f"尝试删除的文件不存在: {file_path}")
+                logging.warning(f"尝试删除的文件不存在：{file_path}")
         except Exception as e:
-            logging.error(f"删除文件 {file_path} 时发生错误: {e}", exc_info=True)
+            logging.error(f"删除文件 {file_path} 时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
-
-    def load_counters(self):
-        """
-        从计数器配置文件中加载计数器数据
-        """
-        if os.path.exists(self.counts_file):
-            try:
-                with open(self.counts_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    # 初始化 recipients 数据结构
-                    self.recipients_counters = data.get('recipients', {})
-                    # 将日期字符串转换为 date 对象
-                    for recipient, counters in self.recipients_counters.items():
-                        counters['daily_download_counts'] = {
-                            datetime.datetime.strptime(k, '%Y-%m-%d').date(): v
-                            for k, v in counters.get('daily_download_counts', {}).items()
-                        }
-                    logging.info("计数器数据已从配置文件加载")
-            except Exception as e:
-                logging.error(f"加载计数器配置文件时发生错误：{e}")
-                # 如果加载失败，初始化为空
-                self.recipients_counters = {}
-        else:
-            logging.info("未找到计数器配置文件，使用默认计数器值")
-            self.recipients_counters = {}
-
-    def save_counters(self):
-        """
-        将计数器数据保存到计数器配置文件
-        """
-        try:
-            data = {
-                'recipients': {
-                    recipient: {
-                        'remaining_count': counters.get('remaining_count', 711),
-                        'daily_download_counts': {
-                            k.strftime('%Y-%m-%d'): v for k, v in counters.get('daily_download_counts', {}).items()
-                        }
-                    }
-                    for recipient, counters in self.recipients_counters.items()
-                }
-            }
-            with open(self.counts_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            logging.info("计数器数据已保存到配置文件")
-        except Exception as e:
-            logging.error(f"保存计数器配置文件时发生错误：{e}")
 
     def deduct_and_record(self, recipient_name):
         """
-        扣除一份资料并记录下载量
+        扣除一次下载量并在数据库中记录。
         """
         now = datetime.datetime.now()
         download_date = self.get_download_date(now)
 
         with self.lock:
-            # 初始化接收者的计数器数据
-            if recipient_name not in self.recipients_counters:
-                self.recipients_counters[recipient_name] = {
-                    'remaining_count': 711,
-                    'daily_download_counts': {}
-                }
+            try:
+                # 确保接收者存在于 recipients 表中
+                self.cursor.execute('''
+                    INSERT OR IGNORE INTO recipients (name, remaining_count)
+                    VALUES (?, 711)
+                ''', (recipient_name,))
 
-            counters = self.recipients_counters[recipient_name]
+                # 扣除剩余次数
+                self.cursor.execute('''
+                    UPDATE recipients
+                    SET remaining_count = remaining_count - 1
+                    WHERE name = ? AND remaining_count > 0
+                ''', (recipient_name,))
 
-            # 更新每日下载量
-            if download_date not in counters['daily_download_counts']:
-                counters['daily_download_counts'][download_date] = 0
-            counters['daily_download_counts'][download_date] += 1
+                # 记录下载次数
+                self.cursor.execute('''
+                    INSERT INTO daily_downloads (recipient_name, download_date, download_count)
+                    VALUES (?, ?, 1)
+                    ON CONFLICT(recipient_name, download_date) DO UPDATE SET
+                        download_count = download_count + 1
+                ''', (recipient_name, download_date))
 
-            # 扣除剩余量
-            counters['remaining_count'] -= 1
-            if counters['remaining_count'] < 0:
-                counters['remaining_count'] = 0  # 确保不为负数
+                self.conn.commit()
 
-            logging.info(
-                f"扣除一份资料。接收者：{recipient_name}，日期：{download_date}，下载量：{counters['daily_download_counts'][download_date]}，剩余量：{counters['remaining_count']}"
-            )
+                # 获取更新后的剩余次数和下载次数
+                self.cursor.execute('''
+                    SELECT remaining_count FROM recipients WHERE name = ?
+                ''', (recipient_name,))
+                remaining = self.cursor.fetchone()[0]
 
-            # 保存计数器数据
-            self.save_counters()
+                self.cursor.execute('''
+                    SELECT download_count FROM daily_downloads
+                    WHERE recipient_name = ? AND download_date = ?
+                ''', (recipient_name, download_date))
+                download = self.cursor.fetchone()[0]
+
+                logging.info(
+                    f"扣除一次下载量。接收者：{recipient_name}，日期：{download_date}，下载量：{download}，剩余量：{remaining}"
+                )
+            except Exception as e:
+                logging.error(f"扣除并记录时出错：{e}", exc_info=True)
+                self.error_handler.handle_exception(e)
 
     def get_download_date(self, now):
         """
-        根据当前时间获取下载计入的日期
+        根据当前时间获取下载计入的日期。
         """
         cutoff_time = now.replace(hour=22, minute=30, second=0, microsecond=0)
         if now >= cutoff_time:
@@ -273,7 +281,7 @@ class Uploader:
 
     def notification_scheduler(self):
         """
-        定时器，每天晚上10点半发送通知
+        定时器，每天晚上10点半发送通知。
         """
         while True:
             now = datetime.datetime.now()
@@ -290,31 +298,54 @@ class Uploader:
 
     def send_daily_notification(self):
         """
-        发送每日下载量和剩余量的通知
+        发送每日下载量和剩余量的通知。
         """
         now = datetime.datetime.now()
-        # 获取要报告的日期（即当前日期的前一天，如果现在是10点半后，则报告当天的）
+        # 获取报告日期（即当前日期的前一天，如果现在是10点半后，则报告当天的）
         report_date = self.get_download_date(now - datetime.timedelta(seconds=1))
 
         with self.lock:
-            for recipient_name, counters in self.recipients_counters.items():
-                # 获取该日期的下载量
-                download_count = counters['daily_download_counts'].get(report_date, 0)
-                message = f"今天下载量是 {download_count}，剩余量是 {counters['remaining_count']}"
+            try:
+                # 获取所有接收者
+                self.cursor.execute('SELECT name, remaining_count FROM recipients')
+                recipients = self.cursor.fetchall()
 
-                # 发送到群组或个人账号
-                try:
-                    self.wx.ChatWith(who=recipient_name)
-                    time.sleep(1)  # 等待界面切换完成
-                    self.wx.SendMsg(msg=message, who=recipient_name)
-                    logging.info(f"发送每日通知到接收者 '{recipient_name}': {message}")
-                except Exception as e:
-                    logging.error(f"发送每日通知到接收者 '{recipient_name}' 时发生网络问题", exc_info=True)
-                    self.error_handler.handle_exception(e)
+                for recipient_name, remaining_count in recipients:
+                    # 获取报告日期的下载次数
+                    self.cursor.execute('''
+                        SELECT download_count FROM daily_downloads
+                        WHERE recipient_name = ? AND download_date = ?
+                    ''', (recipient_name, report_date))
+                    result = self.cursor.fetchone()
+                    download_count = result[0] if result else 0
 
-                # 发送完通知后，重置该日期的下载量
-                if report_date in counters['daily_download_counts']:
-                    del counters['daily_download_counts'][report_date]
+                    message = f"今天下载量是 {download_count}，剩余量是 {remaining_count}"
 
-            # 保存计数器数据
-            self.save_counters()
+                    # 通过微信发送消息
+                    try:
+                        self.wx.ChatWith(who=recipient_name)
+                        time.sleep(1)  # 等待界面切换完成
+                        self.wx.SendMsg(msg=message, who=recipient_name)
+                        logging.info(f"发送每日通知到接收者 '{recipient_name}'：{message}")
+                    except Exception as e:
+                        logging.error(f"发送每日通知到接收者 '{recipient_name}' 时发生错误：{e}", exc_info=True)
+                        self.error_handler.handle_exception(e)
+
+                    # 重置当天的下载次数
+                    self.cursor.execute('''
+                        DELETE FROM daily_downloads
+                        WHERE recipient_name = ? AND download_date = ?
+                    ''', (recipient_name, report_date))
+
+                self.conn.commit()
+                logging.info("每日通知已发送并重置下载计数")
+            except Exception as e:
+                logging.error(f"发送每日通知时出错：{e}", exc_info=True)
+                self.error_handler.handle_exception(e)
+
+    def __del__(self):
+        try:
+            self.conn.close()
+            logging.info("SQLite 数据库连接已关闭")
+        except Exception as e:
+            logging.error(f"关闭数据库连接时出错：{e}", exc_info=True)

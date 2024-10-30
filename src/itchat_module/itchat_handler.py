@@ -35,8 +35,7 @@ class ItChatHandler:
             target_individuals=self.target_individuals,
             admins=self.admins,  # 传递管理员列表
             notifier=notifier,
-            browser_controller = browser_controller  # 传递浏览器控制器
-
+            browser_controller=browser_controller  # 传递浏览器控制器
         )
 
         # Uploader 实例将在外部传递
@@ -275,6 +274,84 @@ class MessageHandler:
         except Exception as e:
             logging.error(f"处理个人消息时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
+
+    def handle_admin_command(self, message: str) -> Optional[str]:
+        """
+        处理管理员发送的命令
+        :param message: 消息内容
+        :return: 操作结果的反馈信息
+        """
+        try:
+            # 使用正则表达式解析命令
+            add_recipient_pattern = r'^添加接收者\s+(\S+)\s+(\d+)$'
+            delete_recipient_pattern = r'^删除接收者\s+(\S+)$'
+            update_remaining_pattern = r'^更新剩余次数\s+(\S+)\s+([+-]?\d+)$'
+            query_recipient_pattern = r'^查询接收者\s+(\S+)$'
+            get_all_recipients_pattern = r'^获取所有接收者$'
+            help_pattern = r'^帮助$|^help$'  # 新增 help 命令的匹配模式
+
+            if re.match(add_recipient_pattern, message):
+                match = re.match(add_recipient_pattern, message)
+                recipient_name = match.group(1)
+                initial_count = int(match.group(2))
+                response = self.uploader.add_recipient(recipient_name, initial_count)
+                return response
+
+            elif re.match(delete_recipient_pattern, message):
+                match = re.match(delete_recipient_pattern, message)
+                recipient_name = match.group(1)
+                response = self.uploader.delete_recipient(recipient_name)
+                return response
+
+            elif re.match(update_remaining_pattern, message):
+                match = re.match(update_remaining_pattern, message)
+                recipient_name = match.group(1)
+                count_change = int(match.group(2))
+                response = self.uploader.update_remaining_count(recipient_name, count_change)
+                return response
+
+            elif re.match(query_recipient_pattern, message):
+                match = re.match(query_recipient_pattern, message)
+                recipient_name = match.group(1)
+                info = self.uploader.get_recipient_info(recipient_name)
+                if info:
+                    return f"接收者 '{info['name']}' 的剩余次数为 {info['remaining_count']}。"
+                else:
+                    return f"接收者 '{recipient_name}' 不存在。"
+
+            elif re.match(get_all_recipients_pattern, message):
+                recipients = self.uploader.get_all_recipients()
+                if recipients:
+                    recipients_str = ', '.join(recipients)
+                    return f"所有接收者列表：{recipients_str}"
+                else:
+                    return "当前没有任何接收者。"
+
+            elif re.match(help_pattern, message):
+                help_message = (
+                    "可用命令如下：\n\n"
+                    "1. 添加接收者 <接收者名称> <初始剩余次数>\n"
+                    "   示例：添加接收者 User1 500\n\n"
+                    "2. 删除接收者 <接收者名称>\n"
+                    "   示例：删除接收者 User1\n\n"
+                    "3. 更新剩余次数 <接收者名称> <变化量>\n"
+                    "   示例：更新剩余次数 User1 -10\n\n"
+                    "4. 查询接收者 <接收者名称>\n"
+                    "   示例：查询接收者 User1\n\n"
+                    "5. 获取所有接收者\n"
+                    "   示例：获取所有接收者\n\n"
+                    "6. 帮助\n"
+                    "   示例：帮助"
+                )
+                return help_message
+
+            else:
+                logging.warning(f"未知的管理员命令：{message}")
+                return "未知的命令，请检查命令格式。"
+
+        except Exception as e:
+            logging.error(f"处理管理员命令时发生错误：{e}", exc_info=True)
+            return f"处理命令时发生错误：{e}"
 
     def is_query_browser_command(self, message: str) -> bool:
         """

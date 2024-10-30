@@ -60,7 +60,7 @@
         "target_individuals": [
             "李老师呀"
         ],
-        "counts_file": "counts.json"
+    "database_path": "path/to/your/counters.db"
     },
     "logging": {
         "directory": "logs",
