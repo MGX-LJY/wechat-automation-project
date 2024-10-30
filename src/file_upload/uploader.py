@@ -455,7 +455,7 @@ class Uploader:
 
     def auto_accept_new_friends(self):
         """
-        自动接受新的好友申请。
+        自动接受新的好友申请，并在处理后切换回聊天窗口。
         """
         while True:
             try:
@@ -468,13 +468,21 @@ class Uploader:
                         logging.info(f"接受好友申请：{friend_name}，消息：{friend_msg}")
                         try:
                             friend.Accept(remark=self.auto_accept_remark.format(friend_name=friend_name),
-                                         tags=self.auto_accept_tags)
+                                          tags=self.auto_accept_tags)
                             logging.info(f"已接受好友申请：{friend_name}，并添加备注和标签")
                         except Exception as e:
                             logging.error(f"接受好友申请时出错：{e}", exc_info=True)
                             self.error_handler.handle_exception(e)
                 else:
                     logging.debug("没有新的好友申请")
+
+                # 处理完好友申请后，切换回聊天窗口
+                try:
+                    self.wx.SwitchToChat()
+                    logging.info("已切换回聊天页面")
+                except Exception as e:
+                    logging.error(f"切换回聊天页面时出错：{e}", exc_info=True)
+                    self.error_handler.handle_exception(e)
 
                 time.sleep(self.auto_accept_interval)
             except Exception as e:
