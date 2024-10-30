@@ -4,7 +4,7 @@ import os
 import json
 import logging
 import datetime
-from wxauto import WeChat
+from wxauto import Wechat
 import threading
 import time
 import queue
@@ -45,7 +45,7 @@ class Uploader:
         logging.info("每日通知调度线程已启动")
 
         # 初始化 wxauto WeChat 实例
-        self.wx = WeChat()
+        self.wx = Wechat()
         self.initialize_usernames()
         logging.info("wxauto WeChat 实例已初始化")
 
@@ -63,7 +63,7 @@ class Uploader:
         group_usernames = {}
         try:
             all_groups = self.wx.GetAllChatrooms()
-            all_group_names = [group.NickName for group in all_groups]
+            all_group_names = [group['NickName'] for group in all_groups]
             for group_name in self.group_names:
                 if group_name in all_group_names:
                     group_usernames[group_name] = group_name  # 直接使用名称
