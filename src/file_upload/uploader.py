@@ -50,18 +50,6 @@ class Uploader:
         self.initialize_wechat()
         logging.info("wxauto WeChat 实例已初始化")
 
-        # 自动接受好友申请的配置
-        auto_accept_config = upload_config.get('auto_accept_friends', {})
-        self.auto_accept_enabled = auto_accept_config.get('enabled', False)
-        self.auto_accept_interval = auto_accept_config.get('check_interval', 60)  # 默认每60秒检查一次
-        self.auto_accept_remark = auto_accept_config.get('remark', '自动添加好友')
-        self.auto_accept_tags = auto_accept_config.get('tags', ['wxauto'])
-
-        if self.auto_accept_enabled:
-            self.auto_accept_thread = threading.Thread(target=self.auto_accept_new_friends, daemon=True)
-            self.auto_accept_thread.start()
-            logging.info("自动接受好友申请线程已启动")
-
     def initialize_database(self):
         """
         如果表不存在，则创建它们。
@@ -452,43 +440,6 @@ class Uploader:
             logging.error(f"获取所有接收者时出错: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
             return []
-
-    def auto_accept_new_friends(self):
-        """
-        自动接受新的好友申请，并在处理后切换回聊天窗口。
-        """
-        while True:
-            try:
-                new_friends = self.wx.GetNewFriends()
-                if new_friends:
-                    logging.info(f"检测到 {len(new_friends)} 个新的好友申请")
-                    for friend in new_friends:
-                        friend_name = friend.name
-                        friend_msg = friend.msg
-                        logging.info(f"接受好友申请：{friend_name}，消息：{friend_msg}")
-                        try:
-                            friend.Accept(remark=self.auto_accept_remark.format(friend_name=friend_name),
-                                          tags=self.auto_accept_tags)
-                            logging.info(f"已接受好友申请：{friend_name}，并添加备注和标签")
-                        except Exception as e:
-                            logging.error(f"接受好友申请时出错：{e}", exc_info=True)
-                            self.error_handler.handle_exception(e)
-                else:
-                    logging.debug("没有新的好友申请")
-
-                # 处理完好友申请后，切换回聊天窗口
-                try:
-                    self.wx.SwitchToChat()
-                    logging.info("已切换回聊天页面")
-                except Exception as e:
-                    logging.error(f"切换回聊天页面时出错：{e}", exc_info=True)
-                    self.error_handler.handle_exception(e)
-
-                time.sleep(self.auto_accept_interval)
-            except Exception as e:
-                logging.error(f"自动接受好友申请时发生错误：{e}", exc_info=True)
-                self.error_handler.handle_exception(e)
-                time.sleep(self.auto_accept_interval)
 
     def __del__(self):
         try:
