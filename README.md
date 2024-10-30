@@ -330,13 +330,6 @@
   - [DrissionPage 文档](https://drissionpage.readthedocs.io/)
   - [SQLite 官方文档](https://www.sqlite.org/docs.html)
 
-# 说明
-
-根据您的最新代码更新，**DownloadWatcher** 模块已被删除，因此技术文档中的相关部分已被移除，并相应调整了工作流程和组件详解部分。此外，**ErrorHandler** 和 **Notifier** 模块已进行了更新，增强了错误处理和通知功能。确保其他配置和模块的描述与实际代码一致，必要时可以进一步调整技术文档以反映更多代码变更。
-
-特别地，**Uploader** 模块已全面更新，新增了多线程上传处理、数据库管理、每日通知系统以及管理员命令支持等功能。**ItChatHandler** 和 **MessageHandler** 也进行了更新，支持管理员通过特定命令管理接收者和系统状态查询。请参考上述“组件详解”中的“1. ItChatHandler”和“2. MessageHandler”部分，了解详细的功能和逻辑。
-
-*本文档由微信自动化上传系统团队维护，最后更新于2024年4月27日。*
 
 # 许可证
 
