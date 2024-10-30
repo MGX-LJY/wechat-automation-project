@@ -46,62 +46,30 @@ class Uploader:
 
         # 初始化 wxauto WeChat 实例
         self.wx = Wechat()
-        self.initialize_usernames()
+        self.initialize_wechat()
         logging.info("wxauto WeChat 实例已初始化")
 
-    def initialize_usernames(self):
-        """
-        初始化群组和个人的名称列表
-        """
-        self.group_usernames = self._fetch_group_usernames()
-        self.individual_usernames = self._fetch_individual_usernames()
+        # 确保微信已运行
+        if not self.wx.IsWechatRunning():
+            logging.error("微信客户端未运行。请确保微信已启动并登录。")
+            raise RuntimeError("微信客户端未运行。请确保微信已启动并登录。")
 
-    def _fetch_group_usernames(self):
+    def initialize_wechat(self):
         """
-        获取目标群组的名称列表
+        确保微信客户端已运行，并切换到主页面
         """
-        group_usernames = {}
         try:
-            all_groups = self.wx.GetAllChatrooms()
-            all_group_names = [group['NickName'] for group in all_groups]
-            for group_name in self.group_names:
-                if group_name in all_group_names:
-                    group_usernames[group_name] = group_name  # 直接使用名称
-                    logging.info(f"找到群组 '{group_name}'")
-                else:
-                    logging.error(f"未找到群组: {group_name}. 当前群组列表: {all_group_names}")
-                    group_usernames[group_name] = None  # 防止后续上传时找不到群组
+            self.wx.SwitchToChat()
+            logging.info("已切换到微信聊天页面")
+            time.sleep(1)  # 等待界面切换完成
         except Exception as e:
-            logging.error(f"获取群组列表时发生错误: {e}", exc_info=True)
+            logging.error(f"初始化微信界面时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
-        return group_usernames
 
-    def _fetch_individual_usernames(self):
+    def _fetch_user_or_group_name(self, name):
         """
-        获取目标个人的名称列表
+        确认接收者名称是否在目标列表中
         """
-        individual_usernames = {}
-        try:
-            all_friends = self.wx.GetAllFriends()
-            all_friend_names = [friend['nickname'] for friend in all_friends]
-            for individual_name in self.individual_names:
-                if individual_name in all_friend_names:
-                    individual_usernames[individual_name] = individual_name  # 直接使用名称
-                    logging.info(f"找到好友 '{individual_name}'")
-                else:
-                    logging.error(f"未找到好友: {individual_name}")
-                    individual_usernames[individual_name] = None
-        except Exception as e:
-            logging.error(f"获取好友列表时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-        return individual_usernames
-
-    def _fetch_user_or_group_username(self, name):
-        """
-        获取好友或群组的名称
-        """
-        # 在 wxauto 中，发送消息和文件时使用名称即可，无需获取 UserName
-        # 这里只需要确认名称是否存在
         if name in self.group_names or name in self.individual_names:
             return name
         else:
@@ -113,7 +81,7 @@ class Uploader:
         接收群组或个人名称和 soft_id，并维护 soft_id 到 recipient_name 的映射
         """
         try:
-            user_name = self._fetch_user_or_group_username(recipient_name)
+            user_name = self._fetch_user_or_group_name(recipient_name)
             if not user_name:
                 logging.error(f"接收者 '{recipient_name}' 的名称未找到，无法映射。")
                 return
@@ -160,18 +128,14 @@ class Uploader:
 
             # 确认接收者存在
             if recipient_name in self.group_names:
-                user_name = self.group_usernames.get(recipient_name)
+                user_name = recipient_name
             else:
-                user_name = self.individual_usernames.get(recipient_name)
-
-            if not user_name:
-                logging.error(f"接收者 '{recipient_name}' 的名称未找到，无法上传文件。")
-                return
+                user_name = recipient_name
 
             # 切换到指定的聊天窗口
             try:
-                self.wx.ChatWith(who=recipient_name)
-                logging.info(f"切换到接收者 '{recipient_name}' 的聊天窗口")
+                self.wx.ChatWith(who=user_name)
+                logging.info(f"切换到接收者 '{user_name}' 的聊天窗口")
                 time.sleep(1)  # 等待界面切换完成
             except Exception as e:
                 logging.error(f"切换聊天窗口失败: {e}", exc_info=True)
@@ -181,16 +145,16 @@ class Uploader:
             # 发送文件
             for attempt in range(1, self.max_retries + 1):
                 try:
-                    logging.info(f"正在上传文件: {file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
-                    self.wx.SendFiles(filepath=file_path, who=recipient_name)
-                    logging.info(f"文件已上传至接收者: {recipient_name} (soft_id: {soft_id})")
+                    logging.info(f"正在上传文件: {file_path} 至接收者: {user_name} (soft_id: {soft_id})，尝试次数: {attempt}")
+                    self.wx.SendFiles(filepath=file_path, who=user_name)
+                    logging.info(f"文件已上传至接收者: {user_name} (soft_id: {soft_id})")
                     time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
 
                     # 文件上传成功后删除文件
                     self.delete_file(file_path)
 
                     # 扣除并记录下载量
-                    self.deduct_and_record(recipient_name)
+                    self.deduct_and_record(user_name)
 
                     return  # 上传成功，退出函数
                 except Exception as e:
