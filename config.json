@@ -65,7 +65,7 @@
             "enabled": true,
             "check_interval": 60,
             "remark": "欢迎加入，{friend_name}！",
-            "tags": ["wxauto"],
+            "tags": ["wxauto"]
         }
     },
     "logging": {
