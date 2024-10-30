@@ -6,11 +6,11 @@ import threading
 import time
 import queue
 import sqlite3
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class Uploader:
-    def __init__(self, upload_config, error_notification_config, error_handler):
+    def __init__(self, upload_config: Dict, error_notification_config: Dict, error_handler):
         self.target_groups = upload_config.get('target_groups', [])
         self.target_individuals = upload_config.get('target_individuals', [])
         self.processed_soft_ids = set()
@@ -49,6 +49,18 @@ class Uploader:
         self.wx = WeChat()
         self.initialize_wechat()
         logging.info("wxauto WeChat 实例已初始化")
+
+        # 自动接受好友申请的配置
+        auto_accept_config = upload_config.get('auto_accept_friends', {})
+        self.auto_accept_enabled = auto_accept_config.get('enabled', False)
+        self.auto_accept_interval = auto_accept_config.get('check_interval', 60)  # 默认每60秒检查一次
+        self.auto_accept_remark = auto_accept_config.get('remark', '自动添加好友')
+        self.auto_accept_tags = auto_accept_config.get('tags', ['wxauto'])
+
+        if self.auto_accept_enabled:
+            self.auto_accept_thread = threading.Thread(target=self.auto_accept_new_friends, daemon=True)
+            self.auto_accept_thread.start()
+            logging.info("自动接受好友申请线程已启动")
 
     def initialize_database(self):
         """
@@ -92,7 +104,7 @@ class Uploader:
             logging.error(f"初始化微信界面时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def _fetch_user_or_group_name(self, name):
+    def _fetch_user_or_group_name(self, name: str) -> Optional[str]:
         """
         确认接收者名称是否在目标列表中。
         """
@@ -102,7 +114,7 @@ class Uploader:
             logging.error(f"接收者 '{name}' 不在目标群组或个人列表中。")
             return None
 
-    def upload_group_id(self, recipient_name, soft_id):
+    def upload_group_id(self, recipient_name: str, soft_id: str):
         """
         接收群组或个人名称和 soft_id，并维护映射关系。
         """
@@ -127,7 +139,7 @@ class Uploader:
             logging.error("维护 soft_id 到接收者映射时发生错误", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def add_upload_task(self, file_path, soft_id):
+    def add_upload_task(self, file_path: str, soft_id: str):
         with self.lock:
             self.processed_soft_ids.add(soft_id)
         self.upload_queue.put((file_path, soft_id))
@@ -146,7 +158,7 @@ class Uploader:
                 logging.error(f"处理上传任务时出错：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
 
-    def upload_file(self, file_path, soft_id):
+    def upload_file(self, file_path: str, soft_id: str):
         try:
             if not os.path.exists(file_path):
                 logging.error(f"文件不存在，无法上传：{file_path}")
@@ -160,10 +172,7 @@ class Uploader:
                 return
 
             # 确认接收者存在
-            if recipient_name in self.group_names:
-                user_name = recipient_name
-            else:
-                user_name = recipient_name
+            user_name = recipient_name  # 因为已经确认在目标列表中，无需再次判断
 
             # 切换到指定的聊天窗口
             try:
@@ -203,7 +212,7 @@ class Uploader:
             logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def delete_file(self, file_path):
+    def delete_file(self, file_path: str):
         """
         删除指定的文件。
         """
@@ -217,7 +226,7 @@ class Uploader:
             logging.error(f"删除文件 {file_path} 时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def deduct_and_record(self, recipient_name):
+    def deduct_and_record(self, recipient_name: str):
         """
         扣除一次下载量并在数据库中记录。
         """
@@ -268,7 +277,7 @@ class Uploader:
                 logging.error(f"扣除并记录时出错：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
 
-    def get_download_date(self, now):
+    def get_download_date(self, now: datetime.datetime) -> datetime.date:
         """
         根据当前时间获取下载计入的日期。
         """
@@ -285,17 +294,23 @@ class Uploader:
         定时器，每天晚上10点半发送通知。
         """
         while True:
-            now = datetime.datetime.now()
-            next_notification_time = now.replace(hour=22, minute=30, second=0, microsecond=0)
-            if now >= next_notification_time:
-                # 如果当前时间已过10点半，定时到明天的10点半
-                next_notification_time += datetime.timedelta(days=1)
-            time_to_wait = (next_notification_time - now).total_seconds()
-            hours, remainder = divmod(time_to_wait, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            logging.info(f"等待 {int(hours)} 小时 {int(minutes)} 分钟 {int(seconds)} 秒后发送每日通知。")
-            time.sleep(time_to_wait)
-            self.send_daily_notification()
+            try:
+                now = datetime.datetime.now()
+                next_notification_time = now.replace(hour=22, minute=30, second=0, microsecond=0)
+                if now >= next_notification_time:
+                    # 如果当前时间已过10点半，定时到明天的10点半
+                    next_notification_time += datetime.timedelta(days=1)
+                time_to_wait = (next_notification_time - now).total_seconds()
+                hours, remainder = divmod(time_to_wait, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                logging.info(f"等待 {int(hours)} 小时 {int(minutes)} 分钟 {int(seconds)} 秒后发送每日通知。")
+                time.sleep(time_to_wait)
+                self.send_daily_notification()
+            except Exception as e:
+                logging.error(f"通知调度器发生错误：{e}", exc_info=True)
+                self.error_handler.handle_exception(e)
+                # 在发生异常后，继续循环
+                time.sleep(60)
 
     def send_daily_notification(self):
         """
@@ -438,52 +453,34 @@ class Uploader:
             self.error_handler.handle_exception(e)
             return []
 
-    def send_daily_notification(self):
+    def auto_accept_new_friends(self):
         """
-        发送每日下载量和剩余量的通知。
+        自动接受新的好友申请。
         """
-        now = datetime.datetime.now()
-        # 获取报告日期（即当前日期的前一天，如果现在是10点半后，则报告当天的）
-        report_date = self.get_download_date(now - datetime.timedelta(seconds=1))
-
-        with self.lock:
+        while True:
             try:
-                # 获取所有接收者
-                self.cursor.execute('SELECT name, remaining_count FROM recipients')
-                recipients = self.cursor.fetchall()
+                new_friends = self.wx.GetNewFriends()
+                if new_friends:
+                    logging.info(f"检测到 {len(new_friends)} 个新的好友申请")
+                    for friend in new_friends:
+                        friend_name = friend.name
+                        friend_msg = friend.msg
+                        logging.info(f"接受好友申请：{friend_name}，消息：{friend_msg}")
+                        try:
+                            friend.Accept(remark=self.auto_accept_remark.format(friend_name=friend_name),
+                                         tags=self.auto_accept_tags)
+                            logging.info(f"已接受好友申请：{friend_name}，并添加备注和标签")
+                        except Exception as e:
+                            logging.error(f"接受好友申请时出错：{e}", exc_info=True)
+                            self.error_handler.handle_exception(e)
+                else:
+                    logging.debug("没有新的好友申请")
 
-                for recipient_name, remaining_count in recipients:
-                    # 获取报告日期的下载次数
-                    self.cursor.execute('''
-                        SELECT download_count FROM daily_downloads
-                        WHERE recipient_name = ? AND download_date = ?
-                    ''', (recipient_name, report_date))
-                    result = self.cursor.fetchone()
-                    download_count = result[0] if result else 0
-
-                    message = f"今天下载量是 {download_count}，剩余量是 {remaining_count}"
-
-                    # 通过微信发送消息
-                    try:
-                        self.wx.ChatWith(who=recipient_name)
-                        time.sleep(1)  # 等待界面切换完成
-                        self.wx.SendMsg(msg=message, who=recipient_name)
-                        logging.info(f"发送每日通知到接收者 '{recipient_name}'：{message}")
-                    except Exception as e:
-                        logging.error(f"发送每日通知到接收者 '{recipient_name}' 时发生错误：{e}", exc_info=True)
-                        self.error_handler.handle_exception(e)
-
-                    # 重置当天的下载次数
-                    self.cursor.execute('''
-                        DELETE FROM daily_downloads
-                        WHERE recipient_name = ? AND download_date = ?
-                    ''', (recipient_name, report_date))
-
-                self.conn.commit()
-                logging.info("每日通知已发送并重置下载计数")
+                time.sleep(self.auto_accept_interval)
             except Exception as e:
-                logging.error(f"发送每日通知时出错：{e}", exc_info=True)
+                logging.error(f"自动接受好友申请时发生错误：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
+                time.sleep(self.auto_accept_interval)
 
     def __del__(self):
         try:
@@ -491,4 +488,4 @@ class Uploader:
             logging.info("SQLite 数据库连接已关闭")
         except Exception as e:
             logging.error(f"关闭数据库连接时出错：{e}", exc_info=True)
-
+            self.error_handler.handle_exception(e)
