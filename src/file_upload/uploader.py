@@ -6,6 +6,7 @@ import threading
 import time
 import queue
 import sqlite3
+from typing import Optional, List
 
 
 class Uploader:
@@ -343,9 +344,151 @@ class Uploader:
                 logging.error(f"发送每日通知时出错：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
 
+    # 新增的方法以支持管理员命令
+
+    def add_recipient(self, recipient_name: str, initial_count: int) -> str:
+        """
+        添加一个新的接收者。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    INSERT INTO recipients (name, remaining_count)
+                    VALUES (?, ?)
+                ''', (recipient_name, initial_count))
+                self.conn.commit()
+            return f"接收者 '{recipient_name}' 已添加，初始剩余次数为 {initial_count}。"
+        except sqlite3.IntegrityError:
+            return f"接收者 '{recipient_name}' 已存在。"
+        except Exception as e:
+            logging.error(f"添加接收者时出错: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"添加接收者时发生错误: {e}"
+
+    def delete_recipient_method(self, recipient_name: str) -> str:
+        """
+        删除一个接收者。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    DELETE FROM recipients WHERE name = ?
+                ''', (recipient_name,))
+                if self.cursor.rowcount == 0:
+                    return f"接收者 '{recipient_name}' 不存在。"
+                self.conn.commit()
+            return f"接收者 '{recipient_name}' 已删除。"
+        except Exception as e:
+            logging.error(f"删除接收者时出错: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"删除接收者时发生错误: {e}"
+
+    def update_remaining_count_method(self, recipient_name: str, count_change: int) -> str:
+        """
+        更新接收者的剩余次数。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    UPDATE recipients
+                    SET remaining_count = remaining_count + ?
+                    WHERE name = ?
+                ''', (count_change, recipient_name))
+                if self.cursor.rowcount == 0:
+                    return f"接收者 '{recipient_name}' 不存在。"
+                self.conn.commit()
+            return f"接收者 '{recipient_name}' 的剩余次数已更新，变化量为 {count_change}。"
+        except Exception as e:
+            logging.error(f"更新剩余次数时出错: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"更新剩余次数时发生错误: {e}"
+
+    def get_recipient_info_method(self, recipient_name: str) -> Optional[dict]:
+        """
+        获取指定接收者的信息。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    SELECT name, remaining_count FROM recipients WHERE name = ?
+                ''', (recipient_name,))
+                row = self.cursor.fetchone()
+                if row:
+                    return {'name': row[0], 'remaining_count': row[1]}
+                else:
+                    return None
+        except Exception as e:
+            logging.error(f"获取接收者信息时出错: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return None
+
+    def get_all_recipients_method(self) -> List[str]:
+        """
+        获取所有接收者的名称列表。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    SELECT name FROM recipients
+                ''')
+                rows = self.cursor.fetchall()
+                return [row[0] for row in rows]
+        except Exception as e:
+            logging.error(f"获取所有接收者时出错: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return []
+
+    def send_daily_notification(self):
+        """
+        发送每日下载量和剩余量的通知。
+        """
+        now = datetime.datetime.now()
+        # 获取报告日期（即当前日期的前一天，如果现在是10点半后，则报告当天的）
+        report_date = self.get_download_date(now - datetime.timedelta(seconds=1))
+
+        with self.lock:
+            try:
+                # 获取所有接收者
+                self.cursor.execute('SELECT name, remaining_count FROM recipients')
+                recipients = self.cursor.fetchall()
+
+                for recipient_name, remaining_count in recipients:
+                    # 获取报告日期的下载次数
+                    self.cursor.execute('''
+                        SELECT download_count FROM daily_downloads
+                        WHERE recipient_name = ? AND download_date = ?
+                    ''', (recipient_name, report_date))
+                    result = self.cursor.fetchone()
+                    download_count = result[0] if result else 0
+
+                    message = f"今天下载量是 {download_count}，剩余量是 {remaining_count}"
+
+                    # 通过微信发送消息
+                    try:
+                        self.wx.ChatWith(who=recipient_name)
+                        time.sleep(1)  # 等待界面切换完成
+                        self.wx.SendMsg(msg=message, who=recipient_name)
+                        logging.info(f"发送每日通知到接收者 '{recipient_name}'：{message}")
+                    except Exception as e:
+                        logging.error(f"发送每日通知到接收者 '{recipient_name}' 时发生错误：{e}", exc_info=True)
+                        self.error_handler.handle_exception(e)
+
+                    # 重置当天的下载次数
+                    self.cursor.execute('''
+                        DELETE FROM daily_downloads
+                        WHERE recipient_name = ? AND download_date = ?
+                    ''', (recipient_name, report_date))
+
+                self.conn.commit()
+                logging.info("每日通知已发送并重置下载计数")
+            except Exception as e:
+                logging.error(f"发送每日通知时出错：{e}", exc_info=True)
+                self.error_handler.handle_exception(e)
+
     def __del__(self):
         try:
             self.conn.close()
             logging.info("SQLite 数据库连接已关闭")
         except Exception as e:
             logging.error(f"关闭数据库连接时出错：{e}", exc_info=True)
+
