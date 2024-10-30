@@ -9,11 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError
-from src.notification.notifier import Notifier  # 引入 Notifier
+from src.notification.notifier import Notifier
 
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
-DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')  # 配置下载路径
+DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')
 LOCK = threading.Lock()
 
 # 初始化日志记录器

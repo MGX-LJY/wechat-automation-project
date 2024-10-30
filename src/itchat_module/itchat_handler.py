@@ -9,9 +9,9 @@ from io import BytesIO
 from urllib.parse import urlparse, urlunparse
 from PIL import Image
 from lib import itchat
-from lib.itchat.content import TEXT, SHARING  # 添加 SHARING 类型
-from typing import Optional  # 添加这一行
-from collections import deque  # 添加这一行
+from lib.itchat.content import TEXT, SHARING
+from typing import Optional
+from collections import deque
 
 
 class ItChatHandler:
@@ -180,11 +180,11 @@ class MessageHandler:
         self.error_handler = error_handler
         self.monitor_groups = monitor_groups
         self.target_individuals = target_individuals
-        self.admins = admins  # 新增管理员列表
-        self.uploader = None  # 初始化为 None
-        self.notifier = notifier  # 添加 Notifier 实例
-        self.browser_controller = browser_controller  # 添加浏览器控制器实例
-        self.log_dir = config.get('logging', {}).get('directory', 'logs')  # 获取日志目录
+        self.admins = admins
+        self.uploader = None
+        self.notifier = notifier
+        self.browser_controller = browser_controller
+        self.log_dir = config.get('logging', {}).get('directory', 'logs')
 
     def set_auto_clicker(self, auto_clicker):
         self.auto_clicker = auto_clicker
