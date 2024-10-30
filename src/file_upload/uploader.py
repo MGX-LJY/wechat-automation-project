@@ -15,8 +15,8 @@ class Uploader:
         self.target_individuals = upload_config.get('target_individuals', [])
         self.processed_soft_ids = set()
         self.error_handler = error_handler
-        self.group_usernames = {}
-        self.individual_usernames = {}
+        self.group_names = self.target_groups
+        self.individual_names = self.target_individuals
         self.max_retries = 3
         self.retry_delay = 5
 
@@ -32,7 +32,6 @@ class Uploader:
 
         # 获取错误通知的个人账号名称
         self.error_recipient = error_notification_config.get('recipient')
-        self.error_recipient_name = self.error_recipient  # 直接使用名称
 
         # 初始化上传任务队列
         self.upload_queue = queue.Queue()
@@ -40,7 +39,7 @@ class Uploader:
         self.upload_thread.start()
         logging.info("上传任务处理线程已启动")
 
-        # 保留每日通知系统，不需要修改
+        # 保留每日通知系统
         notification_thread = threading.Thread(target=self.notification_scheduler, daemon=True)
         notification_thread.start()
         logging.info("每日通知调度线程已启动")
@@ -51,22 +50,9 @@ class Uploader:
         logging.info("wxauto WeChat 实例已初始化")
 
         # 确保微信已登录
-        if not self.wx.is_logged_in():
-            logging.info("微信未登录，开始登录...")
-            self.wx.start()
-            self.wait_for_login()
-
-    def wait_for_login(self, timeout=300):
-        """
-        等待用户完成微信登录，最多等待 timeout 秒
-        """
-        start_time = time.time()
-        while not self.wx.is_logged_in():
-            if time.time() - start_time > timeout:
-                logging.error("微信登录超时")
-                raise TimeoutError("微信登录超时")
-            time.sleep(1)
-        logging.info("微信登录成功")
+        if not self.wx.is_running():
+            logging.error("微信客户端未运行。请确保微信已启动并登录。")
+            raise RuntimeError("微信客户端未运行。请确保微信已启动并登录。")
 
     def initialize_usernames(self):
         """
@@ -77,92 +63,47 @@ class Uploader:
 
     def _fetch_group_usernames(self):
         """
-        获取目标群组的 UserName
+        获取目标群组的名称列表
         """
         group_usernames = {}
-        for group_name in self.target_groups:
-            try:
-                groups = self.wx.search_chatrooms(name=group_name)
-                if groups:
-                    group = groups[0]
-                    group_usernames[group_name] = group.UserName
-                    logging.info(f"找到群组 '{group_name}' 的 UserName: {group.UserName}")
-                else:
-                    # 打印所有群组的名字以供调试
-                    all_groups = self.wx.get_all_chatrooms()
-                    all_group_names = [group.NickName for group in all_groups]
-                    logging.error(f"未找到群组: {group_name}. 当前群组列表: {all_group_names}")
-                    group_usernames[group_name] = None  # 防止后续上传时找不到群组
-            except Exception as e:
-                logging.error(f"获取群组 '{group_name}' 时发生错误: {e}", exc_info=True)
-                group_usernames[group_name] = None
-                self.error_handler.handle_exception(e)
+        all_groups = self.wx.get_all_chatrooms()
+        all_group_names = [group.NickName for group in all_groups]
+        for group_name in self.group_names:
+            if group_name in all_group_names:
+                group_usernames[group_name] = group_name  # 直接使用名称
+                logging.info(f"找到群组 '{group_name}'")
+            else:
+                logging.error(f"未找到群组: {group_name}. 当前群组列表: {all_group_names}")
+                group_usernames[group_name] = None  # 防止后续上传时找不到群组
         return group_usernames
 
     def _fetch_individual_usernames(self):
         """
-        获取目标个人的 UserName
+        获取目标个人的名称列表
         """
         individual_usernames = {}
-        for individual_name in self.target_individuals:
-            try:
-                user = self.wx.search_friends(name=individual_name)
-                if user:
-                    individual_usernames[individual_name] = user.UserName
-                    logging.info(f"找到好友 '{individual_name}' 的 UserName: {user.UserName}")
-                else:
-                    individual_usernames[individual_name] = None
-                    logging.error(f"未找到好友: {individual_name}")
-            except Exception as e:
-                logging.error(f"获取好友 '{individual_name}' 时发生错误: {e}", exc_info=True)
+        all_friends = self.wx.get_all_friends()
+        all_friend_names = [friend.NickName for friend in all_friends]
+        for individual_name in self.individual_names:
+            if individual_name in all_friend_names:
+                individual_usernames[individual_name] = individual_name  # 直接使用名称
+                logging.info(f"找到好友 '{individual_name}'")
+            else:
+                logging.error(f"未找到好友: {individual_name}")
                 individual_usernames[individual_name] = None
-                self.error_handler.handle_exception(e)
         return individual_usernames
-
-    def _fetch_user_or_group_username(self, name):
-        """
-        获取好友或群组的 UserName
-        """
-        # 尝试作为好友查找
-        try:
-            user = self.wx.search_friends(name=name)
-            if user:
-                user_name = user.UserName
-                logging.info(f"找到好友 '{name}' 的 UserName: {user_name}")
-                return user_name
-        except Exception as e:
-            logging.error(f"搜索好友 '{name}' 时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-
-        # 尝试作为群组查找
-        try:
-            groups = self.wx.search_chatrooms(name=name)
-            if groups:
-                user_name = groups[0].UserName
-                logging.info(f"找到群组 '{name}' 的 UserName: {user_name}")
-                return user_name
-        except Exception as e:
-            logging.error(f"搜索群组 '{name}' 时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-
-        # 未找到
-        logging.error(f"未找到好友或群组: {name}")
-        return None
 
     def upload_group_id(self, recipient_name, soft_id):
         """
         接收群组或个人名称和 soft_id，并维护 soft_id 到 recipient_name 的映射
         """
         try:
-            user_name = self._fetch_user_or_group_username(recipient_name)
-            if not user_name:
-                logging.error(f"接收者 '{recipient_name}' 的 UserName 未找到，无法映射。")
-                return
-
-            with self.lock:
-                # 维护 soft_id 到 recipient_name 的映射
-                self.softid_to_recipient[soft_id] = recipient_name
-                logging.info(f"映射 soft_id {soft_id} 到接收者 '{recipient_name}'")
+            if recipient_name in self.group_names or recipient_name in self.individual_names:
+                with self.lock:
+                    self.softid_to_recipient[soft_id] = recipient_name
+                    logging.info(f"映射 soft_id {soft_id} 到接收者 '{recipient_name}'")
+            else:
+                logging.error(f"接收者 '{recipient_name}' 不在目标群组或个人列表中。")
         except Exception as e:
             logging.error("维护 soft_id 到接收者映射时发生错误", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -196,44 +137,33 @@ class Uploader:
                 recipient_name = self.softid_to_recipient.get(soft_id)
 
             if not recipient_name:
-                logging.error(f"未找到 soft_id {soft_id} 对应的接收者，且无默认接收者。")
+                logging.error(f"未找到 soft_id {soft_id} 对应的接收者。")
                 return
 
-            # 获取接收者的 UserName
-            if recipient_name in self.target_groups:
+            # 确认接收者存在
+            if recipient_name in self.group_names:
                 user_name = self.group_usernames.get(recipient_name)
             else:
                 user_name = self.individual_usernames.get(recipient_name)
 
             if not user_name:
-                logging.error(f"接收者 '{recipient_name}' 的 UserName 未找到，无法上传文件。")
+                logging.error(f"接收者 '{recipient_name}' 的名称未找到，无法上传文件。")
                 return
 
-            # 重命名文件
-            original_file_path = file_path  # 保存原始文件路径
-            directory, original_filename = os.path.split(file_path)
-            new_filename = f"[{soft_id}]{original_filename}"
-            new_file_path = os.path.join(directory, new_filename)
+            # 切换到指定的聊天窗口
+            self.wx.ChatWith(who=recipient_name)
+            logging.info(f"切换到接收者 '{recipient_name}' 的聊天窗口")
 
-            try:
-                os.rename(file_path, new_file_path)
-                logging.info(f"文件重命名为: {new_file_path}")
-            except Exception as e:
-                logging.error(f"重命名文件时发生错误: {e}", exc_info=True)
-                self.error_handler.handle_exception(e)
-                return  # 无法重命名文件，退出上传
-
-            # 上传文件
+            # 发送文件
             for attempt in range(1, self.max_retries + 1):
                 try:
-                    logging.info(
-                        f"正在上传文件: {new_file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
-                    self.wx.SendFiles(filepath=new_file_path, who=recipient_name)
+                    logging.info(f"正在上传文件: {file_path} 至接收者: {recipient_name} (soft_id: {soft_id})，尝试次数: {attempt}")
+                    self.wx.SendFiles(filepath=file_path, who=recipient_name)
                     logging.info(f"文件已上传至接收者: {recipient_name} (soft_id: {soft_id})")
                     time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
 
                     # 文件上传成功后删除文件
-                    self.delete_file(new_file_path)
+                    self.delete_file(file_path)
 
                     # 扣除并记录下载量
                     self.deduct_and_record(recipient_name)
@@ -246,8 +176,7 @@ class Uploader:
                     else:
                         logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误: {e}")
                         self.error_handler.handle_exception(e)
-                        # 删除重命名后的文件
-                        self.delete_file(new_file_path)
+                        # 上传失败后不删除文件，以便后续重试或手动处理
         except Exception as e:
             logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -390,18 +319,9 @@ class Uploader:
                 download_count = counters['daily_download_counts'].get(report_date, 0)
                 message = f"今天下载量是 {download_count}，剩余量是 {counters['remaining_count']}"
 
-                # 获取接收者的 UserName
-                if recipient_name in self.target_groups:
-                    user_name = self.group_usernames.get(recipient_name)
-                else:
-                    user_name = self.individual_usernames.get(recipient_name)
-
-                if not user_name:
-                    logging.error(f"接收者 '{recipient_name}' 的 UserName 未找到，无法发送每日通知。")
-                    continue
-
                 # 发送到群组或个人账号
                 try:
+                    self.wx.ChatWith(who=recipient_name)
                     self.wx.SendMsg(msg=message, who=recipient_name)
                     logging.info(f"发送每日通知到接收者 '{recipient_name}': {message}")
                 except Exception as e:
