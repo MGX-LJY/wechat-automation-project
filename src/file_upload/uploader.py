@@ -207,7 +207,7 @@ class Uploader:
                         f"正在上传文件：{file_path} 至接收者：{user_name} (soft_id: {soft_id})，尝试次数：{attempt}")
                     self.wx.SendFiles(filepath=file_path, who=user_name)
                     logging.info(f"文件已上传至接收者：{user_name} (soft_id: {soft_id})")
-                    time.sleep(1)  # 添加短暂的延迟，避免触发微信速率限制
+                    time.sleep(1)
 
                     # 文件上传成功后删除文件
                     self.delete_file(file_path)
@@ -223,7 +223,7 @@ class Uploader:
                     else:
                         logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误：{e}")
                         self.error_handler.handle_exception(e)
-                        # 上传失败后不删除文件，以便后续重试或手动处理
+
         except Exception as e:
             logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
