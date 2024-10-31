@@ -241,26 +241,13 @@ class MessageHandler:
             if not message_content:
                 return
 
-            # 如果发送者是管理员，检查是否为查询命令或其他管理员命令
+            # 如果发送者是管理员，调用 handle_admin_command 处理所有命令
             if sender in self.admins:
-                if self.is_query_logs_command(message_content):
+                response = self.handle_admin_command(message_content)
+                if response:
                     if self.notifier:
-                        logs = self.get_last_n_logs(20)
-                        if logs:
-                            self.notifier.notify_long_message(f"最近 20 行日志:\n{logs}")
-                        else:
-                            self.notifier.notify("无法读取日志文件或日志文件为空。")
-                    return  # 处理完命令后返回
-                elif self.is_query_browser_command(message_content):
-                    self.handle_query_browser_command()
-                    return
-                else:
-                    # 处理其他管理员命令
-                    response = self.handle_admin_command(message_content)
-                    if response:
-                        if self.notifier:
-                            self.notifier.notify(response)
-                    return
+                        self.notifier.notify(response)
+                return
 
             # 对于非管理员的消息，处理URL
             if sender in self.target_individuals:
@@ -295,7 +282,10 @@ class MessageHandler:
             update_remaining_pattern = r'^更新剩余次数\s+(\S+)\s+([+-]?\d+)$'
             query_recipient_pattern = r'^查询接收者\s+(\S+)$'
             get_all_recipients_pattern = r'^获取所有接收者$'
-            help_pattern = r'^帮助$|^help$'  # 新增 help 命令的匹配模式
+            help_pattern = r'^帮助$|^help$'
+            restart_browser_pattern = r'^重启浏览器$|^restart browser$'
+            query_logs_pattern = r'^查询日志$|^query logs$'
+            query_browser_pattern = r'^查询浏览器$|^query browser$'
 
             if re.match(add_recipient_pattern, message):
                 match = re.match(add_recipient_pattern, message)
@@ -348,9 +338,67 @@ class MessageHandler:
                     "5. 获取所有接收者\n"
                     "   示例：获取所有接收者\n\n"
                     "6. 帮助\n"
-                    "   示例：帮助"
+                    "   示例：帮助\n\n"
+                    "7. 重启浏览器\n"
+                    "   示例：重启浏览器\n\n"
+                    "8. 查询日志\n"
+                    "   示例：查询日志\n\n"
+                    "9. 查询浏览器\n"
+                    "   示例：查询浏览器"
                 )
                 return help_message
+
+            elif re.match(restart_browser_pattern, message):
+                # 调用 AutoDownloadManager 的 restart_browser 方法
+                if self.browser_controller:
+                    self.browser_controller.restart_browser()
+                    return "浏览器已成功重启。"
+                else:
+                    logging.error("浏览器控制器未设置，无法重启浏览器。")
+                    return "浏览器控制器未设置，无法重启浏览器。"
+
+            elif re.match(query_logs_pattern, message):
+                # 处理查询日志命令
+                if self.notifier:
+                    logs = self.get_last_n_logs(20)
+                    if logs:
+                        # 使用 send_long_message 辅助函数发送长消息
+                        send_long_message(self.notifier, f"最近 20 行日志:\n{logs}")
+                    else:
+                        self.notifier.notify("无法读取日志文件或日志文件为空。")
+                else:
+                    logging.error("Notifier 未设置，无法发送日志。")
+                return None  # 已通过 notifier 发送消息，无需进一步反馈
+
+            elif re.match(query_browser_pattern, message):
+                # 处理查询浏览器命令，捕获截图并发送给管理员
+                if not self.browser_controller:
+                    logging.error("浏览器控制器未设置，无法处理查询浏览器命令。")
+                    if self.notifier:
+                        self.notifier.notify("无法处理查询浏览器命令，因为浏览器控制器未设置。", is_error=True)
+                    return "浏览器控制器未设置，无法查询浏览器。"
+
+                logging.info("收到查询浏览器命令，开始捕获截图。")
+                try:
+                    screenshot_paths = self.browser_controller.capture_all_tabs_screenshots()
+                    if screenshot_paths:
+                        self.notifier.notify_images(screenshot_paths)
+                        logging.info("浏览器标签页截图已发送给管理员。")
+
+                        # 删除临时截图文件
+                        for path in screenshot_paths:
+                            try:
+                                os.remove(path)
+                                logging.debug(f"已删除临时截图文件: {path}")
+                            except Exception as e:
+                                logging.warning(f"无法删除临时截图文件 {path}: {e}")
+                    else:
+                        self.notifier.notify("无法捕获浏览器标签页的截图。", is_error=True)
+                except Exception as e:
+                    logging.error(f"处理查询浏览器命令时发生错误: {e}", exc_info=True)
+                    if self.notifier:
+                        self.notifier.notify(f"处理查询浏览器命令时发生错误: {e}", is_error=True)
+                return None  # 已通过 notifier 发送消息，无需进一步反馈
 
             else:
                 logging.warning(f"未知的管理员命令：{message}")
@@ -359,45 +407,6 @@ class MessageHandler:
         except Exception as e:
             logging.error(f"处理管理员命令时发生错误：{e}", exc_info=True)
             return f"处理命令时发生错误：{e}"
-
-    def is_query_browser_command(self, message: str) -> bool:
-        """
-        判断消息是否为查询浏览器命令
-        仅限于管理员发送
-        """
-        return message.strip().lower() in ['查询浏览器', 'query browser']
-
-    def handle_query_browser_command(self):
-        """
-        处理查询浏览器命令，捕获截图并发送给管理员
-        """
-        if not self.browser_controller:
-            logging.error("浏览器控制器未设置，无法处理查询浏览器命令。")
-            if self.notifier:
-                self.notifier.notify("无法处理查询浏览器命令，因为浏览器控制器未设置。", is_error=True)
-            return
-
-        logging.info("收到查询浏览器命令，开始捕获截图。")
-        try:
-            screenshot_paths = self.browser_controller.capture_all_tabs_screenshots()
-            if screenshot_paths:
-                self.notifier.notify_images(screenshot_paths)
-                logging.info("浏览器标签页截图已发送给管理员。")
-
-                # 删除临时截图文件
-                for path in screenshot_paths:
-                    try:
-                        os.remove(path)
-                        logging.debug(f"已删除临时截图文件: {path}")
-                    except Exception as e:
-                        logging.warning(f"无法删除临时截图文件 {path}: {e}")
-            else:
-                self.notifier.notify("无法捕获浏览器标签页的截图。", is_error=True)
-        except Exception as e:
-            logging.error(f"处理查询浏览器命令时发生错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"处理查询浏览器命令时发生错误: {e}", is_error=True)
-
 
     def extract_message_content(self, msg):
         """
@@ -479,13 +488,6 @@ class MessageHandler:
         验证 URL 是否符合预期的格式或条件
         """
         return url.startswith('http://') or url.startswith('https://')
-
-    def is_query_logs_command(self, message: str) -> bool:
-        """
-        判断消息是否为查询日志命令
-        仅限于管理员发送
-        """
-        return message.strip().lower() in ['查询日志', 'query logs']
 
     def get_last_n_logs(self, n: int) -> Optional[str]:
         """

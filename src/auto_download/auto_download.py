@@ -197,6 +197,32 @@ class XKW:
                 self.notifier.notify(f"获取标签页列表时发生错误: {e}", is_error=True)
         return screenshot_paths
 
+    def restart_browser(self):
+        """
+        重启浏览器：关闭所有标签页并重新初始化它们。
+        """
+        try:
+            logging.info("开始重启浏览器。")
+            if self.page:
+                current_tabs = self.page.get_tabs()
+                self.close_tabs(current_tabs)
+                logging.info("所有浏览器标签页已关闭。")
+                if self.notifier:
+                    self.notifier.notify("所有浏览器标签页已关闭。")
+
+                self.make_tabs()
+                logging.info("浏览器标签页已重新打开。")
+                if self.notifier:
+                    self.notifier.notify("浏览器已成功重启。")
+            else:
+                logging.error("ChromiumPage 实例未初始化，无法重启浏览器。")
+                if self.notifier:
+                    self.notifier.notify("ChromiumPage 实例未初始化，无法重启浏览器。", is_error=True)
+        except Exception as e:
+            logging.error(f"重启浏览器时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"重启浏览器时出错: {e}", is_error=True)
+
     def extract_id_and_title(self, tab, url) -> Tuple[str, str]:
         """
         从页面中提取 soft_id 和标题
@@ -512,6 +538,23 @@ class AutoDownloadManager:
             logging.error(f"添加单个 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"添加单个 URL 时发生错误: {e}", is_error=True)
+
+    def restart_browser(self):
+        """
+        重启浏览器，通过调用 downloader 的 restart_browser 方法。
+        """
+        try:
+            if self.downloader:
+                logging.info("调用 downloader 重启浏览器。")
+                self.downloader.restart_browser()
+            else:
+                logging.error("Downloader 未初始化，无法重启浏览器。")
+                if self.notifier:
+                    self.notifier.notify("Downloader 未初始化，无法重启浏览器。", is_error=True)
+        except Exception as e:
+            logging.error(f"重启浏览器时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"重启浏览器时出错: {e}", is_error=True)
 
     def stop(self):
         """
