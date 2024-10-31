@@ -199,19 +199,26 @@ class XKW:
 
     def restart_browser(self):
         """
-        重启浏览器：关闭所有标签页并重新初始化它们。
+        重启浏览器：将所有标签页导航到空白页，并重新初始化它们。
         """
         try:
             logging.info("开始重启浏览器。")
             if self.page:
                 current_tabs = self.page.get_tabs()
-                self.close_tabs(current_tabs)
-                logging.info("所有浏览器标签页已关闭。")
-                if self.notifier:
-                    self.notifier.notify("所有浏览器标签页已关闭。")
+                for tab in current_tabs:
+                    try:
+                        tab.go('about:blank')
+                        logging.debug("将标签页导航到空白页。")
+                    except Exception as e:
+                        logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
 
+                logging.info("所有浏览器标签页已导航到空白页。")
+                if self.notifier:
+                    self.notifier.notify("所有浏览器标签页已导航到空白页。")
+
+                # 重新初始化标签页
                 self.make_tabs()
-                logging.info("浏览器标签页已重新打开。")
+                logging.info("浏览器标签页已重新初始化。")
                 if self.notifier:
                     self.notifier.notify("浏览器已成功重启。")
             else:
