@@ -58,8 +58,6 @@ def main():
             error_handler=error_handler,
             notifier=notifier,
             browser_controller=xkw,
-            log_callback=None,
-            qr_queue=None
         )
         logging.info("ItChatHandler 初始化完成")
 
