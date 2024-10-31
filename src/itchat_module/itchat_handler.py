@@ -155,6 +155,19 @@ class MessageHandler:
         """设置 Uploader 实例用于上传相关信息"""
         self.uploader = uploader
 
+    def get_message_content(self, msg) -> str:
+        """获取消息的完整文本内容"""
+        try:
+            msg_type = msg.get('Type', getattr(msg, 'type', ''))
+            if msg_type not in ['Text', 'Sharing']:
+                return ''
+
+            return msg.get('Text', msg.get('text', '')) if msg_type == 'Text' else msg.get('Url', msg.get('url', ''))
+        except Exception as e:
+            logging.error(f"获取消息内容时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return ''
+
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
         group_name = msg['User']['NickName']
@@ -181,11 +194,8 @@ class MessageHandler:
             logging.debug(f"忽略来自非监控个人的消息: {sender}")
             return
 
-        content = self.extract_urls(msg)
-        if not content:
-            return
-
         if sender in self.admins:
+            content = self.get_message_content(msg)  # 获取完整消息内容
             response = self.handle_admin_command(content)
             if response and self.notifier:
                 self.notifier.notify(response)
