@@ -207,7 +207,7 @@ class XKW:
                 current_tabs = self.page.get_tabs()
                 for tab in current_tabs:
                     try:
-                        tab.go('about:blank')
+                        tab.get('about:blank')  # 导航到空白页
                         logging.debug("将标签页导航到空白页。")
                     except Exception as e:
                         logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
