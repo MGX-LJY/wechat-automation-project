@@ -46,7 +46,7 @@ def main():
             'download_path',
             Path(__file__).parent.parent / 'auto_download/Downloads'
         )
-        xkw = XKW(thread=3, work=True, download_dir=str(download_path), uploader=uploader)
+        xkw = XKW(thread=5, work=True, download_dir=str(download_path), uploader=uploader)
         logging.info("XKW 初始化完成")
 
         # 8. 初始化 ItChatHandler，并传递 Notifier 和管理员列表
