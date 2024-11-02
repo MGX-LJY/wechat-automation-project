@@ -315,6 +315,7 @@ class XKW:
             logging.warning("Uploader 未设置，无法传递上传任务。")
 
     def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=5):
+        base_delay = 2  # 基础延迟时间（秒）
         while retry < max_retries:
             logging.info(f"开始下载 {url}, 重试次数: {retry}")
             try:
@@ -328,11 +329,17 @@ class XKW:
                         self.handle_success(url, title, soft_id)
                         return
                     elif "20600001" in item.url:
-                        logging.warning("请求过于频繁，暂停1秒后重试。")
-                        time.sleep(1)
+                        logging.warning("请求过于频繁，暂停后重试。")
+                        # 指数退避：每次重试延迟翻倍，并加入随机抖动
+                        backoff = base_delay * (2 ** retry)
+                        jitter = random.uniform(0, 1)
+                        total_delay = backoff + jitter
+                        logging.debug(f"请求过于频繁，等待 {total_delay:.1f} 秒后重试。")
+                        time.sleep(total_delay)
                         retry += 1
                         break
                 else:
+                    # 其他未处理的情况
                     time.sleep(1)
                     iframe = tab.get_frame('#layui-layer-iframe100002')
                     if iframe:
@@ -348,13 +355,23 @@ class XKW:
                 logging.warning(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}")
                 if self.notifier:
                     self.notifier.notify(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}", is_error=True)
-                time.sleep(5)
+                # 指数退避
+                backoff = base_delay * (2 ** retry)
+                jitter = random.uniform(0, 1)
+                total_delay = backoff + jitter
+                logging.debug(f"页面上下文丢失，等待 {total_delay:.1f} 秒后重试。")
+                time.sleep(total_delay)
                 retry += 1
             except Exception as e:
                 logging.error(f"下载过程中出错: {e}", exc_info=True)
                 if self.notifier:
                     self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-                time.sleep(5)
+                # 指数退避
+                backoff = base_delay * (2 ** retry)
+                jitter = random.uniform(0, 1)
+                total_delay = backoff + jitter
+                logging.debug(f"下载出错，等待 {total_delay:.1f} 秒后重试。")
+                time.sleep(total_delay)
                 retry += 1
         # 超过最大重试次数，记录失败
         logging.error(f"下载任务最终失败: {url}")
@@ -362,12 +379,15 @@ class XKW:
         if self.notifier:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
 
+    import random
+
     def download(self, url):
         try:
             logging.info(f"准备下载 URL: {url}")
-            delay = random.uniform(1, 2)
-            logging.debug(f"随机延迟 {delay:.1f} 秒")
-            time.sleep(delay)
+            # 增加随机延迟，模拟人类等待页面加载
+            pre_download_delay = random.uniform(2, 5)
+            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
+            time.sleep(pre_download_delay)
 
             tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
             logging.info(f"获取到一个标签页用于下载: {tab}")
@@ -392,6 +412,11 @@ class XKW:
                 return
 
             logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
+            # 增加随机延迟，模拟人类点击
+            click_delay = random.uniform(1, 3)
+            logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
+            time.sleep(click_delay)
+
             # 开始下载并处理后续任务
             self.listener(tab, download_button, url, title, soft_id)
         except queue.Empty:
@@ -412,7 +437,7 @@ class XKW:
             futures = []
             while self.work:
                 try:
-                    url = self.task.get(timeout=5)  # 等待新任务
+                    url = self.task.get(timeout=2)  # 等待新任务
                     if url is None:
                         logging.info("接收到退出信号，停止下载管理。")
                         break
@@ -426,14 +451,25 @@ class XKW:
                     future = executor.submit(self.download, url)
                     futures.append(future)
                     logging.info(f"已提交下载任务到线程池: {url}")
+
+                    # 增加随机间隔，模拟任务分发的不规则性
+                    task_dispatch_delay = random.uniform(0.5, 2)
+                    logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
+                    time.sleep(task_dispatch_delay)
                 except queue.Empty:
                     # 处理失败的任务
                     try:
                         failed_url = self.failed_tasks.get_nowait()
                         self.retry_counts[failed_url] = self.retry_counts.get(failed_url, 0) + 1
                         if self.retry_counts[failed_url] <= 5:
-                            logging.info(f"重新添加失败的URL到任务队列: {failed_url}, 重试次数: {self.retry_counts[failed_url]}")
+                            logging.info(
+                                f"重新添加失败的URL到任务队列: {failed_url}, 重试次数: {self.retry_counts[failed_url]}")
                             self.task.put(failed_url)
+
+                            # 增加随机延迟，模拟重试的间隔不规则性
+                            retry_delay = random.uniform(1, 3)
+                            logging.debug(f"重试任务前随机延迟 {retry_delay:.1f} 秒")
+                            time.sleep(retry_delay)
                         else:
                             logging.error(f"URL {failed_url} 超过最大重试次数，无法下载。")
                             if self.notifier:
@@ -444,6 +480,7 @@ class XKW:
                     logging.error(f"任务分发时出错: {e}", exc_info=True)
                     if self.notifier:
                         self.notifier.notify(f"任务分发时出错: {e}", is_error=True)
+
             # 等待所有任务完成
             for future in futures:
                 try:

@@ -46,7 +46,7 @@ def main():
             'download_path',
             Path(__file__).parent.parent / 'auto_download/Downloads'
         )
-        xkw = XKW(thread=20, work=True, download_dir=str(download_path), uploader=uploader)
+        xkw = XKW(thread=5, work=True, download_dir=str(download_path), uploader=uploader)
         logging.info("XKW 初始化完成")
 
         # 8. 初始化 ItChatHandler，并传递 Notifier 和管理员列表
@@ -70,7 +70,6 @@ def main():
         itchat_handler.login()
         logging.info("微信登录完成")
 
-        # 12. 启动微信消息监听线程
         # 11. 启动微信消息监听线程
         itchat_thread = threading.Thread(target=itchat_handler.run, daemon=True)
         itchat_thread.start()
