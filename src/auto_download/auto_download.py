@@ -83,6 +83,21 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"初始化标签页时出错: {e}", is_error=True)
 
+    def reset_tab(self, tab):
+        """
+        等待1秒后将标签页导航到空白页以重置状态。
+        """
+        try:
+            logging.info("等待1秒后重置标签页到空白页。")
+            time.sleep(1)
+            tab.get('about:blank')
+            logging.info("标签页已重置为 about:blank。")
+        except Exception as e:
+            logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"导航标签页到空白页时出错: {e}", is_error=True)
+
+
     def match_downloaded_file(self, title):
         logging.debug(f"开始匹配下载的文件，标题: {title}")
 
@@ -282,9 +297,8 @@ class XKW:
                 self.notifier.notify(f"提取 ID 和标题时出错: {e}", is_error=True)
             return None, None
 
-    def handle_success(self, tab, url, title, soft_id):
-        tab.get('about:blank')
-        logging.info(f"下载成功,重置网页，开始处理上传任务: {url}")
+    def handle_success(self, url, title, soft_id):
+        logging.info(f"下载成功，开始处理上传任务: {url}")
         # 匹配下载的文件
         file_path = self.match_downloaded_file(title)
         if not file_path:
@@ -322,6 +336,9 @@ class XKW:
                         tab.stop_loading()
                         logging.info(f"下载链接获取成功: {item.url}")
                         self.handle_success(url, title, soft_id)
+
+                        # 等待1秒后重置标签页
+                        self.reset_tab(tab)
                         return
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
@@ -367,8 +384,8 @@ class XKW:
                 time.sleep(total_delay)
                 retry += 1
             try:
-                tab.get('about:blank')
-                logging.info("导航标签页到空白页以重置状态。")
+                # 等待1秒后重置标签页
+                self.reset_tab(tab)
             except Exception as reset_e:
                 logging.error(f"导航标签页到空白页时出错: {reset_e}", exc_info=True)
                 if self.notifier:
@@ -376,9 +393,11 @@ class XKW:
 
         # 超过最大重试次数，记录失败
         logging.error(f"下载任务最终失败: {url}")
-        tab.get('about:blank')
         if self.notifier:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
+
+        # 等待1秒后重置标签页
+        self.reset_tab(tab)
 
     def download(self, url):
         try:
@@ -397,8 +416,8 @@ class XKW:
             if not download_button:
                 logging.error(f"无法找到下载按钮，跳过URL: {url}")
                 try:
-                    tab.get('about:blank')
-                    logging.info(f"导航标签页到空白页以重置状态: {tab}")
+                    # 等待1秒后重置标签页
+                    self.reset_tab(tab)
                 except Exception as e:
                     logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
                 if self.notifier:
@@ -418,8 +437,8 @@ class XKW:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if 'tab' in locals():
                 try:
-                    tab.get('about:blank')
-                    logging.info(f"导航标签页到空白页以重置状态: {tab}")
+                    # 等待1秒后重置标签页
+                    self.reset_tab(tab)
                 except Exception as close_e:
                     logging.error(f"导航标签页到空白页时出错: {close_e}", exc_info=True)
             if self.notifier:
