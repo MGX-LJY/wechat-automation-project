@@ -46,6 +46,8 @@ class XKW:
         self.co.set_download_path(download_dir or DOWNLOAD_DIR)  # 设置下载路径
         # self.co.set_argument('--no-sandbox')  # 无沙盒模式
         self.page = ChromiumPage(self.co)
+        self.last_download_time = 0  # 记录上一次下载任务启动的时间
+        self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
@@ -433,27 +435,39 @@ class XKW:
                 self.tabs.put(tab)
 
     def run(self):
+        max_retries_per_url = 1  # 降低最大重试次数
         with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
             futures = []
             while self.work:
                 try:
-                    url = self.task.get(timeout=2)  # 等待新任务
+                    url = self.task.get(timeout=5)  # 等待新任务
                     if url is None:
                         logging.info("接收到退出信号，停止下载管理。")
                         break
                     # 检查URL是否已经超过重试次数
                     current_retry = self.retry_counts.get(url, 0)
-                    if current_retry >= 5:
+                    if current_retry >= max_retries_per_url:
                         logging.error(f"URL {url} 已超过最大重试次数，跳过。")
                         if self.notifier:
                             self.notifier.notify(f"URL {url} 已超过最大重试次数，跳过。", is_error=True)
                         continue
+
+                    # 控制下载启动间隔
+                    with self.download_lock:
+                        current_time = time.time()
+                        elapsed = current_time - self.last_download_time
+                        if elapsed < 2:
+                            wait_time = 2 - elapsed
+                            logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
+                            time.sleep(wait_time)
+                        self.last_download_time = time.time()
+
                     future = executor.submit(self.download, url)
                     futures.append(future)
                     logging.info(f"已提交下载任务到线程池: {url}")
 
                     # 增加随机间隔，模拟任务分发的不规则性
-                    task_dispatch_delay = random.uniform(0.5, 2)
+                    task_dispatch_delay = random.uniform(0.2, 1)
                     logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
                     time.sleep(task_dispatch_delay)
                 except queue.Empty:
@@ -461,13 +475,12 @@ class XKW:
                     try:
                         failed_url = self.failed_tasks.get_nowait()
                         self.retry_counts[failed_url] = self.retry_counts.get(failed_url, 0) + 1
-                        if self.retry_counts[failed_url] <= 5:
-                            logging.info(
-                                f"重新添加失败的URL到任务队列: {failed_url}, 重试次数: {self.retry_counts[failed_url]}")
+                        if self.retry_counts[failed_url] <= max_retries_per_url:
+                            logging.info(f"重新添加失败的URL到任务队列: {failed_url}, 重试次数: {self.retry_counts[failed_url]}")
                             self.task.put(failed_url)
 
-                            # 增加随机延迟，模拟重试的间隔不规则性
-                            retry_delay = random.uniform(1, 3)
+                            # 缩短重试延迟
+                            retry_delay = random.uniform(0.3, 1)
                             logging.debug(f"重试任务前随机延迟 {retry_delay:.1f} 秒")
                             time.sleep(retry_delay)
                         else:
