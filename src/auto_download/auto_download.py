@@ -282,8 +282,9 @@ class XKW:
                 self.notifier.notify(f"提取 ID 和标题时出错: {e}", is_error=True)
             return None, None
 
-    def handle_success(self, url, title, soft_id):
-        logging.info(f"下载成功，开始处理上传任务: {url}")
+    def handle_success(self, tab, url, title, soft_id):
+        tab.get('about:blank')
+        logging.info(f"下载成功,重置网页，开始处理上传任务: {url}")
         # 匹配下载的文件
         file_path = self.match_downloaded_file(title)
         if not file_path:
