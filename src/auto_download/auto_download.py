@@ -231,39 +231,59 @@ class XKW:
         """
         从页面中提取 soft_id 和标题
         """
-        # 尝试加载页面
-        tab.get(url)
-        # 停止页面加载以加快速度
-        tab.stop_loading()
+        try:
+            # 尝试加载页面
+            tab.get(url)
+            # 停止页面加载以加快速度
+            tab.stop_loading()
 
-        # 使用提供的方法提取标题
-        h1 = tab.s_ele("t:h1@@class=res-title clearfix")
-        if h1:
-            title_element = h1.child("t:span")
-            if title_element:
-                title = title_element.text.strip()
-                logging.info(f"从 h1 标签中获取到标题: {title}")
+            # 使用提供的方法提取标题
+            h1 = tab.s_ele("t:h1@@class=res-title clearfix")
+            if h1:
+                title_element = h1.child("t:span")
+                if title_element:
+                    title = title_element.text.strip()
+                    logging.info(f"从 h1 标签中获取到标题: {title}")
+                else:
+                    logging.error(f"无法从 h1 标签中获取到 span 元素，URL: {url}")
+                    return None, None
             else:
-                logging.error(f"无法从 h1 标签中获取到 span 元素，URL: {url}")
+                logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
                 return None, None
-        else:
-            logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
+
+            # 从 URL 中提取 soft_id
+            match = re.search(r'/soft/(\d+)\.html', url)
+            if match:
+                soft_id = match.group(1)
+                logging.info(f"从 URL 中提取到 soft_id: {soft_id}")
+            else:
+                logging.error(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
+                return None, None
+
+            return soft_id, title
+
+        except ContextLostError as e:
+            logging.error(f"页面上下文丢失，重新获取标签页。错误: {e}")
+            if self.notifier:
+                self.notifier.notify(f"页面上下文丢失，重新获取标签页。错误: {e}", is_error=True)
+            # 重新获取标签页
+            try:
+                tab = self.tabs.get(timeout=10)
+                return self.extract_id_and_title(tab, url)
+            except queue.Empty:
+                logging.error("无法重新获取标签页，跳过 URL")
+                if self.notifier:
+                    self.notifier.notify("无法重新获取标签页，跳过 URL", is_error=True)
+                return None, None
+
+        except Exception as e:
+            logging.error(f"提取 ID 和标题时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"提取 ID 和标题时出错: {e}", is_error=True)
             return None, None
 
-        # 从 URL 中提取 soft_id
-        match = re.search(r'/soft/(\d+)\.html', url)
-        if match:
-            soft_id = match.group(1)
-            logging.info(f"从 URL 中提取到 soft_id: {soft_id}")
-        else:
-            logging.error(f"无法从 URL 中提取 soft_id，跳过 URL: {url}")
-            return None, None
-
-        return soft_id, title
-
-    def handle_success(self, tab, url, title, soft_id):
-        tab.get('about:blank')
-        logging.info(f"下载成功,重置网页，开始处理上传任务: {url}")
+    def handle_success(self, url, title, soft_id):
+        logging.info(f"下载成功，开始处理上传任务: {url}")
         # 匹配下载的文件
         file_path = self.match_downloaded_file(title)
         if not file_path:
@@ -345,15 +365,21 @@ class XKW:
                 logging.debug(f"下载出错，等待 {total_delay:.1f} 秒后重试。")
                 time.sleep(total_delay)
                 retry += 1
+            try:
                 tab.get('about:blank')
                 logging.info("导航标签页到空白页以重置状态。")
+            except Exception as reset_e:
+                logging.error(f"导航标签页到空白页时出错: {reset_e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"导航标签页到空白页时出错: {reset_e}", is_error=True)
 
+        # 超过最大重试次数，记录失败
         logging.error(f"下载任务最终失败: {url}")
         tab.get('about:blank')
         if self.notifier:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
 
-    def download(self, url, tab):
+    def download(self, url):
         try:
             logging.info(f"准备下载 URL: {url}")
             # 增加随机延迟，模拟人类等待页面加载
