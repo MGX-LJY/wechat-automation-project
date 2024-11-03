@@ -193,15 +193,10 @@ class MessageHandler:
 
         sender_nickname = msg['ActualNickName']  # 获取发送者昵称
 
-        # 提取并处理URL
+        # 提取URL
         urls = self.extract_urls(msg)
         if not urls:
             return
-
-        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
-        if not valid_urls:
-            return
-
 
         # 检查积分
         if group_type == 'whole':
@@ -213,15 +208,27 @@ class MessageHandler:
                 logging.info(f"群组 '{group_name}' 内至少一个成员的积分不足，忽略消息。")
                 return
 
-        urls = self.extract_urls(msg)
-        if not urls:
+        # 处理URL
+        valid_urls = self.process_urls(
+            urls,
+            is_group=True,
+            recipient_name=group_name,
+            sender_nickname=sender_nickname if group_type == 'whole' else None,
+            group_type=group_type
+        )
+        if not valid_urls:
             return
 
-        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
         if self.auto_clicker and valid_urls:
             for url in valid_urls:
-                self.auto_clicker.add_task(url, group_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
-                logging.info(f"已添加任务到下载队列: {url}, 发送者: {sender_nickname if group_type == 'whole' else '群组消息'}")
+                self.auto_clicker.add_task(
+                    url,
+                    group_name=group_name,
+                    sender_nickname=sender_nickname if group_type == 'whole' else None,
+                    group_type=group_type
+                )
+                logging.info(
+                    f"已添加任务到下载队列: {url}, 发送者: {sender_nickname if group_type == 'whole' else '群组消息'}")
         else:
             logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
@@ -239,6 +246,11 @@ class MessageHandler:
                 self.notifier.notify(response)
             return
 
+        # 提取URL
+        urls = self.extract_urls(msg)
+        if not urls:
+            return
+
         # 检查发送者是否有足够的积分
         if not self.point_manager.has_recipient_points(sender):
             logging.info(f"发送者 '{sender}' 积分不足，无法添加任务到下载队列。")
@@ -246,16 +258,11 @@ class MessageHandler:
                 self.notifier.notify(f"抱歉，您当前的积分不足，无法添加下载任务。请联系管理员获取更多信息。")
             return
 
-        # 提取并处理URL
-        urls = self.extract_urls(msg)
-        if not urls:
-            return
-
+        # 处理URL
         valid_urls = self.process_urls(urls, is_group=False, recipient_name=sender)
         if not valid_urls:
             return
 
-        valid_urls = self.process_urls(urls, is_group=False, recipient_name=sender)
         if self.auto_clicker and valid_urls:
             for url in valid_urls:
                 success = self.auto_clicker.add_task(url, recipient_type='individual')
