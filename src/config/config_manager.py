@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 class ConfigManager:
@@ -10,6 +11,8 @@ class ConfigManager:
     def load_config():
         """加载固定路径的配置文件"""
         try:
+            logging.debug(f"当前工作目录: {os.getcwd()}")
+            logging.debug(f"尝试加载配置文件: {ConfigManager.CONFIG_PATH.resolve()}")
             with open(ConfigManager.CONFIG_PATH, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             logging.info("配置文件加载成功")
