@@ -179,7 +179,7 @@ class MessageHandler:
 
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
-        group_name = msg['User']['ActualNickName']
+        group_name = msg['User']['NickName']
         if group_name not in self.monitor_groups:
             logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
