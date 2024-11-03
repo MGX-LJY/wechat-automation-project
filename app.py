@@ -58,7 +58,6 @@ def main():
         admins = wechat_config.get('admins', [])  # 获取管理员列表
 
         itchat_handler = ItChatHandler(
-            config=wechat_config,
             error_handler=error_handler,
             notifier=notifier,
             browser_controller=xkw,
