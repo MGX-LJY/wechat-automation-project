@@ -181,6 +181,7 @@ class MessageHandler:
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
         group_name = msg['User']['NickName']
+        logging.debug(f"接收到来自群组的消息: {group_name}")
         if group_name not in self.monitor_groups:
             logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
@@ -194,7 +195,10 @@ class MessageHandler:
             # 默认设为非整体群组
             group_type = 'non-whole'
 
+        logging.debug(f"群组类型: {group_type}")
+
         sender_nickname = msg['ActualNickName']  # 获取发送者昵称
+        logging.debug(f"发送者昵称: {sender_nickname}")
 
         # 检查积分
         if group_type == 'whole':
@@ -205,18 +209,6 @@ class MessageHandler:
             if not self.point_manager.has_group_members_points(group_name):
                 logging.info(f"群组 '{group_name}' 内至少一个成员的积分不足，忽略消息。")
                 return
-
-        urls = self.extract_urls(msg)
-        if not urls:
-            return
-
-        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
-        if self.auto_clicker and valid_urls:
-            for url in valid_urls:
-                self.auto_clicker.add_task(url, group_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
-                logging.info(f"已添加任务到下载队列: {url}, 发送者: {sender_nickname if group_type == 'whole' else '群组消息'}")
-        else:
-            logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
