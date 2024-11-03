@@ -209,7 +209,7 @@ class MessageHandler:
                 return
 
         # 处理URL
-        processed_urls = self.process_urls(urls, is_group=True, recipient_name=group_name)
+        processed_urls = self.process_urls(urls)
         if not processed_urls:
             return
 
