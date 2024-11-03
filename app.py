@@ -5,19 +5,21 @@ import signal
 import sys
 import threading
 from pathlib import Path
-from src.auto_download.auto_download import XKW
+
+from src.auto_download.auto_download import AutoDownloadManager  # 修改导入
 from src.config.config_manager import ConfigManager
 from src.error_handling.error_handler import ErrorHandler
 from src.file_upload.uploader import Uploader
 from src.itchat_module.itchat_handler import ItChatHandler
 from src.logging_module.logger import setup_logging
 from src.notification.notifier import Notifier
-
+from src.point_manager import PointManager  # 新增导入
 
 def main():
     try:
         # 1. 加载主配置文件
-        main_config = ConfigManager.load_config('config.json')
+        config_path = 'config.json'
+        main_config = ConfigManager.load_config(config_path)
 
         # 2. 设置日志
         setup_logging(main_config)
@@ -34,51 +36,59 @@ def main():
 
         # 5. 从主配置中获取 upload 和 download 的配置
         upload_config = main_config.get('upload', {})
+        download_config = main_config.get('download', {})
         upload_error_notification_config = main_config.get('upload_error_notification', {})
 
-        # 6. 创建 Uploader 实例（初始化用户名延后）
-        uploader = Uploader(upload_config, upload_error_notification_config, error_handler)
+        # 6. 初始化 PointManager
+        point_manager = PointManager()
+        logging.info("PointManager 初始化完成")
+
+        # 7. 创建 Uploader 实例，传递 PointManager
+        uploader = Uploader(upload_config, upload_error_notification_config, error_handler, point_manager=point_manager)
         logging.info("Uploader 初始化完成")
 
-        # 7. 初始化 XKW（浏览器控制器）并使用相对路径
-        download_config = main_config.get('download', {})
+        # 8. 初始化 AutoDownloadManager，并使用相对路径，传递 PointManager
         download_path = download_config.get(
             'download_path',
-            Path(__file__).parent.parent / 'auto_download/Downloads'
+            str(Path(__file__).parent.parent / 'auto_download/Downloads')
         )
-        xkw = XKW(thread=5, work=True, download_dir=str(download_path), uploader=uploader)
-        logging.info("XKW 初始化完成")
+        auto_download_manager = AutoDownloadManager(
+            thread=5,
+            download_dir=download_path,
+            uploader=uploader,
+            notifier_config=notifier_config
+        )
+        logging.info("AutoDownloadManager 初始化完成")
 
-        # 8. 初始化 ItChatHandler，并传递 Notifier 和管理员列表
-        wechat_config = main_config.get('wechat', {})
-        admins = wechat_config.get('admins', [])  # 获取管理员列表
-
+        # 9. 初始化 ItChatHandler，并传递 Notifier 和管理员列表，传递 PointManager
         itchat_handler = ItChatHandler(
-            config=wechat_config,
+            config=main_config,  # 传递完整的配置
             error_handler=error_handler,
             notifier=notifier,
-            browser_controller=xkw,
+            browser_controller=auto_download_manager.downloader,
+            point_manager=point_manager,
+            config_path=config_path  # 传递配置文件路径
         )
         logging.info("ItChatHandler 初始化完成")
 
-        # 9. 绑定 Uploader 和 AutoClicker 到 ItChatHandler
+        # 10. 绑定 Uploader 和 AutoClicker 到 ItChatHandler
         itchat_handler.set_uploader(uploader)
-        itchat_handler.set_auto_clicker(xkw)
+        itchat_handler.set_auto_clicker(auto_download_manager.downloader)
         logging.info("Uploader 和 AutoClicker 已绑定到 ItChatHandler")
 
-        # 10. 登录微信
+        # 11. 登录微信
         itchat_handler.login()
         logging.info("微信登录完成")
 
-        # 11. 启动微信消息监听线程
+        # 12. 启动微信消息监听线程
         itchat_thread = threading.Thread(target=itchat_handler.run, daemon=True)
         itchat_thread.start()
         logging.info("微信消息监听线程已启动")
 
-        # 12. 注册信号处理，确保程序退出时停止下载监控和登出微信
+        # 13. 注册信号处理，确保程序退出时停止下载监控和登出微信
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
-            xkw.work = False  # 停止 XKW 的运行循环
+            auto_download_manager.stop()  # 停止 AutoDownloadManager
             itchat_handler.logout()
             sys.exit(0)
 

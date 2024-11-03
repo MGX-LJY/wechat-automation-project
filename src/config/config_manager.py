@@ -13,4 +13,14 @@ class ConfigManager:
             return config
         except Exception as e:
             logging.error(f"加载配置文件失败: {e}")
-            raise
+            raise e
+
+    @staticmethod
+    def save_config(config, config_path):
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=4)
+            logging.info("配置文件保存成功")
+        except Exception as e:
+            logging.error(f"保存配置文件失败: {e}")
+            raise e

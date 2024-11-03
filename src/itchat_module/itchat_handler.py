@@ -12,27 +12,33 @@ from lib import itchat
 from lib.itchat.content import TEXT, SHARING
 from typing import Optional, List
 from collections import deque
-
+from src.point_manager import PointManager
+from src.config.config_manager import ConfigManager  # 新增导入
 
 class ItChatHandler:
-    def __init__(self, config, error_handler, notifier, browser_controller):
-        self.monitor_groups: List[str] = config.get('monitor_groups', [])
-        self.target_individuals: List[str] = config.get('target_individuals', [])
-        self.admins: List[str] = config.get('admins', [])
+    def __init__(self, config, error_handler, notifier, browser_controller, point_manager, config_path):
+        self.monitor_groups: List[str] = config.get('wechat', {}).get('monitor_groups', [])
+        self.target_individuals: List[str] = config.get('wechat', {}).get('target_individuals', [])
+        self.admins: List[str] = config.get('wechat', {}).get('admins', [])
         self.error_handler = error_handler
-        self.qr_path = config.get('login_qr_path', 'qr.png')
-        self.max_retries = config.get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
-        self.retry_interval = config.get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
+        self.point_manager = point_manager
+        self.qr_path = config.get('wechat', {}).get('login_qr_path', 'qr.png')
+        self.max_retries = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
+        self.retry_interval = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
         self.login_event = threading.Event()
+        self.config = config  # 保存配置引用
+        self.config_path = config_path  # 配置文件路径
 
         self.message_handler = MessageHandler(
-            config=config,
+            config=self.config,
             error_handler=error_handler,
             monitor_groups=self.monitor_groups,
             target_individuals=self.target_individuals,
             admins=self.admins,
             notifier=notifier,
-            browser_controller=browser_controller
+            browser_controller=browser_controller,
+            point_manager=self.point_manager,
+            config_path=self.config_path  # 传递配置文件路径
         )
 
         self.uploader = None
@@ -134,9 +140,9 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None):
-        self.regex = re.compile(config.get('regex', r'https?://[^\s"」]+'))
-        self.validation = config.get('validation', True)
+    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_path='config.json'):
+        self.regex = re.compile(config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
+        self.validation = config.get('url', {}).get('validation', True)
         self.auto_clicker = None
         self.uploader = None
         self.error_handler = error_handler
@@ -146,6 +152,10 @@ class MessageHandler:
         self.notifier = notifier
         self.browser_controller = browser_controller
         self.log_dir = config.get('logging', {}).get('directory', 'logs')
+        self.point_manager = point_manager
+        self.group_types = config.get('group_types', {})
+        self.config = config  # 保存配置引用
+        self.config_path = config_path  # 配置文件路径
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -175,15 +185,36 @@ class MessageHandler:
             logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
 
+        # 获取群组类型
+        if group_name in self.group_types.get('whole_groups', []):
+            group_type = 'whole'
+        elif group_name in self.group_types.get('non_whole_groups', []):
+            group_type = 'non-whole'
+        else:
+            # 默认设为非整体群组
+            group_type = 'non-whole'
+
+        sender_nickname = msg['ActualNickName']  # 获取发送者昵称
+
+        # 检查积分
+        if group_type == 'whole':
+            if not self.point_manager.has_group_points(group_name):
+                logging.info(f"群组 '{group_name}' 的积分不足，忽略消息。")
+                return
+        elif group_type == 'non-whole':
+            if not self.point_manager.has_group_members_points(group_name):
+                logging.info(f"群组 '{group_name}' 内至少一个成员的积分不足，忽略消息。")
+                return
+
         urls = self.extract_urls(msg)
         if not urls:
             return
 
-        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name)
+        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
         if self.auto_clicker and valid_urls:
             for url in valid_urls:
-                self.auto_clicker.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
+                self.auto_clicker.add_task(url, group_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
+                logging.info(f"已添加任务到下载队列: {url}, 发送者: {sender_nickname if group_type == 'whole' else '群组消息'}")
         else:
             logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
@@ -201,6 +232,13 @@ class MessageHandler:
                 self.notifier.notify(response)
             return
 
+        # 检查发送者是否有足够的积分
+        if not self.point_manager.has_recipient_points(sender):
+            logging.info(f"发送者 '{sender}' 积分不足，无法添加任务到下载队列。")
+            if self.notifier:
+                self.notifier.notify(f"抱歉，您当前的积分不足，无法添加下载任务。请联系管理员获取更多信息。")
+            return
+
         urls = self.extract_urls(msg)
         if not urls:
             return
@@ -208,8 +246,13 @@ class MessageHandler:
         valid_urls = self.process_urls(urls, is_group=False, recipient_name=sender)
         if self.auto_clicker and valid_urls:
             for url in valid_urls:
-                self.auto_clicker.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
+                success = self.auto_clicker.add_task(url, recipient_type='individual')
+                if success:
+                    logging.info(f"已添加任务到下载队列: {url}。")
+                    if self.notifier:
+                        self.notifier.notify(f"已成功添加下载任务。")
+                else:
+                    logging.warning("AutoClicker 添加任务失败。")
         else:
             logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
@@ -218,13 +261,21 @@ class MessageHandler:
         commands = {
             'add_recipient': r'^添加接收者\s+(\S+)\s+(\d+)$',
             'delete_recipient': r'^删除接收者\s+(\S+)$',
-            'update_remaining': r'^更新剩余次数\s+(\S+)\s+([+-]?\d+)$',
+            'update_remaining': r'^更新剩余积分\s+(\S+)\s+([+-]?\d+)$',
             'query_recipient': r'^查询接收者\s+(\S+)$',
             'get_all_recipients': r'^获取所有接收者$',
             'help': r'^帮助$|^help$',
             'restart_browser': r'^重启浏览器$|^restart browser$',
             'query_logs': r'^查询日志$|^query logs$',
-            'query_browser': r'^查询浏览器$|^query browser$'
+            'query_browser': r'^查询浏览器$|^query browser$',
+            'add_monitor_group': r'^添加监听群组\s+(.+)$',
+            'remove_monitor_group': r'^删除监听群组\s+(.+)$',
+            'add_monitor_individual': r'^添加监听个人\s+(.+)$',
+            'remove_monitor_individual': r'^删除监听个人\s+(.+)$',
+            'add_whole_group': r'^添加整体群组\s+(.+)$',
+            'remove_whole_group': r'^删除整体群组\s+(.+)$',
+            'add_non_whole_group': r'^添加非整体群组\s+(.+)$',
+            'remove_non_whole_group': r'^删除非整体群组\s+(.+)$',
         }
 
         for cmd, pattern in commands.items():
@@ -232,21 +283,31 @@ class MessageHandler:
             if match:
                 if cmd == 'add_recipient':
                     name, count = match.groups()
-                    return self.uploader.add_recipient(name, int(count)) if self.uploader else "Uploader 未设置。"
+                    result = self.point_manager.add_recipient(name, initial_points=int(count))
+                    return result
                 elif cmd == 'delete_recipient':
                     name = match.group(1)
-                    return self.uploader.delete_recipient(name) if self.uploader else "Uploader 未设置。"
+                    success = self.point_manager.delete_recipient(name)
+                    if success:
+                        return f"接收者 '{name}' 已删除。"
+                    else:
+                        return f"接收者 '{name}' 删除失败或不存在。"
                 elif cmd == 'update_remaining':
                     name, delta = match.groups()
-                    return self.uploader.update_remaining_count(name, int(delta)) if self.uploader else "Uploader 未设置。"
+                    delta = int(delta)
+                    success = self.point_manager.update_recipient_points(name, delta)
+                    if success:
+                        return f"接收者 '{name}' 的剩余积分已更新，变化量为 {delta}。"
+                    else:
+                        return f"接收者 '{name}' 的积分更新失败。"
                 elif cmd == 'query_recipient':
                     name = match.group(1)
-                    info = self.uploader.get_recipient_info(name) if self.uploader else None
+                    info = self.point_manager.get_recipient_info(name)
                     if info:
-                        return f"接收者 '{info['name']}' 的剩余次数为 {info['remaining_count']}。"
+                        return f"接收者 '{info['name']}' 的剩余积分为 {info['remaining_points']}。"
                     return f"接收者 '{name}' 不存在。"
                 elif cmd == 'get_all_recipients':
-                    recipients = self.uploader.get_all_recipients() if self.uploader else []
+                    recipients = self.point_manager.get_all_recipients()
                     return f"所有接收者列表：{', '.join(recipients)}" if recipients else "当前没有任何接收者。"
                 elif cmd == 'help':
                     return self.get_help_message()
@@ -286,19 +347,213 @@ class MessageHandler:
                         if self.notifier:
                             self.notifier.notify(f"处理查询浏览器命令时发生错误: {e}", is_error=True)
                     return None
+                elif cmd == 'add_monitor_group':
+                    group_names = match.group(1)
+                    return self.modify_monitor_groups(group_names, action='add')
+                elif cmd == 'remove_monitor_group':
+                    group_names = match.group(1)
+                    return self.modify_monitor_groups(group_names, action='remove')
+                elif cmd == 'add_monitor_individual':
+                    individual_names = match.group(1)
+                    return self.modify_monitor_individuals(individual_names, action='add')
+                elif cmd == 'remove_monitor_individual':
+                    individual_names = match.group(1)
+                    return self.modify_monitor_individuals(individual_names, action='remove')
+                elif cmd == 'add_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='whole', action='add')
+                elif cmd == 'remove_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='whole', action='remove')
+                elif cmd == 'add_non_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='non_whole', action='add')
+                elif cmd == 'remove_non_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='non_whole', action='remove')
         logging.warning(f"未知的管理员命令：{message}")
         return "未知的命令，请检查命令格式。"
+
+    def modify_monitor_groups(self, group_names: str, action: str) -> str:
+        """添加或删除监听群组"""
+        try:
+            groups = [name.strip() for name in group_names.split(',')]
+            if action == 'add':
+                for group in groups:
+                    if group not in self.monitor_groups:
+                        self.monitor_groups.append(group)
+            elif action == 'remove':
+                for group in groups:
+                    if group in self.monitor_groups:
+                        self.monitor_groups.remove(group)
+            else:
+                return "未知的操作类型。"
+
+            # 更新配置并保存
+            self.config['wechat']['monitor_groups'] = self.monitor_groups
+            ConfigManager.save_config(self.config, self.config_path)
+
+            # 同步更新上传目标
+            self.sync_upload_targets()
+
+            message = f"已{ '添加' if action == 'add' else '删除' }监听群组：{', '.join(groups)}"
+            logging.info(message)
+            return message
+        except Exception as e:
+            logging.error(f"修改监听群组时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"修改监听群组时发生错误: {e}"
+
+    def modify_monitor_individuals(self, individual_names: str, action: str) -> str:
+        """添加或删除监听个人"""
+        try:
+            individuals = [name.strip() for name in individual_names.split(',')]
+            if action == 'add':
+                for individual in individuals:
+                    if individual not in self.target_individuals:
+                        self.target_individuals.append(individual)
+            elif action == 'remove':
+                for individual in individuals:
+                    if individual in self.target_individuals:
+                        self.target_individuals.remove(individual)
+            else:
+                return "未知的操作类型。"
+
+            if action == 'add':
+                message = f"已添加监听个人：{', '.join(individuals)}"
+            else:
+                message = f"已删除监听个人：{', '.join(individuals)}"
+
+            # 更新配置并保存
+            self.config['wechat']['target_individuals'] = self.target_individuals
+            ConfigManager.save_config(self.config, self.config_path)
+
+            # 同步更新上传目标
+            self.sync_upload_targets()
+
+            logging.info(message)
+            return message
+        except Exception as e:
+            logging.error(f"修改监听个人时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"修改监听个人时发生错误: {e}"
+
+    def modify_group_type(self, group_names: str, group_type: str, action: str) -> str:
+        """添加或删除整体群组或非整体群组"""
+        try:
+            groups = [name.strip() for name in group_names.split(',')]
+            group_key = 'whole_groups' if group_type == 'whole' else 'non_whole_groups'
+
+            if action == 'add':
+                for group in groups:
+                    if group not in self.group_types.get(group_key, []):
+                        self.group_types.setdefault(group_key, []).append(group)
+                    # 从另一类型的群组中移除
+                    other_key = 'non_whole_groups' if group_key == 'whole_groups' else 'whole_groups'
+                    if group in self.group_types.get(other_key, []):
+                        self.group_types[other_key].remove(group)
+                message = f"已添加{group_type}群组：{', '.join(groups)}"
+            elif action == 'remove':
+                for group in groups:
+                    if group in self.group_types.get(group_key, []):
+                        self.group_types[group_key].remove(group)
+                message = f"已删除{group_type}群组：{', '.join(groups)}"
+            else:
+                return "未知的操作类型。"
+
+            # 更新配置并保存
+            self.config['group_types'] = self.group_types
+            ConfigManager.save_config(self.config, self.config_path)
+
+            # 更新数据库中群组的类型
+            for group in groups:
+                is_whole = (group_type == 'whole' and action == 'add')
+                self.point_manager.ensure_group(group, is_whole=is_whole)
+
+            logging.info(message)
+            return message
+        except Exception as e:
+            logging.error(f"修改群组类型时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"修改群组类型时发生错误: {e}"
+
+    def sync_upload_targets(self):
+        """同步上传目标和监听目标"""
+        if self.uploader:
+            self.uploader.target_groups = self.monitor_groups.copy()
+            self.uploader.target_individuals = self.target_individuals.copy()
+            # 更新配置并保存
+            self.config['upload']['target_groups'] = self.uploader.target_groups
+            self.config['upload']['target_individuals'] = self.uploader.target_individuals
+            ConfigManager.save_config(self.config, self.config_path)
+            logging.info("上传目标已同步更新")
+        else:
+            logging.warning("Uploader 未设置，无法同步上传目标")
+
+    def set_config_value(self, key_path: str, value: str) -> str:
+        """设置配置文件中的值"""
+        try:
+            keys = key_path.split('.')
+            config_section = self.config
+            for key in keys[:-1]:
+                if key in config_section:
+                    config_section = config_section[key]
+                else:
+                    return f"配置项不存在: {key_path}"
+
+            last_key = keys[-1]
+            if last_key in config_section:
+                # 尝试将字符串转换为合适的类型（如整数、布尔值等）
+                old_value = config_section[last_key]
+                new_value = self._convert_value_type(value, old_value)
+                config_section[last_key] = new_value
+
+                # 保存配置
+                ConfigManager.save_config(self.config, self.config_path)
+
+                # 通知相关模块（如需要）
+                self._notify_config_change()
+
+                return f"配置项 '{key_path}' 已更新为 {new_value}"
+            else:
+                return f"配置项不存在: {key_path}"
+        except Exception as e:
+            logging.error(f"设置配置项时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return f"设置配置项时发生错误: {e}"
+
+    def _convert_value_type(self, value: str, old_value):
+        """根据原值的类型，将字符串转换为合适的类型"""
+        if isinstance(old_value, bool):
+            return value.lower() in ['true', '1', 'yes', 'on']
+        elif isinstance(old_value, int):
+            return int(value)
+        elif isinstance(old_value, float):
+            return float(value)
+        elif isinstance(old_value, list):
+            # 假设列表项为字符串，以逗号分隔
+            return [item.strip() for item in value.strip().split(',')]
+        else:
+            return value
+
+    def _notify_config_change(self):
+        """通知相关模块配置已更新"""
+        # 更新正则表达式
+        self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
+        # 更新验证开关
+        self.validation = self.config.get('url', {}).get('validation', True)
+        logging.info("MessageHandler 已更新配置")
 
     def get_help_message(self) -> str:
         """返回可用命令的帮助信息"""
         return (
             "可用命令如下：\n\n"
-            "1. 添加接收者 <接收者名称> <初始剩余次数>\n"
+            "1. 添加接收者 <接收者名称> <初始剩余积分>\n"
             "   示例：添加接收者 User1 500\n\n"
             "2. 删除接收者 <接收者名称>\n"
             "   示例：删除接收者 User1\n\n"
-            "3. 更新剩余次数 <接收者名称> <变化量>\n"
-            "   示例：更新剩余次数 User1 -10\n\n"
+            "3. 更新剩余积分 <接收者名称> <变化量>\n"
+            "   示例：更新剩余积分 User1 -10\n\n"
             "4. 查询接收者 <接收者名称>\n"
             "   示例：查询接收者 User1\n\n"
             "5. 获取所有接收者\n"
@@ -310,7 +565,23 @@ class MessageHandler:
             "8. 查询日志\n"
             "   示例：查询日志\n\n"
             "9. 查询浏览器\n"
-            "   示例：查询浏览器"
+            "   示例：查询浏览器\n\n"
+            "10. 添加监听群组 <群组名称1>,<群组名称2>\n"
+            "    示例：添加监听群组 群组A,群组B\n\n"
+            "11. 删除监听群组 <群组名称1>,<群组名称2>\n"
+            "    示例：删除监听群组 群组A,群组B\n\n"
+            "12. 添加监听个人 <个人名称1>,<个人名称2>\n"
+            "    示例：添加监听个人 个人1,个人2\n\n"
+            "13. 删除监听个人 <个人名称1>,<个人名称2>\n"
+            "    示例：删除监听个人 个人1,个人2\n\n"
+            "14. 添加整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：添加整体群组 群组A,群组B\n\n"
+            "15. 删除整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：删除整体群组 群组A,群组B\n\n"
+            "16. 添加非整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：添加非整体群组 群组A,群组B\n\n"
+            "17. 删除非整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：删除非整体群组 群组A,群组B\n"
         )
 
     def extract_urls(self, msg) -> List[str]:
@@ -328,7 +599,7 @@ class MessageHandler:
             self.error_handler.handle_exception(e)
             return []
 
-    def process_urls(self, urls: List[str], is_group: bool, recipient_name: str) -> List[str]:
+    def process_urls(self, urls: List[str], is_group: bool, recipient_name: str, sender_nickname: str = None, group_type: str = 'non-whole') -> List[str]:
         """清理、验证并处理URL，上传相关信息，返回有效的URL列表"""
         valid_urls = []
         for url in urls:
@@ -343,8 +614,13 @@ class MessageHandler:
             if soft_id_match:
                 soft_id = soft_id_match.group(1)
                 if self.uploader:
-                    self.uploader.upload_group_id(recipient_name, soft_id)
-                    logging.info(f"上传信息到 Uploader: {recipient_name}, {soft_id}")
+                    # 根据群组类型传递不同的 recipient_type
+                    if is_group:
+                        recipient_type = 'group'
+                    else:
+                        recipient_type = 'individual'
+                    self.uploader.upload_group_id(recipient_name, soft_id, sender_nickname=sender_nickname, recipient_type=recipient_type)
+                    logging.info(f"上传信息到 Uploader: {recipient_name}, {soft_id}, 发送者: {sender_nickname}")
                 else:
                     logging.warning("Uploader 未设置，无法上传接收者和 soft_id 信息。")
             else:
@@ -384,7 +660,6 @@ class MessageHandler:
         except Exception as e:
             logging.error(f"读取日志文件时出错: {e}", exc_info=True)
             return None
-
 
 def send_long_message(notifier, message: str, max_length: int = 2000):
     """将长消息分割为多个部分并逐段发送"""

@@ -3,14 +3,24 @@
         "login_qr_path": "qr.png",
         "monitor_groups": [
             "🐠【学虎】课件下载",
-            "网校通群"
-
+            "网校通群",
+            "测试"
         ],
         "target_individuals": [
             "李老师呀"
         ],
         "admins": [
             "李老师呀"
+        ]
+    },
+    "group_types": {
+        "whole_groups": [
+            "🐠【学虎】课件下载",
+            "网校通群"
+
+        ],
+        "non_whole_groups": [
+            "测试"
         ]
     },
     "url": {
@@ -54,19 +64,12 @@
     "upload": {
         "target_groups": [
             "🐠【学虎】课件下载",
-            "网校通群"
-
+            "网校通群",
+            "测试"
         ],
         "target_individuals": [
             "李老师呀"
-        ],
-        "database_path": "C:/Users/Administrator/PycharmProjects/wechat-automation-project/src/file_upload/counters.db",
-        "auto_accept_friends": {
-            "enabled": true,
-            "check_interval": 60,
-            "remark": "欢迎加入，{friend_name}！",
-            "tags": ["wxauto"]
-        }
+        ]
     },
     "logging": {
         "directory": "logs",
