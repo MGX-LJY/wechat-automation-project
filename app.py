@@ -16,8 +16,8 @@ from src.point_manager import PointManager  # 新增导入
 
 def main():
     try:
-        # 1. 加载主配置文件
-        main_config = ConfigManager.load_config('config.json')
+        # 1. 加载主配置文件（无需传递路径参数）
+        main_config = ConfigManager.load_config()
 
         # 2. 设置日志
         setup_logging(main_config)
