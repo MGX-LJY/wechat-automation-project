@@ -89,14 +89,16 @@ class ItChatHandler:
         logging.critical("多次登录失败，应用启动失败。")
         raise Exception("多次登录失败，应用启动失败。")
 
-    def handle_group(self, msg):
-        self.message_handler.handle_group_message(msg)
-
-    def handle_individual(self, msg):
-        self.message_handler.handle_individual_message(msg)
-
     def run(self):
-        """启动 ItChat 客户端监听消息"""
+        """注册消息处理函数并启动 ItChat 客户端监听消息"""
+        @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
+        def handle_group(msg):
+            self.message_handler.handle_group_message(msg)
+
+        @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
+        def handle_individual(msg):
+            self.message_handler.handle_individual_message(msg)
+
         try:
             itchat.run()
         except Exception as e:
@@ -625,22 +627,29 @@ class MessageHandler:
             self.error_handler.handle_exception(e)
             return []
 
-    def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
-        """清理、验证并处理URL，返回有效的URL列表和 soft_id"""
-        processed_urls = []
+    def process_urls(self, urls: List[str], is_group: bool, recipient_name: str) -> List[str]:
+        """清理、验证并处理URL，上传相关信息，返回有效的URL列表"""
+        valid_urls = []
         for url in urls:
             clean_url = self.clean_url(url)
             if self.validation and not self.validate_url(clean_url):
                 logging.warning(f"URL 验证失败: {clean_url}")
                 continue
 
+            valid_urls.append(clean_url)
+
             soft_id_match = re.search(r'/soft/(\d+)\.html', clean_url)
-            soft_id = soft_id_match.group(1) if soft_id_match else None
-            if not soft_id:
+            if soft_id_match:
+                soft_id = soft_id_match.group(1)
+                if self.uploader:
+                    self.uploader.upload_group_id(recipient_name, soft_id)
+                    logging.info(f"上传信息到 Uploader: {recipient_name}, {soft_id}")
+                else:
+                    logging.warning("Uploader 未设置，无法上传接收者和 soft_id 信息。")
+            else:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
 
-            processed_urls.append((clean_url, soft_id))
-        return processed_urls
+        return valid_urls
 
     def clean_url(self, url: str) -> str:
         """清理URL，移除锚点和不必要的字符"""
@@ -674,6 +683,7 @@ class MessageHandler:
         except Exception as e:
             logging.error(f"读取日志文件时出错: {e}", exc_info=True)
             return None
+
 
 def send_long_message(notifier, message: str, max_length: int = 2000):
     """将长消息分割为多个部分并逐段发送"""
