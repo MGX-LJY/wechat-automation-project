@@ -16,21 +16,20 @@ from src.config.config_manager import ConfigManager  # 新增导入
 
 
 class ItChatHandler:
-    def __init__(self, config, error_handler, notifier, browser_controller, point_manager):
-        self.monitor_groups: List[str] = config.get('wechat', {}).get('monitor_groups', [])
-        self.target_individuals: List[str] = config.get('wechat', {}).get('target_individuals', [])
-        self.admins: List[str] = config.get('wechat', {}).get('admins', [])
+    def __init__(self, error_handler, notifier, browser_controller, point_manager):
+        self.config = ConfigManager.load_config()
+        self.monitor_groups: List[str] = self.config.get('wechat', {}).get('monitor_groups', [])
+        self.target_individuals: List[str] = self.config.get('wechat', {}).get('target_individuals', [])
+        self.admins: List[str] = self.config.get('wechat', {}).get('admins', [])
         self.error_handler = error_handler
         self.point_manager = point_manager
-        self.qr_path = config.get('wechat', {}).get('login_qr_path', 'qr.png')
-        self.max_retries = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
-        self.retry_interval = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
+        self.qr_path = self.config.get('wechat', {}).get('login_qr_path', 'qr.png')
+        self.max_retries = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
+        self.retry_interval = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
         self.login_event = threading.Event()
-        self.config = config
         self.point_manager = point_manager
 
         self.message_handler = MessageHandler(
-            config=config,
             error_handler=error_handler,
             monitor_groups=self.monitor_groups,
             target_individuals=self.target_individuals,
@@ -139,9 +138,10 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None):
-        self.regex = re.compile(config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
-        self.validation = config.get('url', {}).get('validation', True)
+    def __init__(self, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None):
+        self.config = ConfigManager.load_config()
+        self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
+        self.validation = self.config.get('url', {}).get('validation', True)
         self.auto_clicker = None
         self.uploader = None
         self.error_handler = error_handler
@@ -150,10 +150,9 @@ class MessageHandler:
         self.admins = admins
         self.notifier = notifier
         self.browser_controller = browser_controller
-        self.log_dir = config.get('logging', {}).get('directory', 'logs')
+        self.log_dir = self.config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
-        self.group_types = config.get('group_types', {})
-        self.config = config  # 保存配置引用
+        self.group_types = self.config.get('group_types', {})
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -388,7 +387,7 @@ class MessageHandler:
                 return "未知的操作类型。"
 
             # 更新配置并保存
-            self.config['wechat']['monitor_groups'] = self.monitor_groups
+            self.config['group_types'] = self.group_types
             ConfigManager.save_config(self.config)
 
             # 同步更新上传目标
