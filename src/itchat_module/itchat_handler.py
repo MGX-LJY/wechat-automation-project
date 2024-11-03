@@ -16,7 +16,7 @@ from src.config.config_manager import ConfigManager  # 新增导入
 
 
 class ItChatHandler:
-    def __init__(self, config, error_handler, notifier, browser_controller, point_manager, config_path):
+    def __init__(self, config, error_handler, notifier, browser_controller, point_manager):
         self.monitor_groups: List[str] = config.get('wechat', {}).get('monitor_groups', [])
         self.target_individuals: List[str] = config.get('wechat', {}).get('target_individuals', [])
         self.admins: List[str] = config.get('wechat', {}).get('admins', [])
@@ -139,7 +139,7 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_path='config.json'):
+    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None):
         self.regex = re.compile(config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
         self.validation = config.get('url', {}).get('validation', True)
         self.auto_clicker = None
