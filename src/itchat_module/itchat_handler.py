@@ -5,18 +5,20 @@ import os
 import re
 import threading
 import time
+from collections import deque
 from io import BytesIO
+from typing import Optional, List
 from urllib.parse import urlparse, urlunparse
+
 from PIL import Image
+
 from lib import itchat
 from lib.itchat.content import TEXT, SHARING
-from typing import Optional, List
-from collections import deque
-from src.point_manager import PointManager
 from src.config.config_manager import ConfigManager  # 新增导入
 
+
 class ItChatHandler:
-    def __init__(self, config, error_handler, notifier, browser_controller, point_manager, config_path):
+    def __init__(self, config, error_handler, notifier, browser_controller, point_manager):
         self.monitor_groups: List[str] = config.get('monitor_groups', [])
         self.target_individuals: List[str] = config.get('target_individuals', [])
         self.admins: List[str] = config.get('admins', [])
@@ -25,8 +27,7 @@ class ItChatHandler:
         self.max_retries = config.get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
         self.retry_interval = config.get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
         self.login_event = threading.Event()
-        self.config = config  # 保存配置引用
-        self.config_path = config_path  # 配置文件路径
+        self.config = config
         self.point_manager = point_manager
 
         self.message_handler = MessageHandler(
@@ -38,7 +39,6 @@ class ItChatHandler:
             notifier=notifier,
             browser_controller=browser_controller,
             point_manager=self.point_manager,
-            config_path=self.config_path  # 传递配置文件路径
         )
 
         self.uploader = None
@@ -140,7 +140,7 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_path='config.json'):
+    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_manager=None):
         self.regex = re.compile(config.get('regex', r'https?://[^\s"」]+'))
         self.validation = config.get('validation', True)
         self.auto_clicker = None
@@ -154,6 +154,7 @@ class MessageHandler:
         self.log_dir = config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
         self.group_types = config.get('group_types', {})
+        self.config = config
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -392,7 +393,7 @@ class MessageHandler:
 
             # 更新配置并保存
             self.config['wechat']['monitor_groups'] = self.monitor_groups
-            ConfigManager.save_config(self.config, self.config_path)
+            ConfigManager.save_config(self.config)
 
             # 同步更新上传目标
             self.sync_upload_targets()
@@ -427,7 +428,7 @@ class MessageHandler:
 
             # 更新配置并保存
             self.config['wechat']['target_individuals'] = self.target_individuals
-            ConfigManager.save_config(self.config, self.config_path)
+            ConfigManager.save_config(self.config)
 
             # 同步更新上传目标
             self.sync_upload_targets()
@@ -464,7 +465,7 @@ class MessageHandler:
 
             # 更新配置并保存
             self.config['group_types'] = self.group_types
-            ConfigManager.save_config(self.config, self.config_path)
+            ConfigManager.save_config(self.config)
 
             # 更新数据库中群组的类型
             for group in groups:
@@ -486,7 +487,7 @@ class MessageHandler:
             # 更新配置并保存
             self.config['upload']['target_groups'] = self.uploader.target_groups
             self.config['upload']['target_individuals'] = self.uploader.target_individuals
-            ConfigManager.save_config(self.config, self.config_path)
+            ConfigManager.save_config(self.config)
             logging.info("上传目标已同步更新")
         else:
             logging.warning("Uploader 未设置，无法同步上传目标")
@@ -510,7 +511,7 @@ class MessageHandler:
                 config_section[last_key] = new_value
 
                 # 保存配置
-                ConfigManager.save_config(self.config, self.config_path)
+                ConfigManager.save_config(self.config)
 
                 # 通知相关模块（如需要）
                 self._notify_config_change()
