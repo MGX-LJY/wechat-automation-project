@@ -193,6 +193,16 @@ class MessageHandler:
 
         sender_nickname = msg['ActualNickName']  # 获取发送者昵称
 
+        # 提取并处理URL
+        urls = self.extract_urls(msg)
+        if not urls:
+            return
+
+        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
+        if not valid_urls:
+            return
+
+
         # 检查积分
         if group_type == 'whole':
             if not self.point_manager.has_group_points(group_name):
@@ -236,8 +246,13 @@ class MessageHandler:
                 self.notifier.notify(f"抱歉，您当前的积分不足，无法添加下载任务。请联系管理员获取更多信息。")
             return
 
+        # 提取并处理URL
         urls = self.extract_urls(msg)
         if not urls:
+            return
+
+        valid_urls = self.process_urls(urls, is_group=False, recipient_name=sender)
+        if not valid_urls:
             return
 
         valid_urls = self.process_urls(urls, is_group=False, recipient_name=sender)
@@ -611,7 +626,6 @@ class MessageHandler:
             if soft_id_match:
                 soft_id = soft_id_match.group(1)
                 if self.uploader:
-                    # 根据群组类型传递不同的 recipient_type
                     if is_group:
                         recipient_type = 'group'
                     else:
@@ -622,7 +636,6 @@ class MessageHandler:
                     logging.warning("Uploader 未设置，无法上传接收者和 soft_id 信息。")
             else:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
-
         return valid_urls
 
     def clean_url(self, url: str) -> str:
