@@ -17,14 +17,14 @@ from src.config.config_manager import ConfigManager  # 新增导入
 
 class ItChatHandler:
     def __init__(self, config, error_handler, notifier, browser_controller, point_manager, config_path):
-        self.monitor_groups: List[str] = config.get('wechat', {}).get('monitor_groups', [])
-        self.target_individuals: List[str] = config.get('wechat', {}).get('target_individuals', [])
-        self.admins: List[str] = config.get('wechat', {}).get('admins', [])
+        self.monitor_groups: List[str] = config.get('monitor_groups', [])
+        self.target_individuals: List[str] = config.get('target_individuals', [])
+        self.admins: List[str] = config.get('admins', [])
         self.error_handler = error_handler
         self.point_manager = point_manager
-        self.qr_path = config.get('wechat', {}).get('login_qr_path', 'qr.png')
-        self.max_retries = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
-        self.retry_interval = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
+        self.qr_path = config.get('login_qr_path', 'qr.png')
+        self.max_retries = config.get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
+        self.retry_interval = config.get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
         self.login_event = threading.Event()
         self.config = config  # 保存配置引用
         self.config_path = config_path  # 配置文件路径
@@ -141,8 +141,8 @@ class MessageHandler:
     """
 
     def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_path='config.json'):
-        self.regex = re.compile(config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
-        self.validation = config.get('url', {}).get('validation', True)
+        self.regex = re.compile(config.get('regex', r'https?://[^\s"」]+'))
+        self.validation = config.get('validation', True)
         self.auto_clicker = None
         self.uploader = None
         self.error_handler = error_handler
@@ -181,7 +181,6 @@ class MessageHandler:
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
         group_name = msg['User']['NickName']
-        logging.debug(f"接收到来自群组的消息: {group_name}")
         if group_name not in self.monitor_groups:
             logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
@@ -209,6 +208,14 @@ class MessageHandler:
             if not self.point_manager.has_group_members_points(group_name):
                 logging.info(f"群组 '{group_name}' 内至少一个成员的积分不足，忽略消息。")
                 return
+
+        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name)
+        if self.auto_clicker and valid_urls:
+            for url in valid_urls:
+                self.auto_clicker.add_task(url)
+                logging.info(f"已添加任务到下载队列: {url}")
+        else:
+            logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
