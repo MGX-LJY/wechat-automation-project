@@ -7,7 +7,7 @@ import threading
 import time
 from collections import deque
 from io import BytesIO
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from urllib.parse import urlparse, urlunparse
 from PIL import Image
 from lib import itchat
