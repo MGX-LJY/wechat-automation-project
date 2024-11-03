@@ -9,23 +9,22 @@ from collections import deque
 from io import BytesIO
 from typing import Optional, List
 from urllib.parse import urlparse, urlunparse
-
 from PIL import Image
-
 from lib import itchat
 from lib.itchat.content import TEXT, SHARING
 from src.config.config_manager import ConfigManager  # 新增导入
 
 
 class ItChatHandler:
-    def __init__(self, config, error_handler, notifier, browser_controller, point_manager):
-        self.monitor_groups: List[str] = config.get('monitor_groups', [])
-        self.target_individuals: List[str] = config.get('target_individuals', [])
-        self.admins: List[str] = config.get('admins', [])
+    def __init__(self, config, error_handler, notifier, browser_controller, point_manager, config_path):
+        self.monitor_groups: List[str] = config.get('wechat', {}).get('monitor_groups', [])
+        self.target_individuals: List[str] = config.get('wechat', {}).get('target_individuals', [])
+        self.admins: List[str] = config.get('wechat', {}).get('admins', [])
         self.error_handler = error_handler
-        self.qr_path = config.get('login_qr_path', 'qr.png')
-        self.max_retries = config.get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
-        self.retry_interval = config.get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
+        self.point_manager = point_manager
+        self.qr_path = config.get('wechat', {}).get('login_qr_path', 'qr.png')
+        self.max_retries = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
+        self.retry_interval = config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
         self.login_event = threading.Event()
         self.config = config
         self.point_manager = point_manager
@@ -140,9 +139,9 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_manager=None):
-        self.regex = re.compile(config.get('regex', r'https?://[^\s"」]+'))
-        self.validation = config.get('validation', True)
+    def __init__(self, config, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, config_path='config.json'):
+        self.regex = re.compile(config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
+        self.validation = config.get('url', {}).get('validation', True)
         self.auto_clicker = None
         self.uploader = None
         self.error_handler = error_handler
@@ -154,7 +153,7 @@ class MessageHandler:
         self.log_dir = config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
         self.group_types = config.get('group_types', {})
-        self.config = config
+        self.config = config  # 保存配置引用
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -193,10 +192,7 @@ class MessageHandler:
             # 默认设为非整体群组
             group_type = 'non-whole'
 
-        logging.debug(f"群组类型: {group_type}")
-
         sender_nickname = msg['ActualNickName']  # 获取发送者昵称
-        logging.debug(f"发送者昵称: {sender_nickname}")
 
         # 检查积分
         if group_type == 'whole':
@@ -212,11 +208,11 @@ class MessageHandler:
         if not urls:
             return
 
-        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name)
+        valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
         if self.auto_clicker and valid_urls:
             for url in valid_urls:
-                self.auto_clicker.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
+                self.auto_clicker.add_task(url, group_name=group_name, sender_nickname=sender_nickname if group_type == 'whole' else None, group_type=group_type)
+                logging.info(f"已添加任务到下载队列: {url}, 发送者: {sender_nickname if group_type == 'whole' else '群组消息'}")
         else:
             logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
 
