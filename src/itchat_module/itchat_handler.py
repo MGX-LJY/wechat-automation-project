@@ -41,6 +41,8 @@ class ItChatHandler:
 
         self.uploader = None
         self.message_handler.set_uploader(self.uploader)
+        itchat.msg_register([TEXT, SHARING], isGroupChat=True)(self.handle_group)
+        itchat.msg_register([TEXT, SHARING], isGroupChat=False)(self.handle_individual)
 
         logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
 
@@ -87,17 +89,14 @@ class ItChatHandler:
         logging.critical("多次登录失败，应用启动失败。")
         raise Exception("多次登录失败，应用启动失败。")
 
+    def handle_group(self, msg):
+        self.message_handler.handle_group_message(msg)
+
+    def handle_individual(self, msg):
+        self.message_handler.handle_individual_message(msg)
+
     def run(self):
-        """注册消息处理函数并启动 ItChat 客户端监听消息"""
-        @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
-        def handle_group(msg):
-            self.message_handler.handle_group_message(msg)
-            logging.info(f"Received group message: {msg}")
-
-        @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
-        def handle_individual(msg):
-            self.message_handler.handle_individual_message(msg)
-
+        """启动 ItChat 客户端监听消息"""
         try:
             itchat.run()
         except Exception as e:
