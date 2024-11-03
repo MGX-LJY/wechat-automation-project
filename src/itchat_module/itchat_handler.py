@@ -92,6 +92,7 @@ class ItChatHandler:
         @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
         def handle_group(msg):
             self.message_handler.handle_group_message(msg)
+            logging.info(f"Received group message: {msg}")
 
         @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
         def handle_individual(msg):
