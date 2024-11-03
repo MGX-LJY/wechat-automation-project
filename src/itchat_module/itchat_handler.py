@@ -21,16 +21,16 @@ class ItChatHandler:
         self.target_individuals: List[str] = config.get('target_individuals', [])
         self.admins: List[str] = config.get('admins', [])
         self.error_handler = error_handler
-        self.point_manager = point_manager
         self.qr_path = config.get('login_qr_path', 'qr.png')
         self.max_retries = config.get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
         self.retry_interval = config.get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
         self.login_event = threading.Event()
         self.config = config  # 保存配置引用
         self.config_path = config_path  # 配置文件路径
+        self.point_manager = point_manager
 
         self.message_handler = MessageHandler(
-            config=self.config,
+            config=config,
             error_handler=error_handler,
             monitor_groups=self.monitor_groups,
             target_individuals=self.target_individuals,
@@ -154,8 +154,6 @@ class MessageHandler:
         self.log_dir = config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
         self.group_types = config.get('group_types', {})
-        self.config = config  # 保存配置引用
-        self.config_path = config_path  # 配置文件路径
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -208,6 +206,10 @@ class MessageHandler:
             if not self.point_manager.has_group_members_points(group_name):
                 logging.info(f"群组 '{group_name}' 内至少一个成员的积分不足，忽略消息。")
                 return
+
+        urls = self.extract_urls(msg)
+        if not urls:
+            return
 
         valid_urls = self.process_urls(urls, is_group=True, recipient_name=group_name)
         if self.auto_clicker and valid_urls:
