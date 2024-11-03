@@ -204,33 +204,34 @@ class MessageHandler:
                 logging.info(f"群组 '{group_name}' 的积分不足，忽略消息。")
                 return
         elif group_type == 'non-whole':
-            if not self.point_manager.has_group_members_points(group_name):
-                logging.info(f"群组 '{group_name}' 内至少一个成员的积分不足，忽略消息。")
+            if not self.point_manager.has_member_points(sender_nickname):
+                logging.info(f"成员 '{sender_nickname}' 的积分不足，忽略消息。")
                 return
 
         # 处理URL
-        valid_urls = self.process_urls(
-            urls,
-            is_group=True,
-            recipient_name=group_name,
-            sender_nickname=sender_nickname if group_type == 'whole' else None,
-            group_type=group_type
-        )
-        if not valid_urls:
+        processed_urls = self.process_urls(urls, is_group=True, recipient_name=group_name)
+        if not processed_urls:
             return
 
-        if self.auto_clicker and valid_urls:
-            for url in valid_urls:
-                self.auto_clicker.add_task(
-                    url,
-                    group_name=group_name,
-                    sender_nickname=sender_nickname if group_type == 'whole' else None,
+        # 通过积分检查后，调用上传和添加任务函数
+        for url, soft_id in processed_urls:
+            if self.uploader and soft_id:
+                self.uploader.upload_group_id(
+                    recipient_name=group_name,
+                    soft_id=soft_id,
+                    sender_nickname=sender_nickname if group_type == 'non-whole' else None,
+                    recipient_type='group',
                     group_type=group_type
                 )
-                logging.info(
-                    f"已添加任务到下载队列: {url}, 发送者: {sender_nickname if group_type == 'whole' else '群组消息'}")
-        else:
-            logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
+                logging.info(f"上传信息到 Uploader: {group_name}, {soft_id}, 发送者: {sender_nickname}")
+            else:
+                logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
+
+            if self.auto_clicker:
+                self.auto_clicker.add_task(url)
+                logging.info(f"已添加任务到下载队列: {url}")
+            else:
+                logging.warning("AutoClicker 未设置，无法添加任务。")
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
@@ -259,21 +260,27 @@ class MessageHandler:
             return
 
         # 处理URL
-        valid_urls = self.process_urls(urls, is_group=False, recipient_name=sender)
-        if not valid_urls:
+        processed_urls = self.process_urls(urls)
+        if not processed_urls:
             return
 
-        if self.auto_clicker and valid_urls:
-            for url in valid_urls:
-                success = self.auto_clicker.add_task(url, recipient_type='individual')
-                if success:
-                    logging.info(f"已添加任务到下载队列: {url}。")
-                    if self.notifier:
-                        self.notifier.notify(f"已成功添加下载任务。")
-                else:
-                    logging.warning("AutoClicker 添加任务失败。")
-        else:
-            logging.warning("AutoClicker 未设置或没有有效的 URL，无法添加任务。")
+        # 通过积分检查后，调用上传和添加任务函数
+        for url, soft_id in processed_urls:
+            if self.uploader and soft_id:
+                self.uploader.upload_group_id(
+                    recipient_name=sender,
+                    soft_id=soft_id,
+                    recipient_type='individual'
+                )
+                logging.info(f"上传信息到 Uploader: {sender}, {soft_id}")
+            else:
+                logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
+
+            if self.auto_clicker:
+                self.auto_clicker.add_task(url)
+                logging.info(f"已添加任务到下载队列: {url}")
+            else:
+                logging.warning("AutoClicker 未设置，无法添加任务。")
 
     def handle_admin_command(self, message: str) -> Optional[str]:
         """处理管理员发送的命令并执行相应操作"""
@@ -618,32 +625,22 @@ class MessageHandler:
             self.error_handler.handle_exception(e)
             return []
 
-    def process_urls(self, urls: List[str], is_group: bool, recipient_name: str, sender_nickname: str = None, group_type: str = 'non-whole') -> List[str]:
-        """清理、验证并处理URL，上传相关信息，返回有效的URL列表"""
-        valid_urls = []
+    def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
+        """清理、验证并处理URL，返回有效的URL列表和 soft_id"""
+        processed_urls = []
         for url in urls:
             clean_url = self.clean_url(url)
             if self.validation and not self.validate_url(clean_url):
                 logging.warning(f"URL 验证失败: {clean_url}")
                 continue
 
-            valid_urls.append(clean_url)
-
             soft_id_match = re.search(r'/soft/(\d+)\.html', clean_url)
-            if soft_id_match:
-                soft_id = soft_id_match.group(1)
-                if self.uploader:
-                    if is_group:
-                        recipient_type = 'group'
-                    else:
-                        recipient_type = 'individual'
-                    self.uploader.upload_group_id(recipient_name, soft_id, sender_nickname=sender_nickname, recipient_type=recipient_type)
-                    logging.info(f"上传信息到 Uploader: {recipient_name}, {soft_id}, 发送者: {sender_nickname}")
-                else:
-                    logging.warning("Uploader 未设置，无法上传接收者和 soft_id 信息。")
-            else:
+            soft_id = soft_id_match.group(1) if soft_id_match else None
+            if not soft_id:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
-        return valid_urls
+
+            processed_urls.append((clean_url, soft_id))
+        return processed_urls
 
     def clean_url(self, url: str) -> str:
         """清理URL，移除锚点和不必要的字符"""
