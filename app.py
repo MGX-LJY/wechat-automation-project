@@ -12,7 +12,7 @@ from src.file_upload.uploader import Uploader
 from src.itchat_module.itchat_handler import ItChatHandler
 from src.logging_module.logger import setup_logging
 from src.notification.notifier import Notifier
-from src.point_manager import PointManager  # 新增导入
+from src.point_manager import PointManager
 
 def main():
     try:

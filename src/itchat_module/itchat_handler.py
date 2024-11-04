@@ -89,12 +89,15 @@ class ItChatHandler:
 
     def run(self):
         """注册消息处理函数并启动 ItChat 客户端监听消息"""
+
         @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
         def handle_group(msg):
+            logging.debug(f"收到群组消息: {msg}")
             self.message_handler.handle_group_message(msg)
 
         @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
         def handle_individual(msg):
+            logging.debug(f"收到个人消息: {msg}")
             self.message_handler.handle_individual_message(msg)
 
         try:
@@ -177,7 +180,17 @@ class MessageHandler:
 
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
-        group_name = msg['User']['NickName']
+        logging.debug(f"处理群组消息: {msg}")
+
+        # 尝试获取群组名称
+        group_name = msg.get('User', {}).get('NickName', '')
+        if not group_name:
+            logging.warning("无法从消息中获取群组名称")
+            return
+
+        logging.debug(f"群组名称: {group_name}")
+        logging.debug(f"监控的群组列表: {self.monitor_groups}")
+
         if group_name not in self.monitor_groups:
             logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
@@ -191,26 +204,38 @@ class MessageHandler:
             # 默认设为非整体群组
             group_type = 'whole'
 
-        sender_nickname = msg['ActualNickName']  # 获取发送者昵称
+        logging.debug(f"群组类型: {group_type}")
+
+        # 获取发送者昵称
+        sender_nickname = msg.get('ActualNickName', '')
+        logging.debug(f"发送者昵称: {sender_nickname}")
 
         # 提取URL
         urls = self.extract_urls(msg)
+        logging.debug(f"提取的URLs: {urls}")
         if not urls:
+            logging.debug("未找到任何URL，停止处理")
             return
 
         # 检查积分
         if group_type == 'whole':
-            if not self.point_manager.has_group_points(group_name):
+            has_points = self.point_manager.has_group_points(group_name)
+            logging.debug(f"群组 '{group_name}' 是否有积分: {has_points}")
+            if not has_points:
                 logging.info(f"群组 '{group_name}' 的积分不足，忽略消息。")
                 return
         elif group_type == 'non-whole':
-            if not self.point_manager.has_member_points(sender_nickname):
+            has_points = self.point_manager.has_member_points(sender_nickname)
+            logging.debug(f"成员 '{sender_nickname}' 是否有积分: {has_points}")
+            if not has_points:
                 logging.info(f"成员 '{sender_nickname}' 的积分不足，忽略消息。")
                 return
 
         # 处理URL
         processed_urls = self.process_urls(urls)
+        logging.debug(f"处理后的URLs: {processed_urls}")
         if not processed_urls:
+            logging.debug("未找到有效的URL，停止处理")
             return
 
         # 通过积分检查后，调用上传和添加任务函数
@@ -235,13 +260,20 @@ class MessageHandler:
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
-        sender = msg['User']['NickName']
+        logging.debug(f"处理个人消息: {msg}")
+
+        sender = msg['User'].get('NickName', '')
+        logging.debug(f"发送者昵称: {sender}")
+        logging.debug(f"监控的个人列表: {self.target_individuals}")
+        logging.debug(f"管理员列表: {self.admins}")
+
         if sender not in self.target_individuals and sender not in self.admins:
             logging.debug(f"忽略来自非监控个人的消息: {sender}")
             return
 
         if sender in self.admins:
             content = self.get_message_content(msg)  # 获取完整消息内容
+            logging.debug(f"管理员命令内容: {content}")
             response = self.handle_admin_command(content)
             if response and self.notifier:
                 self.notifier.notify(response)
@@ -249,11 +281,15 @@ class MessageHandler:
 
         # 提取URL
         urls = self.extract_urls(msg)
+        logging.debug(f"提取的URLs: {urls}")
         if not urls:
+            logging.debug("未找到任何URL，停止处理")
             return
 
         # 检查发送者是否有足够的积分
-        if not self.point_manager.has_recipient_points(sender):
+        has_points = self.point_manager.has_recipient_points(sender)
+        logging.debug(f"发送者 '{sender}' 是否有积分: {has_points}")
+        if not has_points:
             logging.info(f"发送者 '{sender}' 积分不足，无法添加任务到下载队列。")
             if self.notifier:
                 self.notifier.notify(f"抱歉，您当前的积分不足，无法添加下载任务。请联系管理员获取更多信息。")
@@ -261,7 +297,9 @@ class MessageHandler:
 
         # 处理URL
         processed_urls = self.process_urls(urls)
+        logging.debug(f"处理后的URLs: {processed_urls}")
         if not processed_urls:
+            logging.debug("未找到有效的URL，停止处理")
             return
 
         # 通过积分检查后，调用上传和添加任务函数
@@ -614,12 +652,18 @@ class MessageHandler:
         """从消息中提取URL列表"""
         try:
             msg_type = msg.get('Type', getattr(msg, 'type', ''))
+            logging.debug(f"消息类型: {msg_type}")
+
             if msg_type not in ['Text', 'Sharing']:
                 logging.debug(f"忽略非文本或分享类型的消息: {msg_type}")
                 return []
 
             content = msg.get('Text', msg.get('text', '')) if msg_type == 'Text' else msg.get('Url', msg.get('url', ''))
-            return self.regex.findall(content)
+            logging.debug(f"消息内容: {content}")
+
+            urls = self.regex.findall(content)
+            logging.debug(f"正则表达式提取的URLs: {urls}")
+            return urls
         except Exception as e:
             logging.error(f"提取消息内容时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
@@ -630,6 +674,8 @@ class MessageHandler:
         processed_urls = []
         for url in urls:
             clean_url = self.clean_url(url)
+            logging.debug(f"清理后的URL: {clean_url}")
+
             if self.validation and not self.validate_url(clean_url):
                 logging.warning(f"URL 验证失败: {clean_url}")
                 continue
@@ -637,6 +683,7 @@ class MessageHandler:
             soft_id_match = re.search(r'/soft/(\d+)\.html', clean_url)
             if soft_id_match:
                 soft_id = soft_id_match.group(1)
+                logging.debug(f"从URL中提取的 soft_id: {soft_id}")
             else:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
                 soft_id = None
