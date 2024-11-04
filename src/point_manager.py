@@ -84,26 +84,29 @@ class PointManager:
 
     # 确保群组存在
     def ensure_group(self, group_name: str, is_whole: Optional[bool] = None, initial_points: int = 1000):
-        with self.lock:
-            self.cursor.execute('SELECT is_whole FROM groups WHERE name = ?', (group_name,))
-            result = self.cursor.fetchone()
-            if result is None:
-                # 群组不存在，插入新记录
-                if is_whole is not None:
-                    self.cursor.execute('''
-                        INSERT INTO groups (name, remaining_points, is_whole)
-                        VALUES (?, ?, ?)
-                    ''', (group_name, initial_points, int(is_whole)))
+        try:
+            with self.lock:
+                self.cursor.execute('SELECT is_whole FROM groups WHERE name = ?', (group_name,))
+                result = self.cursor.fetchone()
+                if result is None:
+                    # 群组不存在，插入新记录
+                    if is_whole is not None:
+                        self.cursor.execute('''
+                            INSERT INTO groups (name, remaining_points, is_whole)
+                            VALUES (?, ?, ?)
+                        ''', (group_name, initial_points, int(is_whole)))
+                    else:
+                        self.cursor.execute('''
+                            INSERT INTO groups (name, remaining_points)
+                            VALUES (?, ?)
+                        ''', (group_name, initial_points))
+                    self.conn.commit()
+                    logging.debug(f"群组 '{group_name}' 已添加，is_whole={is_whole}")
                 else:
-                    self.cursor.execute('''
-                        INSERT INTO groups (name, remaining_points)
-                        VALUES (?, ?)
-                    ''', (group_name, initial_points))
-                self.conn.commit()
-                logging.debug(f"群组 '{group_name}' 已添加，is_whole={is_whole}")
-            else:
-                # 群组已存在，不修改 is_whole 值
-                logging.debug(f"群组 '{group_name}' 已存在，is_whole={bool(result[0])}")
+                    # 群组已存在，不修改 is_whole 值
+                    logging.debug(f"群组 '{group_name}' 已存在，is_whole={bool(result[0])}")
+        except Exception as e:
+            logging.error(f"在 ensure_group 中发生错误: {e}", exc_info=True)
 
     # 设置群组的 is_whole 值
     def set_group_is_whole(self, group_name: str, is_whole: bool):

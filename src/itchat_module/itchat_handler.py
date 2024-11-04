@@ -179,41 +179,45 @@ class MessageHandler:
             return ''
 
     def check_points(self, message_type, context_name, sender_name=None, group_type=None) -> bool:
-        """检查消息发送者或群组是否有足够的积分"""
-        logging.debug(
-            f"开始积分检查 - 消息类型: {message_type}, 上下文名称: {context_name}, 发送者: {sender_name}, 群组类型: {group_type}")
-        if message_type == 'group':
-            if group_type == 'whole':
-                has_points = self.point_manager.has_group_points(context_name)
-                logging.debug(f"群组 '{context_name}' 是否有足够的积分: {has_points}")
-                if not has_points:
-                    logging.info(f"群组 '{context_name}' 的积分不足")
+        try:
+            logging.debug(
+                f"开始积分检查 - 消息类型: {message_type}, 上下文名称: {context_name}, 发送者: {sender_name}, 群组类型: {group_type}")
+            if message_type == 'group':
+                if group_type == 'whole':
+                    has_points = self.point_manager.has_group_points(context_name)
+                    logging.debug(f"群组 '{context_name}' 是否有足够的积分: {has_points}")
+                    if not has_points:
+                        logging.info(f"群组 '{context_name}' 的积分不足")
+                        return False
+                elif group_type == 'non-whole':
+                    if sender_name is None:
+                        logging.warning("非整体群组需要提供发送者昵称")
+                        return False
+                    # 确保用户存在于数据库中
+                    self.point_manager.ensure_user(context_name, sender_name)
+                    has_points = self.point_manager.has_user_points(context_name, sender_name)
+                    logging.debug(f"用户 '{sender_name}' 在群组 '{context_name}' 中是否有足够的积分: {has_points}")
+                    if not has_points:
+                        logging.info(f"用户 '{sender_name}' 在群组 '{context_name}' 中的积分不足")
+                        return False
+                else:
+                    logging.warning(f"未知的群组类型: {group_type}")
                     return False
-            elif group_type == 'non-whole':
-                if sender_name is None:
-                    logging.warning("非整体群组需要提供发送者昵称")
-                    return False
-                # 确保用户存在于数据库中
-                self.point_manager.ensure_user(context_name, sender_name)
-                has_points = self.point_manager.has_user_points(context_name, sender_name)
-                logging.debug(f"用户 '{sender_name}' 在群组 '{context_name}' 中是否有足够的积分: {has_points}")
+            elif message_type == 'individual':
+                has_points = self.point_manager.has_recipient_points(context_name)
+                logging.debug(f"个人 '{context_name}' 是否有足够的积分: {has_points}")
                 if not has_points:
-                    logging.info(f"用户 '{sender_name}' 在群组 '{context_name}' 中的积分不足")
+                    logging.info(f"个人 '{context_name}' 的积分不足")
                     return False
             else:
-                logging.warning(f"未知的群组类型: {group_type}")
+                logging.warning(f"未知的消息类型: {message_type}")
                 return False
-        elif message_type == 'individual':
-            has_points = self.point_manager.has_recipient_points(context_name)
-            logging.debug(f"个人 '{context_name}' 是否有足够的积分: {has_points}")
-            if not has_points:
-                logging.info(f"个人 '{context_name}' 的积分不足")
-                return False
-        else:
-            logging.warning(f"未知的消息类型: {message_type}")
+            logging.debug("积分检查通过")
+            return True
+        except Exception as e:
+            logging.error(f"在积分检查中发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
             return False
-        logging.debug("积分检查通过")
-        return True
 
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
