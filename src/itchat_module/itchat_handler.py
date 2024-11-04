@@ -13,6 +13,7 @@ from PIL import Image
 from lib import itchat
 from lib.itchat.content import TEXT, SHARING
 from src.config.config_manager import ConfigManager  # 新增导入
+from src.itchat_module.admin_commands import AdminCommandsHandler  # 新增导入
 
 
 class ItChatHandler:
@@ -43,6 +44,15 @@ class ItChatHandler:
         self.message_handler.set_uploader(self.uploader)
 
         logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
+
+        # 初始化 AdminCommandsHandler
+        self.admin_commands_handler = AdminCommandsHandler(
+            config=self.config,
+            point_manager=self.point_manager,
+            notifier=notifier,
+            browser_controller=browser_controller,
+            error_handler=error_handler
+        )
 
     def set_uploader(self, uploader):
         """绑定 Uploader 实例到消息处理器"""
@@ -153,26 +163,6 @@ class MessageHandler:
         self.log_dir = self.config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
-
-        self.help_templates = {
-            '1': "更新个人积分 <个人名称> <变化量>",
-            '2': "更新整体群组积分 <群组名称> <变化量>",
-            '3': "更新非整体群组积分 <群组名称> <变化量>",
-            '4': "添加群组 <群组名称> <群组类型> [初始积分]",
-            '5': "添加用户 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]",
-            '6': "添加监听群组 <群组名称1>,<群组名称2>",
-            '7': "删除监听群组 <群组名称1>,<群组名称2>",
-            '8': "添加监听个人 <个人名称1>,<个人名称2>",
-            '9': "删除监听个人 <个人名称1>,<个人名称2>",
-            '10': "添加整体群组 <群组名称1>,<群组名称2>",
-            '11': "删除整体群组 <群组名称1>,<群组名称2>",
-            '12': "添加非整体群组 <群组名称1>,<群组名称2>",
-            '13': "删除非整体群组 <群组名称1>,<群组名称2>",
-            '14': "重启浏览器",
-            '15': "查询日志",
-            '16': "查询浏览器",
-            '17': "帮助",
-        }
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -378,373 +368,14 @@ class MessageHandler:
                 logging.warning("AutoClicker 未设置，无法添加任务。")
 
     def handle_admin_command(self, message: str) -> Optional[str]:
-        """处理管理员发送的命令并执行相应操作"""
-        commands = {
-            # 数据库命令
-            'update_individual_points': r'^更新个人积分\s+(\S+)\s+([+-]?\d+)$',
-            'update_whole_group_points': r'^更新整体群组积分\s+(\S+)\s+([+-]?\d+)$',
-            'update_non_whole_group_points': r'^更新非整体群组积分\s+(\S+)\s+([+-]?\d+)$',
-            'add_group': r'^添加群组\s+(\S+)\s+(whole|non-whole)\s*(\d+)?$',
-            'add_user': r'^添加用户\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)\s*积分:\s*(\d+)?$',
-
-            # 配置文件命令
-            'add_monitor_group': r'^添加监听群组\s+(.+)$',
-            'remove_monitor_group': r'^删除监听群组\s+(.+)$',
-            'add_monitor_individual': r'^添加监听个人\s+(.+)$',
-            'remove_monitor_individual': r'^删除监听个人\s+(.+)$',
-            'add_whole_group': r'^添加整体群组\s+(.+)$',
-            'remove_whole_group': r'^删除整体群组\s+(.+)$',
-            'add_non_whole_group': r'^添加非整体群组\s+(.+)$',
-            'remove_non_whole_group': r'^删除非整体群组\s+(.+)$',
-
-            # 其他命令
-            'help': r'^帮助$|^help$',
-            'restart_browser': r'^重启浏览器$|^restart browser$',
-            'query_logs': r'^查询日志$|^query logs$',
-            'query_browser': r'^查询浏览器$|^query browser$',
-        }
-
-        # 检查是否为数字，发送对应的命令模板
-        if message.isdigit():
-            template = self.help_templates.get(message)
-            if template:
-                return f"请使用以下命令模板：\n{template}"
-            else:
-                return "无效的命令序号，请输入帮助命令查看可用命令列表。"
-
-        for cmd, pattern in commands.items():
-            match = re.match(pattern, message)
-            if match:
-                if cmd == 'update_individual_points':
-                    name, delta = match.groups()
-                    delta = int(delta)
-                    success = self.point_manager.update_recipient_points(name, delta)
-                    if success:
-                        return f"个人 '{name}' 的剩余积分已更新，变化量为 {delta}。"
-                    else:
-                        return f"个人 '{name}' 的积分更新失败。"
-                elif cmd == 'update_whole_group_points':
-                    group_name, delta = match.groups()
-                    delta = int(delta)
-                    success = self.point_manager.update_group_points(group_name, delta, group_type='whole')
-                    if success:
-                        return f"整体群组 '{group_name}' 的剩余积分已更新，变化量为 {delta}。"
-                    else:
-                        return f"整体群组 '{group_name}' 的积分更新失败。"
-                elif cmd == 'update_non_whole_group_points':
-                    group_name, delta = match.groups()
-                    delta = int(delta)
-                    success = self.point_manager.update_group_points(group_name, delta, group_type='non-whole')
-                    if success:
-                        return f"非整体群组 '{group_name}' 的剩余积分已更新，变化量为 {delta}。"
-                    else:
-                        return f"非整体群组 '{group_name}' 的积分更新失败。"
-                elif cmd == 'add_group':
-                    name, group_type, points = match.groups()
-                    points = int(points) if points else 0
-                    is_whole = True if group_type == 'whole' else False
-                    success = self.point_manager.ensure_group(name, is_whole=is_whole, initial_points=points)
-                    if success:
-                        return f"群组 '{name}' 已添加，类型为 {'整体群组' if is_whole else '非整体群组'}，初始积分为 {points}。"
-                    else:
-                        return f"群组 '{name}' 添加失败或已存在。"
-                elif cmd == 'add_user':
-                    group_name, nickname, points = match.groups()
-                    points = int(points) if points else 0
-                    group_exists = self.point_manager.get_group_info(group_name)
-                    if not group_exists:
-                        return f"群组 '{group_name}' 不存在，无法添加用户。请先添加群组。"
-                    success = self.point_manager.ensure_user(group_name, nickname, initial_points=points)
-                    if success:
-                        return f"用户 '{nickname}' 已添加到群组 '{group_name}'，初始积分为 {points}。"
-                    else:
-                        return f"用户 '{nickname}' 添加失败或已存在。"
-                # 配置文件命令处理逻辑
-                elif cmd == 'add_monitor_group':
-                    group_names = match.group(1)
-                    return self.modify_monitor_groups(group_names, action='add')
-                elif cmd == 'remove_monitor_group':
-                    group_names = match.group(1)
-                    return self.modify_monitor_groups(group_names, action='remove')
-                elif cmd == 'add_monitor_individual':
-                    individual_names = match.group(1)
-                    return self.modify_monitor_individuals(individual_names, action='add')
-                elif cmd == 'remove_monitor_individual':
-                    individual_names = match.group(1)
-                    return self.modify_monitor_individuals(individual_names, action='remove')
-                elif cmd == 'add_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='whole', action='add')
-                elif cmd == 'remove_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='whole', action='remove')
-                elif cmd == 'add_non_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='non_whole', action='add')
-                elif cmd == 'remove_non_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='non_whole', action='remove')
-                # 其他命令处理逻辑
-                elif cmd == 'help':
-                    return self.get_help_message()
-                elif cmd == 'restart_browser':
-                    if self.browser_controller:
-                        self.browser_controller.restart_browser()
-                        return "浏览器已成功重启。"
-                    return "浏览器控制器未设置，无法重启浏览器。"
-                elif cmd == 'query_logs':
-                    if self.notifier:
-                        logs = self.get_last_n_logs(20)
-                        if logs:
-                            send_long_message(self.notifier, f"最近 20 行日志:\n{logs}")
-                        else:
-                            self.notifier.notify("无法读取日志文件或日志文件为空。")
-                    else:
-                        logging.error("Notifier 未设置，无法发送日志。")
-                    return None
-                elif cmd == 'query_browser':
-                    if not self.browser_controller:
-                        logging.error("浏览器控制器未设置，无法处理查询浏览器命令。")
-                        if self.notifier:
-                            self.notifier.notify("无法处理查询浏览器命令，因为浏览器控制器未设置。", is_error=True)
-                        return "浏览器控制器未设置，无法查询浏览器。"
-
-                    try:
-                        screenshots = self.browser_controller.capture_all_tabs_screenshots()
-                        if screenshots:
-                            self.notifier.notify_images(screenshots)
-                            for path in screenshots:
-                                os.remove(path)
-                                logging.debug(f"已删除临时截图文件: {path}")
-                        else:
-                            self.notifier.notify("无法捕获浏览器标签页的截图。", is_error=True)
-                    except Exception as e:
-                        logging.error(f"处理查询浏览器命令时发生错误: {e}", exc_info=True)
-                        if self.notifier:
-                            self.notifier.notify(f"处理查询浏览器命令时发生错误: {e}", is_error=True)
-                    return None
-        logging.warning(f"未知的管理员命令：{message}")
-        return "未知的命令，请检查命令格式。"
-
-    def modify_monitor_groups(self, group_names: str, action: str) -> str:
-        """添加或删除监听群组"""
+        """委托 AdminCommandsHandler 处理管理员命令"""
         try:
-            groups = [name.strip() for name in group_names.split(',')]
-            if action == 'add':
-                for group in groups:
-                    if group not in self.monitor_groups:
-                        self.monitor_groups.append(group)
-            elif action == 'remove':
-                for group in groups:
-                    if group in self.monitor_groups:
-                        self.monitor_groups.remove(group)
-            else:
-                return "未知的操作类型。"
-
-            # 更新配置并保存
-            self.config['group_types'] = self.group_types
-            ConfigManager.save_config(self.config)
-
-            # 同步更新上传目标
-            self.sync_upload_targets()
-
-            message = f"已{ '添加' if action == 'add' else '删除' }监听群组：{', '.join(groups)}"
-            logging.info(message)
-            return message
+            response = self.admin_commands_handler.handle_command(message)
+            return response
         except Exception as e:
-            logging.error(f"修改监听群组时发生错误: {e}", exc_info=True)
+            logging.error(f"处理管理员命令时发生错误: {e}", exc_info=True)
             self.error_handler.handle_exception(e)
-            return f"修改监听群组时发生错误: {e}"
-
-    def modify_monitor_individuals(self, individual_names: str, action: str) -> str:
-        """添加或删除监听个人"""
-        try:
-            individuals = [name.strip() for name in individual_names.split(',')]
-            if action == 'add':
-                for individual in individuals:
-                    if individual not in self.target_individuals:
-                        self.target_individuals.append(individual)
-            elif action == 'remove':
-                for individual in individuals:
-                    if individual in self.target_individuals:
-                        self.target_individuals.remove(individual)
-            else:
-                return "未知的操作类型。"
-
-            if action == 'add':
-                message = f"已添加监听个人：{', '.join(individuals)}"
-            else:
-                message = f"已删除监听个人：{', '.join(individuals)}"
-
-            # 更新配置并保存
-            self.config['wechat']['target_individuals'] = self.target_individuals
-            ConfigManager.save_config(self.config)
-
-            # 同步更新上传目标
-            self.sync_upload_targets()
-
-            logging.info(message)
-            return message
-        except Exception as e:
-            logging.error(f"修改监听个人时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-            return f"修改监听个人时发生错误: {e}"
-
-    def modify_group_type(self, group_names: str, group_type: str, action: str) -> str:
-        """添加或删除整体群组或非整体群组"""
-        try:
-            groups = [name.strip() for name in group_names.split(',')]
-            group_key = 'whole_groups' if group_type == 'whole' else 'non_whole_groups'
-
-            if action == 'add':
-                for group in groups:
-                    if group not in self.group_types.get(group_key, []):
-                        self.group_types.setdefault(group_key, []).append(group)
-                    # 从另一类型的群组中移除
-                    other_key = 'non_whole_groups' if group_key == 'whole_groups' else 'whole_groups'
-                    if group in self.group_types.get(other_key, []):
-                        self.group_types[other_key].remove(group)
-                message = f"已添加{group_type}群组：{', '.join(groups)}"
-            elif action == 'remove':
-                for group in groups:
-                    if group in self.group_types.get(group_key, []):
-                        self.group_types[group_key].remove(group)
-                message = f"已删除{group_type}群组：{', '.join(groups)}"
-            else:
-                return "未知的操作类型。"
-
-            # 更新配置并保存
-            self.config['group_types'] = self.group_types
-            ConfigManager.save_config(self.config)
-
-            # 更新数据库中群组的类型
-            for group in groups:
-                is_whole = (group_type == 'whole' and action == 'add')
-                self.point_manager.ensure_group(group, is_whole=is_whole)
-
-            logging.info(message)
-            return message
-        except Exception as e:
-            logging.error(f"修改群组类型时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-            return f"修改群组类型时发生错误: {e}"
-
-    def sync_upload_targets(self):
-        """同步上传目标和监听目标"""
-        if self.uploader:
-            self.uploader.target_groups = self.monitor_groups.copy()
-            self.uploader.target_individuals = self.target_individuals.copy()
-            # 更新配置并保存
-            self.config['upload']['target_groups'] = self.uploader.target_groups
-            self.config['upload']['target_individuals'] = self.uploader.target_individuals
-            ConfigManager.save_config(self.config)
-            logging.info("上传目标已同步更新")
-        else:
-            logging.warning("Uploader 未设置，无法同步上传目标")
-
-    def set_config_value(self, key_path: str, value: str) -> str:
-        """设置配置文件中的值"""
-        try:
-            keys = key_path.split('.')
-            config_section = self.config
-            for key in keys[:-1]:
-                if key in config_section:
-                    config_section = config_section[key]
-                else:
-                    return f"配置项不存在: {key_path}"
-
-            last_key = keys[-1]
-            if last_key in config_section:
-                # 尝试将字符串转换为合适的类型（如整数、布尔值等）
-                old_value = config_section[last_key]
-                new_value = self._convert_value_type(value, old_value)
-                config_section[last_key] = new_value
-
-                # 保存配置
-                ConfigManager.save_config(self.config)
-
-                # 通知相关模块（如需要）
-                self._notify_config_change()
-
-                return f"配置项 '{key_path}' 已更新为 {new_value}"
-            else:
-                return f"配置项不存在: {key_path}"
-        except Exception as e:
-            logging.error(f"设置配置项时发生错误: {e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-            return f"设置配置项时发生错误: {e}"
-
-    def _convert_value_type(self, value: str, old_value):
-        """根据原值的类型，将字符串转换为合适的类型"""
-        if isinstance(old_value, bool):
-            return value.lower() in ['true', '1', 'yes', 'on']
-        elif isinstance(old_value, int):
-            return int(value)
-        elif isinstance(old_value, float):
-            return float(value)
-        elif isinstance(old_value, list):
-            # 假设列表项为字符串，以逗号分隔
-            return [item.strip() for item in value.strip().split(',')]
-        else:
-            return value
-
-    def _notify_config_change(self):
-        """通知相关模块配置已更新"""
-        # 更新正则表达式
-        self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
-        # 更新验证开关
-        self.validation = self.config.get('url', {}).get('validation', True)
-        logging.info("MessageHandler 已更新配置")
-
-    def get_help_message(self) -> str:
-        """返回可用命令的帮助信息，按照分类整理"""
-        help_message = (
-            "可用命令如下：\n\n"
-            "【数据库命令】\n"
-            "1. 更新个人积分 <个人名称> <变化量>\n"
-            "   示例：更新个人积分 User1 -10\n\n"
-            "2. 更新整体群组积分 <群组名称> <变化量>\n"
-            "   示例：更新整体群组积分 群组A +50\n\n"
-            "3. 更新非整体群组积分 <群组名称> <变化量>\n"
-            "   示例：更新非整体群组积分 群组B -20\n\n"
-            "4. 添加群组 <群组名称> <群组类型> [初始积分]\n"
-            "   示例：添加群组 群组A whole 100\n\n"
-            "5. 添加用户 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]\n"
-            "   示例：添加用户 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
-
-            "【配置文件命令】\n"
-            "6. 添加监听群组 <群组名称1>,<群组名称2>\n"
-            "   示例：添加监听群组 群组A,群组B\n\n"
-            "7. 删除监听群组 <群组名称1>,<群组名称2>\n"
-            "   示例：删除监听群组 群组A,群组B\n\n"
-            "8. 添加监听个人 <个人名称1>,<个人名称2>\n"
-            "   示例：添加监听个人 个人1,个人2\n\n"
-            "9. 删除监听个人 <个人名称1>,<个人名称2>\n"
-            "   示例：删除监听个人 个人1,个人2\n\n"
-            "10. 添加整体群组 <群组名称1>,<群组名称2>\n"
-            "    示例：添加整体群组 群组A,群组B\n\n"
-            "11. 删除整体群组 <群组名称1>,<群组名称2>\n"
-            "    示例：删除整体群组 群组A,群组B\n\n"
-            "12. 添加非整体群组 <群组名称1>,<群组名称2>\n"
-            "    示例：添加非整体群组 群组A,群组B\n\n"
-            "13. 删除非整体群组 <群组名称1>,<群组名称2>\n"
-            "    示例：删除非整体群组 群组A,群组B\n\n"
-
-            "【其他命令】\n"
-            "14. 重启浏览器\n"
-            "    示例：重启浏览器\n\n"
-            "15. 查询日志\n"
-            "    示例：查询日志\n\n"
-            "16. 查询浏览器\n"
-            "    示例：查询浏览器\n\n"
-            "17. 帮助\n"
-            "    示例：帮助\n\n"
-
-            "【命令模板】\n"
-            "发送序号以获取对应命令模板。\n"
-            "例如，发送 '1' 获取命令模板。"
-        )
-        return help_message
+            return "处理管理员命令时发生错误。"
 
     def extract_urls(self, msg) -> List[str]:
         """从消息中提取URL列表"""
@@ -814,7 +445,7 @@ class MessageHandler:
                 logging.warning("日志目录下没有日志文件。")
                 return None
 
-            latest_log_file = max(log_files)
+            latest_log_file = max(log_files, key=lambda x: os.path.getmtime(os.path.join(self.log_dir, x)))
             log_path = os.path.join(self.log_dir, latest_log_file)
 
             with open(log_path, 'r', encoding='utf-8') as f:
