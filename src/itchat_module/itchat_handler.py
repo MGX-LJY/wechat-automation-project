@@ -282,17 +282,6 @@ class MessageHandler:
             logging.debug("积分检查未通过，停止处理")
             return
 
-        # 检查积分
-        if not self.check_points(
-                message_type='group',
-                context_name=group_name,
-                sender_name=sender_nickname,
-                group_type=group_type
-            ):
-            logging.debug(f"积分检查结果: {False}")
-
-            return
-
         # 通过积分检查后，调用上传和添加任务函数
         for url, soft_id in processed_urls:
             if self.uploader and soft_id:
