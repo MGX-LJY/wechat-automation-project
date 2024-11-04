@@ -42,7 +42,7 @@ class AdminCommandsHandler:
 
             # 新增查询积分命令
             'query_individual_points': r'^查询个人积分\s+(\S+)$',
-            'query_whole_group_points': r'^查询整体群组积分\s+(\S+)$',
+            'query_whole_group_points': r'^查询群组积分\s+(\S+)$',
             'query_user_points': r'^查询用户积分\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)$',
 
             # 配置文件命令
