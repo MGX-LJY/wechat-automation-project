@@ -247,15 +247,6 @@ class MessageHandler:
         sender_nickname = msg.get('ActualNickName', '')
         logging.debug(f"发送者昵称: {sender_nickname}")
 
-        # 检查积分
-        if not self.check_points(
-                message_type='group',
-                context_name=group_name,
-                sender_name=sender_nickname,
-                group_type=group_type
-            ):
-            return
-
         # 提取URL
         urls = self.extract_urls(msg)
         logging.debug(f"提取的URLs: {urls}")
@@ -268,6 +259,15 @@ class MessageHandler:
         logging.debug(f"处理后的URLs: {processed_urls}")
         if not processed_urls:
             logging.debug("未找到有效的URL，停止处理")
+            return
+
+        # 检查积分
+        if not self.check_points(
+                message_type='group',
+                context_name=group_name,
+                sender_name=sender_nickname,
+                group_type=group_type
+            ):
             return
 
         # 通过积分检查后，调用上传和添加任务函数
@@ -311,13 +311,6 @@ class MessageHandler:
                 self.notifier.notify(response)
             return
 
-        # 检查积分
-        if not self.check_points(
-                message_type='individual',
-                context_name=sender
-            ):
-            return
-
         # 提取URL
         urls = self.extract_urls(msg)
         logging.debug(f"提取的URLs: {urls}")
@@ -330,6 +323,13 @@ class MessageHandler:
         logging.debug(f"处理后的URLs: {processed_urls}")
         if not processed_urls:
             logging.debug("未找到有效的URL，停止处理")
+            return
+
+        # 检查积分
+        if not self.check_points(
+                message_type='individual',
+                context_name=sender
+            ):
             return
 
         # 通过积分检查后，调用上传和添加任务函数
