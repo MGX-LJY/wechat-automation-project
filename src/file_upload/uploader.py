@@ -50,13 +50,9 @@ class Uploader:
         """
         确保微信客户端已运行，并切换到主页面。
         """
-        try:
-            self.wx.SwitchToChat()
-            logging.info("已切换到微信聊天页面")
-            time.sleep(1)  # 等待界面切换完成
-        except Exception as e:
-            logging.error(f"初始化微信界面时发生错误：{e}", exc_info=True)
-            self.error_handler.handle_exception(e)
+        self.wx.SwitchToChat()
+        logging.info("已切换到微信聊天页面")
+        time.sleep(1)  # 等待界面切换完成
 
     def upload_group_id(self, recipient_name: str, soft_id: str, sender_nickname: str = None, recipient_type: str = 'group', group_type: str = None):
         """
@@ -64,56 +60,47 @@ class Uploader:
         recipient_type: 'group' 或 'individual'
         group_type: 'whole' 或 'non-whole'，仅当 recipient_type 为 'group' 时有效
         """
-        try:
-            with self.lock:
-                # 维护 soft_id 到 recipient_name 的映射
-                self.softid_to_recipient[soft_id] = recipient_name
-                logging.info(f"映射 soft_id {soft_id} 到接收者 '{recipient_name}'")
+        with self.lock:
+            # 维护 soft_id 到 recipient_name 的映射
+            self.softid_to_recipient[soft_id] = recipient_name
+            logging.info(f"映射 soft_id {soft_id} 到接收者 '{recipient_name}'")
 
-                if sender_nickname:
-                    self.softid_to_sender[soft_id] = sender_nickname
-                    logging.info(f"映射 soft_id {soft_id} 到发送者 '{sender_nickname}'")
+            if sender_nickname:
+                self.softid_to_sender[soft_id] = sender_nickname
+                logging.info(f"映射 soft_id {soft_id} 到发送者 '{sender_nickname}'")
 
-                if recipient_type == 'group':
-                    if group_type:
-                        # 根据 group_type 确定是否为整体群组
-                        is_whole = (group_type == 'whole')
-                        self.point_manager.ensure_group(recipient_name, is_whole=is_whole)
-                    else:
-                        # 默认设为整体群组
-                        self.point_manager.ensure_group(recipient_name, is_whole=True)
-                    # 新增：维护 soft_id 到 group_type 的映射
-                    self.softid_to_group_type[soft_id] = group_type if group_type else 'whole'
-                elif recipient_type == 'individual':
-                    # 使用新添加的 add_recipient 方法
-                    add_result = self.point_manager.add_recipient(recipient_name, initial_points=100)
-                    logging.info(add_result)
-                if sender_nickname and recipient_type == 'group':
-                    self.point_manager.ensure_user(recipient_name, sender_nickname)
-        except Exception as e:
-            logging.error("维护 soft_id 到接收者映射时发生错误", exc_info=True)
-            self.error_handler.handle_exception(e)
+            if recipient_type == 'group':
+                if group_type:
+                    # 根据 group_type 确定是否为整体群组
+                    is_whole = (group_type == 'whole')
+                    self.point_manager.ensure_group(recipient_name, is_whole=is_whole)
+                else:
+                    # 默认设为整体群组
+                    self.point_manager.ensure_group(recipient_name, is_whole=True)
+                # 新增：维护 soft_id 到 group_type 的映射
+                self.softid_to_group_type[soft_id] = group_type if group_type else 'whole'
+            elif recipient_type == 'individual':
+                # 使用新添加的 add_recipient 方法
+                add_result = self.point_manager.add_recipient(recipient_name, initial_points=100)
+                logging.info(add_result)
+            if sender_nickname and recipient_type == 'group':
+                self.point_manager.ensure_user(recipient_name, sender_nickname)
 
     def rename_file_with_id(self, file_path: str, soft_id: str) -> Optional[str]:
         """
         将文件名修改为 [soft_id]原文件名。
         """
-        try:
-            directory, original_filename = os.path.split(file_path)
-            new_filename = f"[{soft_id}]{original_filename}"
-            new_file_path = os.path.join(directory, new_filename)
+        directory, original_filename = os.path.split(file_path)
+        new_filename = f"[{soft_id}]{original_filename}"
+        new_file_path = os.path.join(directory, new_filename)
 
-            if os.path.exists(new_file_path):
-                logging.warning(f"目标文件 {new_file_path} 已存在，无法重命名 {file_path}")
-                return None  # 返回 None 表示重命名失败
+        if os.path.exists(new_file_path):
+            logging.warning(f"目标文件 {new_file_path} 已存在，无法重命名 {file_path}")
+            return None  # 返回 None 表示重命名失败
 
-            os.rename(file_path, new_file_path)
-            logging.info(f"已将文件 {file_path} 重命名为 {new_file_path}")
-            return new_file_path
-        except Exception as e:
-            logging.error(f"重命名文件 {file_path} 时出错：{e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-            return None
+        os.rename(file_path, new_file_path)
+        logging.info(f"已将文件 {file_path} 重命名为 {new_file_path}")
+        return new_file_path
 
     def add_upload_task(self, file_path: str, soft_id: str, recipient_type: str = 'group'):
         """
@@ -298,8 +285,7 @@ class Uploader:
         """停止上传线程并清理资源。"""
         self.stop_event.set()
         self.upload_thread.join()
-        self.wx.Close()  # 假设 wxauto WeChat 实例有 Close 方法
-        self.point_manager.close()  # 关闭 PointManager 的数据库连接
+        self.point_manager.close()
         logging.info("Uploader 已停止并清理资源")
 
     def __del__(self):
