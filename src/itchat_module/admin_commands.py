@@ -16,19 +16,22 @@ class AdminCommandsHandler:
         self.help_templates = {
             '1': "更新个人积分 <个人名称> <变化量>",
             '2': "更新整体群组积分 <群组名称> <变化量>",
-            '3': "更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]",
-            '4': "添加监听群组 <群组名称1>,<群组名称2>",
-            '5': "删除监听群组 <群组名称1>,<群组名称2>",
-            '6': "添加监听个人 <个人名称1>,<个人名称2>",
-            '7': "删除监听个人 <个人名称1>,<个人名称2>",
-            '8': "添加整体群组 <群组名称1>,<群组名称2>",
-            '9': "删除整体群组 <群组名称1>,<群组名称2>",
-            '10': "添加非整体群组 <群组名称1>,<群组名称2>",
-            '11': "删除非整体群组 <群组名称1>,<群组名称2>",
-            '12': "重启浏览器",
-            '13': "查询日志",
-            '14': "查询浏览器",
-            '15': "帮助",
+            '3': "更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]",
+            '4': "查询个人积分 <个人名称>",
+            '5': "查询整体群组积分 <群组名称>",
+            '6': "查询用户积分 群组名: <群组名称> 昵称: <用户昵称>",
+            '7': "添加监听群组 <群组名称1>,<群组名称2>",
+            '8': "删除监听群组 <群组名称1>,<群组名称2>",
+            '9': "添加监听个人 <个人名称1>,<个人名称2>",
+            '10': "删除监听个人 <个人名称1>,<个人名称2>",
+            '11': "添加整体群组 <群组名称1>,<群组名称2>",
+            '12': "删除整体群组 <群组名称1>,<群组名称2>",
+            '13': "添加非整体群组 <群组名称1>,<群组名称2>",
+            '14': "删除非整体群组 <群组名称1>,<群组名称2>",
+            '15': "重启浏览器",
+            '16': "查询日志",
+            '17': "查询浏览器",
+            '18': "帮助",
         }
 
         self.commands = {
@@ -36,6 +39,11 @@ class AdminCommandsHandler:
             'update_individual_points': r'^更新个人积分\s+(\S+)\s+([+-]?\d+)$',
             'update_non_whole_group_points': r'^更新整体群组积分\s+(\S+)\s+([+-]?\d+)$',
             'update_user_points': r'^更新用户积分\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)\s*积分:\s*([+-]?\d+)$',
+
+            # 新增查询积分命令
+            'query_individual_points': r'^查询个人积分\s+(\S+)$',
+            'query_whole_group_points': r'^查询整体群组积分\s+(\S+)$',
+            'query_user_points': r'^查询用户积分\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)$',
 
             # 配置文件命令
             'add_monitor_group': r'^添加监听群组\s+(.+)$',
@@ -77,7 +85,7 @@ class AdminCommandsHandler:
                         else:
                             return f"个人 '{name}' 的积分更新失败。"
 
-                    elif cmd == 'update_whole_group_points':
+                    elif cmd == 'update_non_whole_group_points':
                         group_name, delta = match.groups()
                         delta = int(delta)
                         success = self.point_manager.update_group_points(group_name, delta, group_type='whole')
@@ -97,6 +105,31 @@ class AdminCommandsHandler:
                             return f"用户 '{nickname}' 在群组 '{group_name}' 的积分已更新，变化量为 {points}。"
                         else:
                             return f"用户 '{nickname}' 的积分更新失败。"
+
+                    # 新增查询积分命令处理逻辑
+                    elif cmd == 'query_individual_points':
+                        (name,) = match.groups()
+                        points = self.point_manager.get_individual_points(name)
+                        if points is not None:
+                            return f"个人 '{name}' 当前的积分为 {points}。"
+                        else:
+                            return f"未找到个人 '{name}' 的积分信息。"
+
+                    elif cmd == 'query_whole_group_points':
+                        (group_name,) = match.groups()
+                        points = self.point_manager.get_group_points(group_name, group_type='whole')
+                        if points is not None:
+                            return f"整体群组 '{group_name}' 当前的积分为 {points}。"
+                        else:
+                            return f"未找到整体群组 '{group_name}' 的积分信息。"
+
+                    elif cmd == 'query_user_points':
+                        group_name, nickname = match.groups()
+                        points = self.point_manager.get_user_points(group_name, nickname)
+                        if points is not None:
+                            return f"用户 '{nickname}' 在群组 '{group_name}' 当前的积分为 {points}。"
+                        else:
+                            return f"未找到用户 '{nickname}' 在群组 '{group_name}' 的积分信息。"
 
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
@@ -314,35 +347,42 @@ class AdminCommandsHandler:
             "   示例：更新个人积分 User1 -10\n\n"
             "2. 更新整体群组积分 <群组名称> <变化量>\n"
             "   示例：更新整体群组积分 群组B -20\n\n"
-            "3. 更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]\n"
+            "3. 更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]\n"
             "   示例：更新用户积分 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
 
+            "4. 查询个人积分 <个人名称>\n"
+            "   示例：查询个人积分 User1\n\n"
+            "5. 查询整体群组积分 <群组名称>\n"
+            "   示例：查询整体群组积分 群组B\n\n"
+            "6. 查询用户积分 群组名: <群组名称> 昵称: <用户昵称>\n"
+            "   示例：查询用户积分 群组名: 群组A 昵称: 用户1\n\n"
+
             "【配置文件命令】\n"
-            "4. 添加监听群组 <群组名称1>,<群组名称2>\n"
+            "7. 添加监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：添加监听群组 群组A,群组B\n\n"
-            "5. 删除监听群组 <群组名称1>,<群组名称2>\n"
+            "8. 删除监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：删除监听群组 群组A,群组B\n\n"
-            "6. 添加监听个人 <个人名称1>,<个人名称2>\n"
+            "9. 添加监听个人 <个人名称1>,<个人名称2>\n"
             "   示例：添加监听个人 个人1,个人2\n\n"
-            "7. 删除监听个人 <个人名称1>,<个人名称2>\n"
-            "   示例：删除监听个人 个人1,个人2\n\n"
-            "8. 添加整体群组 <群组名称1>,<群组名称2>\n"
-            "   示例：添加整体群组 群组A,群组B\n\n"
-            "9. 删除整体群组 <群组名称1>,<群组名称2>\n"
-            "   示例：删除整体群组 群组A,群组B\n\n"
-            "10. 添加非整体群组 <群组名称1>,<群组名称2>\n"
+            "10. 删除监听个人 <个人名称1>,<个人名称2>\n"
+            "    示例：删除监听个人 个人1,个人2\n\n"
+            "11. 添加整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：添加整体群组 群组A,群组B\n\n"
+            "12. 删除整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：删除整体群组 群组A,群组B\n\n"
+            "13. 添加非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：添加非整体群组 群组A,群组B\n\n"
-            "11. 删除非整体群组 <群组名称1>,<群组名称2>\n"
+            "14. 删除非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除非整体群组 群组A,群组B\n\n"
 
             "【其他命令】\n"
-            "12. 重启浏览器\n"
+            "15. 重启浏览器\n"
             "    示例：重启浏览器\n\n"
-            "13. 查询日志\n"
+            "16. 查询日志\n"
             "    示例：查询日志\n\n"
-            "14. 查询浏览器\n"
+            "17. 查询浏览器\n"
             "    示例：查询浏览器\n\n"
-            "15. 帮助\n"
+            "18. 帮助\n"
             "    示例：帮助\n\n"
 
             "【命令模板】\n"

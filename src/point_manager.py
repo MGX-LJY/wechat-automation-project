@@ -97,9 +97,9 @@ class PointManager:
                         ''', (group_name, initial_points, int(is_whole)))
                     else:
                         self.cursor.execute('''
-                            INSERT INTO groups (name, remaining_points)
-                            VALUES (?, ?)
-                        ''', (group_name, initial_points))
+                            INSERT INTO groups (name, remaining_points, is_whole)
+                            VALUES (?, ?, 0)
+                        ''', (group_name, initial_points))  # 默认为非整体性群组
                     self.conn.commit()
                     logging.debug(f"群组 '{group_name}' 已添加，is_whole={is_whole}")
                 else:
@@ -142,7 +142,7 @@ class PointManager:
             with self.lock:
                 self.ensure_group(group_name)
                 self.cursor.execute('''
-                    SELECT remaining_points FROM groups WHERE name = ?
+                    SELECT remaining_points FROM groups WHERE name = ? AND is_whole = 1
                 ''', (group_name,))
                 result = self.cursor.fetchone()
                 logging.debug(f"查询群组 '{group_name}' 的积分结果: {result}")
@@ -214,15 +214,17 @@ class PointManager:
                 WHERE name = ? AND remaining_points >= ?
             ''', (points, group_name, points))
             if self.cursor.rowcount == 0:
+                logging.warning(f"群组 '{group_name}' 的积分不足，无法扣除 {points} 积分")
                 return False  # 群组积分不足
 
             self.conn.commit()
+            logging.debug(f"成功从整体群组 '{group_name}' 扣除 {points} 积分")
             return True
 
     # 扣除非整体性群组成员的积分
     def deduct_non_whole_group_members_points(self, group_name: str, points: int = 1) -> bool:
         with self.lock:
-            # 检查群组是否存在
+            # 检查群组是否存在且为非整体性群组
             self.cursor.execute('''
                 SELECT is_whole FROM groups WHERE name = ?
             ''', (group_name,))
@@ -243,7 +245,7 @@ class PointManager:
             members = self.cursor.fetchall()
             for member in members:
                 if member[1] < points:
-                    logging.warning(f"用户 '{member[0]}' 在群组 '{group_name}' 中积分不足")
+                    logging.warning(f"用户 '{member[0]}' 在群组 '{group_name}' 中积分不足，无法扣除 {points} 积分")
                     return False
 
             # 扣除每个成员的积分
@@ -254,6 +256,7 @@ class PointManager:
             ''', (points, group_name, points))
 
             self.conn.commit()
+            logging.debug(f"成功从群组 '{group_name}' 的所有成员扣除 {points} 积分")
             return True
 
     # 扣除个人接收者的积分
@@ -265,8 +268,10 @@ class PointManager:
                 WHERE name = ? AND remaining_points >= ?
             ''', (points, recipient_name, points))
             if self.cursor.rowcount == 0:
+                logging.warning(f"接收者 '{recipient_name}' 的积分不足，无法扣除 {points} 积分")
                 return False
             self.conn.commit()
+            logging.debug(f"成功从接收者 '{recipient_name}' 扣除 {points} 积分")
             return True
 
     # 扣除个人用户的积分
@@ -279,10 +284,10 @@ class PointManager:
                 WHERE group_name = ? AND nickname = ? AND remaining_points >= ?
             ''', (points, group_name, nickname, points))
             if self.cursor.rowcount == 0:
-                logging.warning(f"用户 '{nickname}' 的积分不足，无法扣除")
+                logging.warning(f"用户 '{nickname}' 的积分不足，无法扣除 {points} 积分")
                 return False  # 用户积分不足
             self.conn.commit()
-            logging.debug(f"扣除积分成功")
+            logging.debug(f"成功从用户 '{nickname}' 扣除 {points} 积分")
             return True
 
     # 获取接收者信息
@@ -356,22 +361,39 @@ class PointManager:
                 WHERE name = ?
             ''', (delta, recipient_name))
             if self.cursor.rowcount == 0:
+                logging.warning(f"接收者 '{recipient_name}' 的积分更新失败")
                 return False
             self.conn.commit()
+            logging.debug(f"接收者 '{recipient_name}' 的积分已更新，变化量为 {delta}")
             return True
 
-    # 更新群组积分
+    # 更新群组积分（仅适用于整体性群组）
     def update_group_points(self, group_name: str, delta: int) -> bool:
         with self.lock:
-            self.ensure_group(group_name)
+            # 确认群组存在且为整体性群组
+            self.cursor.execute('''
+                SELECT is_whole FROM groups WHERE name = ?
+            ''', (group_name,))
+            result = self.cursor.fetchone()
+            if not result:
+                logging.error(f"群组 '{group_name}' 不存在")
+                return False
+            is_whole = bool(result[0])
+            if not is_whole:
+                logging.error(f"群组 '{group_name}' 不是整体性群组，无法更新群组积分")
+                return False
+
+            # 更新群组积分
             self.cursor.execute('''
                 UPDATE groups
                 SET remaining_points = remaining_points + ?
                 WHERE name = ?
             ''', (delta, group_name))
             if self.cursor.rowcount == 0:
+                logging.warning(f"群组 '{group_name}' 的积分更新失败")
                 return False
             self.conn.commit()
+            logging.debug(f"群组 '{group_name}' 的积分已更新，变化量为 {delta}")
             return True
 
     # 更新用户积分
@@ -384,8 +406,10 @@ class PointManager:
                 WHERE group_name = ? AND nickname = ?
             ''', (delta, group_name, nickname))
             if self.cursor.rowcount == 0:
+                logging.warning(f"用户 '{nickname}' 的积分更新失败")
                 return False
             self.conn.commit()
+            logging.debug(f"用户 '{nickname}' 的积分已更新，变化量为 {delta}")
             return True
 
     # 删除接收者
@@ -395,8 +419,10 @@ class PointManager:
                 DELETE FROM recipients WHERE name = ?
             ''', (recipient_name,))
             if self.cursor.rowcount == 0:
+                logging.warning(f"接收者 '{recipient_name}' 不存在，无法删除")
                 return False  # 接收者不存在
             self.conn.commit()
+            logging.debug(f"接收者 '{recipient_name}' 已删除")
             return True
 
     # 删除群组
@@ -406,8 +432,10 @@ class PointManager:
                 DELETE FROM groups WHERE name = ?
             ''', (group_name,))
             if self.cursor.rowcount == 0:
+                logging.warning(f"群组 '{group_name}' 不存在，无法删除")
                 return False  # 群组不存在
             self.conn.commit()
+            logging.debug(f"群组 '{group_name}' 已删除")
             return True
 
     # 删除用户
@@ -417,8 +445,10 @@ class PointManager:
                 DELETE FROM users WHERE group_name = ? AND nickname = ?
             ''', (group_name, nickname))
             if self.cursor.rowcount == 0:
+                logging.warning(f"用户 '{nickname}' 在群组 '{group_name}' 中不存在，无法删除")
                 return False  # 用户不存在
             self.conn.commit()
+            logging.debug(f"用户 '{nickname}' 在群组 '{group_name}' 中已删除")
             return True
 
     # 获取所有群组列表
@@ -459,6 +489,42 @@ class PointManager:
         except Exception as e:
             logging.error(f"获取所有用户时出错: {e}", exc_info=True)
             return []
+
+    # 新增方法：查询个人积分
+    def get_individual_points(self, name: str) -> Optional[int]:
+        with self.lock:
+            self.cursor.execute('''
+                SELECT remaining_points FROM recipients WHERE name = ?
+            ''', (name,))
+            result = self.cursor.fetchone()
+            if result:
+                return result[0]
+            else:
+                return None
+
+    # 新增方法：查询群组积分（仅适用于整体性群组）
+    def get_group_points(self, group_name: str) -> Optional[int]:
+        with self.lock:
+            self.cursor.execute('''
+                SELECT remaining_points FROM groups WHERE name = ? AND is_whole = 1
+            ''', (group_name,))
+            result = self.cursor.fetchone()
+            if result:
+                return result[0]
+            else:
+                return None
+
+    # 新增方法：查询用户积分
+    def get_user_points(self, group_name: str, nickname: str) -> Optional[int]:
+        with self.lock:
+            self.cursor.execute('''
+                SELECT remaining_points FROM users WHERE group_name = ? AND nickname = ?
+            ''', (group_name, nickname))
+            result = self.cursor.fetchone()
+            if result:
+                return result[0]
+            else:
+                return None
 
     # 关闭数据库连接
     def close(self):
