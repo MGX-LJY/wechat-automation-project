@@ -1,12 +1,12 @@
 # src/logging_module.py
 import logging
 import os
-import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from logging import Formatter, StreamHandler
 import requests
 from urllib3.exceptions import ProxyError as UrllibProxyError, MaxRetryError
 from http.client import RemoteDisconnected
+
 
 class ReplaceNetworkErrorFilter(logging.Filter):
     """
@@ -38,7 +38,7 @@ class DateBasedFileHandler(logging.Handler):
         self.backup_days = backup_days
         self.encoding = encoding
         os.makedirs(self.log_dir, exist_ok=True)
-        self.current_date = datetime.utcnow().strftime('%Y-%m-%d')  # 使用UTC时间
+        self.current_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')  # 使用时区感知的UTC时间
         self.log_file = os.path.join(self.log_dir, f"{self.current_date}.log")
         self.file_handler = logging.FileHandler(self.log_file, encoding=self.encoding)
         self.file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -48,7 +48,7 @@ class DateBasedFileHandler(logging.Handler):
         self.file_handler.addFilter(self.replace_network_filter)
 
     def emit(self, record):
-        new_date = datetime.utcnow().strftime('%Y-%m-%d')  # 使用UTC时间
+        new_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')  # 使用时区感知的UTC时间
         if new_date != self.current_date:
             self.file_handler.close()
             self.current_date = new_date
@@ -61,12 +61,12 @@ class DateBasedFileHandler(logging.Handler):
 
     def cleanup_old_logs(self):
         """删除超过backup_days天的日志文件"""
-        cutoff_date = datetime.utcnow() - timedelta(days=self.backup_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=self.backup_days)
         for filename in os.listdir(self.log_dir):
             if filename.endswith('.log'):
                 try:
                     date_str = filename.rstrip('.log')
-                    file_date = datetime.strptime(date_str, '%Y-%m-%d')
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
                     if file_date < cutoff_date:
                         os.remove(os.path.join(self.log_dir, filename))
                         logging.debug(f"删除旧日志文件: {filename}")

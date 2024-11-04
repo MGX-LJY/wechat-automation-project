@@ -2,6 +2,7 @@ import re
 import logging
 import os
 from typing import Optional
+from datetime import datetime, timezone
 from src.config.config_manager import ConfigManager  # 确保路径正确
 
 
@@ -412,7 +413,7 @@ class AdminCommandsHandler:
             log_dir = os.path.abspath(log_dir)
 
             # 获取当前日期的日志文件名
-            current_date = datetime.utcnow().strftime('%Y-%m-%d')
+            current_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
             log_file_path = os.path.join(log_dir, f"{current_date}.log")
 
             if not os.path.exists(log_file_path):
