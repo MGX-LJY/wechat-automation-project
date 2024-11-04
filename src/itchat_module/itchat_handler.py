@@ -41,8 +41,6 @@ class ItChatHandler:
 
         self.uploader = None
         self.message_handler.set_uploader(self.uploader)
-        itchat.msg_register([TEXT, SHARING], isGroupChat=True)(self.handle_group)
-        itchat.msg_register([TEXT, SHARING], isGroupChat=False)(self.handle_individual)
 
         logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
 
@@ -154,7 +152,7 @@ class MessageHandler:
         self.browser_controller = browser_controller
         self.log_dir = self.config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
-        self.group_types = self.config.get('group_types', {})
+        self.group_types = self.config.get('wechat', {}).get('group_types', {})
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
@@ -191,7 +189,7 @@ class MessageHandler:
             group_type = 'non-whole'
         else:
             # 默认设为非整体群组
-            group_type = 'non-whole'
+            group_type = 'whole'
 
         sender_nickname = msg['ActualNickName']  # 获取发送者昵称
 
@@ -627,29 +625,25 @@ class MessageHandler:
             self.error_handler.handle_exception(e)
             return []
 
-    def process_urls(self, urls: List[str], is_group: bool, recipient_name: str) -> List[str]:
-        """清理、验证并处理URL，上传相关信息，返回有效的URL列表"""
-        valid_urls = []
+    def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
+        """清理、验证并处理URL，返回 (url, soft_id) 的列表"""
+        processed_urls = []
         for url in urls:
             clean_url = self.clean_url(url)
             if self.validation and not self.validate_url(clean_url):
                 logging.warning(f"URL 验证失败: {clean_url}")
                 continue
 
-            valid_urls.append(clean_url)
-
             soft_id_match = re.search(r'/soft/(\d+)\.html', clean_url)
             if soft_id_match:
                 soft_id = soft_id_match.group(1)
-                if self.uploader:
-                    self.uploader.upload_group_id(recipient_name, soft_id)
-                    logging.info(f"上传信息到 Uploader: {recipient_name}, {soft_id}")
-                else:
-                    logging.warning("Uploader 未设置，无法上传接收者和 soft_id 信息。")
             else:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
+                soft_id = None
 
-        return valid_urls
+            processed_urls.append((clean_url, soft_id))
+
+        return processed_urls
 
     def clean_url(self, url: str) -> str:
         """清理URL，移除锚点和不必要的字符"""
