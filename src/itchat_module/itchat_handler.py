@@ -148,7 +148,7 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None):
+    def __init__(self, error_handler, monitor_groups, target_individuals, admins, notifier=None, browser_controller=None, point_manager=None, admin_commands_handler=None):
         self.config = ConfigManager.load_config()
         self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
         self.validation = self.config.get('url', {}).get('validation', True)
@@ -163,6 +163,29 @@ class MessageHandler:
         self.log_dir = self.config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
+        self.admin_commands_handler = admin_commands_handler  # 新增属性
+
+        # 初始化 AdminCommandsHandler
+        self.admin_commands_handler = AdminCommandsHandler(
+            config=self.config,
+            point_manager=self.point_manager,
+            notifier=notifier,
+            browser_controller=browser_controller,
+            error_handler=error_handler
+        )
+
+        # 初始化 MessageHandler 并传递 admin_commands_handler
+        self.message_handler = MessageHandler(
+            error_handler=error_handler,
+            monitor_groups=self.monitor_groups,
+            target_individuals=self.target_individuals,
+            admins=self.admins,
+            notifier=notifier,
+            browser_controller=browser_controller,
+            point_manager=self.point_manager,
+            admin_commands_handler=self.admin_commands_handler  # 传递这里
+        )
+
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
