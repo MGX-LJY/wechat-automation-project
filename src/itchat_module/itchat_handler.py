@@ -174,19 +174,6 @@ class MessageHandler:
             error_handler=error_handler
         )
 
-        # 初始化 MessageHandler 并传递 admin_commands_handler
-        self.message_handler = MessageHandler(
-            error_handler=error_handler,
-            monitor_groups=self.monitor_groups,
-            target_individuals=self.target_individuals,
-            admins=self.admins,
-            notifier=notifier,
-            browser_controller=browser_controller,
-            point_manager=self.point_manager,
-            admin_commands_handler=self.admin_commands_handler  # 传递这里
-        )
-
-
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
         self.auto_clicker = auto_clicker
