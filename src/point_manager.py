@@ -10,7 +10,7 @@ class PointManager:
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.initialize_database()
         logging.info("PointManager 数据库已初始化")
 
