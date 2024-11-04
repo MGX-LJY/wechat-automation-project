@@ -25,6 +25,7 @@ class Uploader:
         # 维护 soft_id 到 recipient 和 sender 映射
         self.softid_to_recipient = {}
         self.softid_to_sender = {}  # 用于维护 soft_id 到发送者昵称的映射
+        self.softid_to_group_type = {}  # 新增：维护 soft_id 到 group_type 的映射
 
         # 获取错误通知接收者
         self.error_recipient = error_notification_config.get('recipient')
@@ -57,10 +58,11 @@ class Uploader:
             logging.error(f"初始化微信界面时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def upload_group_id(self, recipient_name: str, soft_id: str, sender_nickname: str = None, recipient_type: str = 'group'):
+    def upload_group_id(self, recipient_name: str, soft_id: str, sender_nickname: str = None, recipient_type: str = 'group', group_type: str = None):
         """
         接收群组或个人名称和 soft_id，并维护映射关系。
         recipient_type: 'group' 或 'individual'
+        group_type: 'whole' 或 'non-whole'，仅当 recipient_type 为 'group' 时有效
         """
         try:
             with self.lock:
@@ -73,7 +75,15 @@ class Uploader:
                     logging.info(f"映射 soft_id {soft_id} 到发送者 '{sender_nickname}'")
 
                 if recipient_type == 'group':
-                    self.point_manager.ensure_group(recipient_name)
+                    if group_type:
+                        # 根据 group_type 确定是否为整体群组
+                        is_whole = (group_type == 'whole')
+                        self.point_manager.ensure_group(recipient_name, is_whole=is_whole)
+                    else:
+                        # 默认设为整体群组
+                        self.point_manager.ensure_group(recipient_name, is_whole=True)
+                    # 新增：维护 soft_id 到 group_type 的映射
+                    self.softid_to_group_type[soft_id] = group_type
                 elif recipient_type == 'individual':
                     # 使用新添加的 add_recipient 方法
                     add_result = self.point_manager.add_recipient(recipient_name, initial_points=100)
@@ -143,6 +153,7 @@ class Uploader:
             with self.lock:
                 recipient_name = self.softid_to_recipient.get(soft_id)
                 sender_nickname = self.softid_to_sender.get(soft_id)  # 获取发送者昵称
+                group_type = self.softid_to_group_type.get(soft_id)  # 获取 group_type
 
             if not recipient_name:
                 logging.error(f"未找到 soft_id {soft_id} 对应的接收者。")
@@ -171,7 +182,7 @@ class Uploader:
                     self.delete_file(file_path)
 
                     # 扣除积分
-                    self.deduct_points(recipient_name, sender_nickname, recipient_type)
+                    self.deduct_points(recipient_name, sender_nickname, recipient_type, group_type)
                     break  # 上传成功，退出重试循环
                 except Exception as e:
                     if attempt < self.max_retries:
@@ -199,26 +210,30 @@ class Uploader:
             logging.error(f"删除文件 {file_path} 时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def deduct_points(self, recipient_name: str, sender_nickname: Optional[str] = None, recipient_type: str = 'group'):
+    def deduct_points(self, recipient_name: str, sender_nickname: Optional[str] = None, recipient_type: str = 'group', group_type: Optional[str] = None):
         """
         扣除积分。
         """
         try:
             if recipient_type == 'group':
                 # 检查群组类型
-                group_info = self.point_manager.get_group_info(recipient_name)
-                if not group_info:
-                    logging.error(f"群组 '{recipient_name}' 信息未找到，无法扣除积分。")
-                    return
+                if not group_type:
+                    # 如果 group_type 未提供，尝试从数据库获取
+                    group_info = self.point_manager.get_group_info(recipient_name)
+                    if group_info:
+                        group_type = 'whole' if group_info['is_whole'] else 'non-whole'
+                    else:
+                        logging.error(f"群组 '{recipient_name}' 信息未找到，无法扣除积分。")
+                        return
 
-                if group_info['is_whole']:
+                if group_type == 'whole':
                     # 整体性群组，从群组中扣除积分
                     success = self.point_manager.deduct_whole_group_points(recipient_name, points=1)
                     if success:
                         logging.info(f"已从整体性群组 '{recipient_name}' 中扣除积分。")
                     else:
                         logging.warning(f"从整体性群组 '{recipient_name}' 中扣除积分失败。")
-                else:
+                elif group_type == 'non-whole':
                     # 非整体性群组，从成员中扣除积分
                     if sender_nickname:
                         success = self.point_manager.deduct_non_whole_group_member_points(recipient_name, sender_nickname, points=1)
@@ -228,6 +243,8 @@ class Uploader:
                             logging.warning(f"从非整体性群组 '{recipient_name}' 的成员 '{sender_nickname}' 中扣除积分失败。")
                     else:
                         logging.error("缺少发送者昵称，无法从非整体性群组成员中扣除积分。")
+                else:
+                    logging.error(f"未知的群组类型 '{group_type}'，无法扣除积分。")
             elif recipient_type == 'individual':
                 # 个人用户，从个人接收者中扣除积分
                 success = self.point_manager.deduct_recipient_points(recipient_name, points=1)
