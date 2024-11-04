@@ -83,7 +83,7 @@ class Uploader:
                         # 默认设为整体群组
                         self.point_manager.ensure_group(recipient_name, is_whole=True)
                     # 新增：维护 soft_id 到 group_type 的映射
-                    self.softid_to_group_type[soft_id] = group_type
+                    self.softid_to_group_type[soft_id] = group_type if group_type else 'whole'
                 elif recipient_type == 'individual':
                     # 使用新添加的 add_recipient 方法
                     add_result = self.point_manager.add_recipient(recipient_name, initial_points=100)
@@ -234,9 +234,9 @@ class Uploader:
                     else:
                         logging.warning(f"从整体性群组 '{recipient_name}' 中扣除积分失败。")
                 elif group_type == 'non-whole':
-                    # 非整体性群组，从成员中扣除积分
+                    # 非整体性群组，从发送者中扣除积分
                     if sender_nickname:
-                        success = self.point_manager.deduct_non_whole_group_member_points(recipient_name, sender_nickname, points=1)
+                        success = self.point_manager.deduct_user_points(recipient_name, sender_nickname, points=1)
                         if success:
                             logging.info(f"已从非整体性群组 '{recipient_name}' 的成员 '{sender_nickname}' 中扣除积分。")
                         else:
