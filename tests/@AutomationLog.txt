@@ -1,0 +1,11 @@
+2024-11-01 02:29:30.679 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:29:40.693 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:29:50.846 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:30:01.064 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:30:11.683 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:30:21.706 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:30:42.609 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:30:52.612 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:31:02.723 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:31:12.945 elements.py[45] _split -> Find Control Timeout(10s): {ControlType: ButtonControl}
+2024-11-01 02:31:23.599 elements.py[45] _split -> 2024-11-02 01:19:14.512 wxauto.py[754] AddListenChat -> Can not move cursor. ListItemControl's BoundingRectangle is (0,0,0,0)[0x0]. SearchProperties: {RegexName: '测试', ControlType: ListItemControl}
