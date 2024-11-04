@@ -194,10 +194,10 @@ class MessageHandler:
                 if sender_name is None:
                     logging.warning("非整体群组需要提供发送者昵称")
                     return False
-                has_points = self.point_manager.has_member_points(sender_name)
-                logging.debug(f"成员 '{sender_name}' 是否有积分: {has_points}")
+                has_points = self.point_manager.has_user_points(context_name, sender_name)
+                logging.debug(f"成员 '{sender_name}' 在群组 '{context_name}' 是否有积分: {has_points}")
                 if not has_points:
-                    logging.info(f"成员 '{sender_name}' 的积分不足，忽略消息。")
+                    logging.info(f"成员 '{sender_name}' 在群组 '{context_name}' 的积分不足，忽略消息。")
                     return False
             else:
                 logging.warning(f"未知的群组类型: {group_type}")
