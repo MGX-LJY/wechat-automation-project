@@ -404,7 +404,22 @@ class AdminCommandsHandler:
     def get_last_n_logs(self, n: int) -> str:
         """获取最后 n 条日志"""
         try:
-            with open('path_to_log_file.log', 'r', encoding='utf-8') as log_file:
+            # 加载配置
+            config = ConfigManager.load_config()
+            log_dir = config.get('logging', {}).get('directory', 'logs')
+
+            # 确保日志目录是绝对路径
+            log_dir = os.path.abspath(log_dir)
+
+            # 获取当前日期的日志文件名
+            current_date = datetime.utcnow().strftime('%Y-%m-%d')
+            log_file_path = os.path.join(log_dir, f"{current_date}.log")
+
+            if not os.path.exists(log_file_path):
+                logging.error(f"日志文件未找到: {log_file_path}")
+                return "日志文件未找到。"
+
+            with open(log_file_path, 'r', encoding='utf-8') as log_file:
                 lines = log_file.readlines()
                 return ''.join(lines[-n:])
         except Exception as e:
@@ -412,3 +427,4 @@ class AdminCommandsHandler:
             if self.error_handler:
                 self.error_handler.handle_exception(e)
             return ""
+
