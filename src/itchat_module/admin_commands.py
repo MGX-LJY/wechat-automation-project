@@ -15,10 +15,10 @@ class AdminCommandsHandler:
 
         self.help_templates = {
             '1': "更新个人积分 <个人名称> <变化量>",
-            '2': "更新整体群组积分 <群组名称> <变化量>",
+            '2': "更新群组积分 <群组名称> <变化量>",
             '3': "更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]",
             '4': "查询个人积分 <个人名称>",
-            '5': "查询整体群组积分 <群组名称>",
+            '5': "查询群组积分 <群组名称>",
             '6': "查询用户积分 群组名: <群组名称> 昵称: <用户昵称>",
             '7': "添加监听群组 <群组名称1>,<群组名称2>",
             '8': "删除监听群组 <群组名称1>,<群组名称2>",
@@ -88,7 +88,7 @@ class AdminCommandsHandler:
                     elif cmd == 'update_non_whole_group_points':
                         group_name, delta = match.groups()
                         delta = int(delta)
-                        success = self.point_manager.update_group_points(group_name, delta, group_type='whole')
+                        success = self.point_manager.update_group_points(group_name, delta)
                         if success:
                             return f"整体群组 '{group_name}' 的剩余积分已更新，变化量为 {delta}。"
                         else:
@@ -117,7 +117,7 @@ class AdminCommandsHandler:
 
                     elif cmd == 'query_whole_group_points':
                         (group_name,) = match.groups()
-                        points = self.point_manager.get_group_points(group_name, group_type='whole')
+                        points = self.point_manager.get_group_points(group_name)
                         if points is not None:
                             return f"整体群组 '{group_name}' 当前的积分为 {points}。"
                         else:
@@ -345,14 +345,13 @@ class AdminCommandsHandler:
             "【数据库命令】\n"
             "1. 更新个人积分 <个人名称> <变化量>\n"
             "   示例：更新个人积分 User1 -10\n\n"
-            "2. 更新整体群组积分 <群组名称> <变化量>\n"
+            "2. 更新群组积分 <群组名称> <变化量>\n"
             "   示例：更新整体群组积分 群组B -20\n\n"
             "3. 更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]\n"
             "   示例：更新用户积分 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
-
             "4. 查询个人积分 <个人名称>\n"
             "   示例：查询个人积分 User1\n\n"
-            "5. 查询整体群组积分 <群组名称>\n"
+            "5. 查询群组积分 <群组名称>\n"
             "   示例：查询整体群组积分 群组B\n\n"
             "6. 查询用户积分 群组名: <群组名称> 昵称: <用户昵称>\n"
             "   示例：查询用户积分 群组名: 群组A 昵称: 用户1\n\n"
