@@ -89,15 +89,12 @@ class ItChatHandler:
 
     def run(self):
         """注册消息处理函数并启动 ItChat 客户端监听消息"""
-
         @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
         def handle_group(msg):
-            logging.debug(f"收到群组消息: {msg}")
             self.message_handler.handle_group_message(msg)
 
         @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
         def handle_individual(msg):
-            logging.debug(f"收到个人消息: {msg}")
             self.message_handler.handle_individual_message(msg)
 
         try:
@@ -225,13 +222,6 @@ class MessageHandler:
 
         # 尝试获取群组名称
         group_name = msg.get('User', {}).get('NickName', '')
-        if not group_name:
-            logging.warning("无法从消息中获取群组名称")
-            return
-
-        logging.debug(f"群组名称: {group_name}")
-        logging.debug(f"监控的群组列表: {self.monitor_groups}")
-
         if group_name not in self.monitor_groups:
             logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
@@ -258,10 +248,10 @@ class MessageHandler:
             logging.debug("未找到任何URL，停止处理")
             return
 
-        # 处理URL
-        processed_urls = self.process_urls(urls)
-        logging.debug(f"处理后的URLs: {processed_urls}")
-        if not processed_urls:
+        # 处理URL，得到有效的URL列表
+        valid_urls = self.process_urls(urls)
+        logging.debug(f"有效的URLs: {valid_urls}")
+        if not valid_urls:
             logging.debug("未找到有效的URL，停止处理")
             return
 
@@ -283,24 +273,29 @@ class MessageHandler:
             return
 
         # 通过积分检查后，调用上传和添加任务函数
-        for url, soft_id in processed_urls:
-            if self.uploader and soft_id:
-                self.uploader.upload_group_id(
-                    recipient_name=group_name,
-                    soft_id=soft_id,
-                    sender_nickname=sender_nickname if group_type == 'non-whole' else None,
-                    recipient_type='group',
-                    group_type=group_type
-                )
-                logging.info(f"上传信息到 Uploader: {group_name}, {soft_id}, 发送者: {sender_nickname}")
-            else:
-                logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
+        try:
+            for url, soft_id in valid_urls:
+                logging.debug(f"处理 URL: {url}, soft_id: {soft_id}")
+                if self.uploader and soft_id:
+                    self.uploader.upload_group_id(
+                        recipient_name=group_name,
+                        soft_id=soft_id,
+                        sender_nickname=sender_nickname if group_type == 'non-whole' else None,
+                        recipient_type='group',
+                        group_type=group_type
+                    )
+                    logging.info(f"上传信息到 Uploader: {group_name}, {soft_id}, 发送者: {sender_nickname}")
+                else:
+                    logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
-            if self.auto_clicker:
-                self.auto_clicker.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
-            else:
-                logging.warning("AutoClicker 未设置，无法添加任务。")
+                if self.auto_clicker:
+                    self.auto_clicker.add_task(url)
+                    logging.info(f"已添加任务到下载队列: {url}")
+                else:
+                    logging.warning("AutoClicker 未设置，无法添加任务。")
+        except Exception as e:
+            logging.error(f"处理 URLs 时发生错误: {e}", exc_info=True)
+            self.error_handler.handle_exception(e)
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
@@ -330,10 +325,10 @@ class MessageHandler:
             logging.debug("未找到任何URL，停止处理")
             return
 
-        # 处理URL
-        processed_urls = self.process_urls(urls)
-        logging.debug(f"处理后的URLs: {processed_urls}")
-        if not processed_urls:
+        # 处理URL，得到有效的URL列表
+        valid_urls = self.process_urls(urls)
+        logging.debug(f"有效的URLs: {valid_urls}")
+        if not valid_urls:
             logging.debug("未找到有效的URL，停止处理")
             return
 
@@ -345,7 +340,7 @@ class MessageHandler:
             return
 
         # 通过积分检查后，调用上传和添加任务函数
-        for url, soft_id in processed_urls:
+        for url, soft_id in valid_urls:
             if self.uploader and soft_id:
                 self.uploader.upload_group_id(
                     recipient_name=sender,
@@ -712,8 +707,8 @@ class MessageHandler:
             return []
 
     def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
-        """清理、验证并处理URL，返回 (url, soft_id) 的列表"""
-        processed_urls = []
+        """清理、验证并处理URL，返回有效的 (url, soft_id) 列表"""
+        valid_urls = []
         for url in urls:
             clean_url = self.clean_url(url)
             logging.debug(f"清理后的URL: {clean_url}")
@@ -730,9 +725,9 @@ class MessageHandler:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
                 soft_id = None
 
-            processed_urls.append((clean_url, soft_id))
+            valid_urls.append((clean_url, soft_id))
 
-        return processed_urls
+        return valid_urls
 
     def clean_url(self, url: str) -> str:
         """清理URL，移除锚点和不必要的字符"""
