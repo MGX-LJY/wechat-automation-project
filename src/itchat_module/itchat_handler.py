@@ -178,6 +178,43 @@ class MessageHandler:
             self.error_handler.handle_exception(e)
             return ''
 
+    def check_points(self, message_type, context_name, sender_name=None, group_type=None) -> bool:
+        """
+        检查发送者或群组是否有足够的积分来处理消息。
+        返回 True 如果有足够的积分，否则返回 False。
+        """
+        if message_type == 'group':
+            if group_type == 'whole':
+                has_points = self.point_manager.has_group_points(context_name)
+                logging.debug(f"群组 '{context_name}' 是否有积分: {has_points}")
+                if not has_points:
+                    logging.info(f"群组 '{context_name}' 的积分不足，忽略消息。")
+                    return False
+            elif group_type == 'non-whole':
+                if sender_name is None:
+                    logging.warning("非整体群组需要提供发送者昵称")
+                    return False
+                has_points = self.point_manager.has_member_points(sender_name)
+                logging.debug(f"成员 '{sender_name}' 是否有积分: {has_points}")
+                if not has_points:
+                    logging.info(f"成员 '{sender_name}' 的积分不足，忽略消息。")
+                    return False
+            else:
+                logging.warning(f"未知的群组类型: {group_type}")
+                return False
+        elif message_type == 'individual':
+            has_points = self.point_manager.has_recipient_points(context_name)
+            logging.debug(f"发送者 '{context_name}' 是否有积分: {has_points}")
+            if not has_points:
+                logging.info(f"发送者 '{context_name}' 积分不足，无法添加任务到下载队列。")
+                if self.notifier:
+                    self.notifier.notify(f"抱歉，您当前的积分不足，无法添加下载任务。请联系管理员获取更多信息。")
+                return False
+        else:
+            logging.warning(f"未知的消息类型: {message_type}")
+            return False
+        return True
+
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
         logging.debug(f"处理群组消息: {msg}")
@@ -201,7 +238,7 @@ class MessageHandler:
         elif group_name in self.group_types.get('non_whole_groups', []):
             group_type = 'non-whole'
         else:
-            # 默认设为非整体群组
+            # 默认设为整体群组
             group_type = 'whole'
 
         logging.debug(f"群组类型: {group_type}")
@@ -210,26 +247,21 @@ class MessageHandler:
         sender_nickname = msg.get('ActualNickName', '')
         logging.debug(f"发送者昵称: {sender_nickname}")
 
+        # 检查积分
+        if not self.check_points(
+                message_type='group',
+                context_name=group_name,
+                sender_name=sender_nickname,
+                group_type=group_type
+            ):
+            return
+
         # 提取URL
         urls = self.extract_urls(msg)
         logging.debug(f"提取的URLs: {urls}")
         if not urls:
             logging.debug("未找到任何URL，停止处理")
             return
-
-        # 检查积分
-        if group_type == 'whole':
-            has_points = self.point_manager.has_group_points(group_name)
-            logging.debug(f"群组 '{group_name}' 是否有积分: {has_points}")
-            if not has_points:
-                logging.info(f"群组 '{group_name}' 的积分不足，忽略消息。")
-                return
-        elif group_type == 'non-whole':
-            has_points = self.point_manager.has_member_points(sender_nickname)
-            logging.debug(f"成员 '{sender_nickname}' 是否有积分: {has_points}")
-            if not has_points:
-                logging.info(f"成员 '{sender_nickname}' 的积分不足，忽略消息。")
-                return
 
         # 处理URL
         processed_urls = self.process_urls(urls)
@@ -279,20 +311,18 @@ class MessageHandler:
                 self.notifier.notify(response)
             return
 
+        # 检查积分
+        if not self.check_points(
+                message_type='individual',
+                context_name=sender
+            ):
+            return
+
         # 提取URL
         urls = self.extract_urls(msg)
         logging.debug(f"提取的URLs: {urls}")
         if not urls:
             logging.debug("未找到任何URL，停止处理")
-            return
-
-        # 检查发送者是否有足够的积分
-        has_points = self.point_manager.has_recipient_points(sender)
-        logging.debug(f"发送者 '{sender}' 是否有积分: {has_points}")
-        if not has_points:
-            logging.info(f"发送者 '{sender}' 积分不足，无法添加任务到下载队列。")
-            if self.notifier:
-                self.notifier.notify(f"抱歉，您当前的积分不足，无法添加下载任务。请联系管理员获取更多信息。")
             return
 
         # 处理URL
