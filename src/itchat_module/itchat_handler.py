@@ -154,6 +154,26 @@ class MessageHandler:
         self.point_manager = point_manager
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
 
+        self.help_templates = {
+            '1': "更新个人积分 <个人名称> <变化量>",
+            '2': "更新整体群组积分 <群组名称> <变化量>",
+            '3': "更新非整体群组积分 <群组名称> <变化量>",
+            '4': "添加群组 <群组名称> <群组类型> [初始积分]",
+            '5': "添加用户 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]",
+            '6': "添加监听群组 <群组名称1>,<群组名称2>",
+            '7': "删除监听群组 <群组名称1>,<群组名称2>",
+            '8': "添加监听个人 <个人名称1>,<个人名称2>",
+            '9': "删除监听个人 <个人名称1>,<个人名称2>",
+            '10': "添加整体群组 <群组名称1>,<群组名称2>",
+            '11': "删除整体群组 <群组名称1>,<群组名称2>",
+            '12': "添加非整体群组 <群组名称1>,<群组名称2>",
+            '13': "删除非整体群组 <群组名称1>,<群组名称2>",
+            '14': "重启浏览器",
+            '15': "查询日志",
+            '16': "查询浏览器",
+            '17': "帮助",
+        }
+
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
         self.auto_clicker = auto_clicker
@@ -361,8 +381,9 @@ class MessageHandler:
         """处理管理员发送的命令并执行相应操作"""
         commands = {
             # 数据库命令
-            'update_remaining': r'^更新剩余积分\s+(\S+)\s+([+-]?\d+)$',
-            'query_group': r'^查询群组\s+(\S+)$',
+            'update_individual_points': r'^更新个人积分\s+(\S+)\s+([+-]?\d+)$',
+            'update_whole_group_points': r'^更新整体群组积分\s+(\S+)\s+([+-]?\d+)$',
+            'update_non_whole_group_points': r'^更新非整体群组积分\s+(\S+)\s+([+-]?\d+)$',
             'add_group': r'^添加群组\s+(\S+)\s+(whole|non-whole)\s*(\d+)?$',
             'add_user': r'^添加用户\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)\s*积分:\s*(\d+)?$',
 
@@ -383,24 +404,41 @@ class MessageHandler:
             'query_browser': r'^查询浏览器$|^query browser$',
         }
 
+        # 检查是否为数字，发送对应的命令模板
+        if message.isdigit():
+            template = self.help_templates.get(message)
+            if template:
+                return f"请使用以下命令模板：\n{template}"
+            else:
+                return "无效的命令序号，请输入帮助命令查看可用命令列表。"
+
         for cmd, pattern in commands.items():
             match = re.match(pattern, message)
             if match:
-                if cmd == 'update_remaining':
+                if cmd == 'update_individual_points':
                     name, delta = match.groups()
                     delta = int(delta)
                     success = self.point_manager.update_recipient_points(name, delta)
                     if success:
-                        return f"接收者 '{name}' 的剩余积分已更新，变化量为 {delta}。"
+                        return f"个人 '{name}' 的剩余积分已更新，变化量为 {delta}。"
                     else:
-                        return f"接收者 '{name}' 的积分更新失败。"
-                elif cmd == 'query_group':
-                    name = match.group(1)
-                    info = self.point_manager.get_group_info(name)
-                    if info:
-                        is_whole = '整体群组' if info['is_whole'] else '非整体群组'
-                        return f"群组 '{info['name']}' 的剩余积分为 {info['remaining_points']}，类型为 {is_whole}。"
-                    return f"群组 '{name}' 不存在。"
+                        return f"个人 '{name}' 的积分更新失败。"
+                elif cmd == 'update_whole_group_points':
+                    group_name, delta = match.groups()
+                    delta = int(delta)
+                    success = self.point_manager.update_group_points(group_name, delta, group_type='whole')
+                    if success:
+                        return f"整体群组 '{group_name}' 的剩余积分已更新，变化量为 {delta}。"
+                    else:
+                        return f"整体群组 '{group_name}' 的积分更新失败。"
+                elif cmd == 'update_non_whole_group_points':
+                    group_name, delta = match.groups()
+                    delta = int(delta)
+                    success = self.point_manager.update_group_points(group_name, delta, group_type='non-whole')
+                    if success:
+                        return f"非整体群组 '{group_name}' 的剩余积分已更新，变化量为 {delta}。"
+                    else:
+                        return f"非整体群组 '{group_name}' 的积分更新失败。"
                 elif cmd == 'add_group':
                     name, group_type, points = match.groups()
                     points = int(points) if points else 0
@@ -660,46 +698,51 @@ class MessageHandler:
 
     def get_help_message(self) -> str:
         """返回可用命令的帮助信息，按照分类整理"""
-
         help_message = (
             "可用命令如下：\n\n"
             "【数据库命令】\n"
-            "1. 更新剩余积分 <接收者名称> <变化量>\n"
-            "   示例：更新剩余积分 User1 -10\n\n"
-            "2. 查询群组 <群组名称>\n"
-            "   示例：查询群组 群组A\n\n"
-            "3. 添加群组 <群组名称> <群组类型> [初始积分]\n"
+            "1. 更新个人积分 <个人名称> <变化量>\n"
+            "   示例：更新个人积分 User1 -10\n\n"
+            "2. 更新整体群组积分 <群组名称> <变化量>\n"
+            "   示例：更新整体群组积分 群组A +50\n\n"
+            "3. 更新非整体群组积分 <群组名称> <变化量>\n"
+            "   示例：更新非整体群组积分 群组B -20\n\n"
+            "4. 添加群组 <群组名称> <群组类型> [初始积分]\n"
             "   示例：添加群组 群组A whole 100\n\n"
-            "4. 添加用户 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]\n"
+            "5. 添加用户 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]\n"
             "   示例：添加用户 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
 
             "【配置文件命令】\n"
-            "5. 添加监听群组 <群组名称1>,<群组名称2>\n"
+            "6. 添加监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：添加监听群组 群组A,群组B\n\n"
-            "6. 删除监听群组 <群组名称1>,<群组名称2>\n"
+            "7. 删除监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：删除监听群组 群组A,群组B\n\n"
-            "7. 添加监听个人 <个人名称1>,<个人名称2>\n"
+            "8. 添加监听个人 <个人名称1>,<个人名称2>\n"
             "   示例：添加监听个人 个人1,个人2\n\n"
-            "8. 删除监听个人 <个人名称1>,<个人名称2>\n"
+            "9. 删除监听个人 <个人名称1>,<个人名称2>\n"
             "   示例：删除监听个人 个人1,个人2\n\n"
-            "9. 添加整体群组 <群组名称1>,<群组名称2>\n"
-            "   示例：添加整体群组 群组A,群组B\n\n"
-            "10. 删除整体群组 <群组名称1>,<群组名称2>\n"
+            "10. 添加整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：添加整体群组 群组A,群组B\n\n"
+            "11. 删除整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除整体群组 群组A,群组B\n\n"
-            "11. 添加非整体群组 <群组名称1>,<群组名称2>\n"
+            "12. 添加非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：添加非整体群组 群组A,群组B\n\n"
-            "12. 删除非整体群组 <群组名称1>,<群组名称2>\n"
+            "13. 删除非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除非整体群组 群组A,群组B\n\n"
 
             "【其他命令】\n"
-            "13. 重启浏览器\n"
+            "14. 重启浏览器\n"
             "    示例：重启浏览器\n\n"
-            "14. 查询日志\n"
+            "15. 查询日志\n"
             "    示例：查询日志\n\n"
-            "15. 查询浏览器\n"
+            "16. 查询浏览器\n"
             "    示例：查询浏览器\n\n"
-            "16. 帮助\n"
-            "    示例：帮助\n"
+            "17. 帮助\n"
+            "    示例：帮助\n\n"
+
+            "【命令模板】\n"
+            "发送序号以获取对应命令模板。\n"
+            "例如，发送 '1' 获取命令模板。"
         )
         return help_message
 
