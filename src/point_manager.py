@@ -103,8 +103,16 @@ class PointManager:
                     self.conn.commit()
                     logging.debug(f"群组 '{group_name}' 已添加，is_whole={is_whole}")
                 else:
-                    # 群组已存在，不修改 is_whole 值
-                    logging.debug(f"群组 '{group_name}' 已存在，is_whole={bool(result[0])}")
+                    # 群组已存在，检查是否需要更新 is_whole 值
+                    current_is_whole = bool(result[0])
+                    if is_whole is not None and current_is_whole != is_whole:
+                        self.cursor.execute('''
+                            UPDATE groups SET is_whole = ? WHERE name = ?
+                        ''', (int(is_whole), group_name))
+                        self.conn.commit()
+                        logging.debug(f"群组 '{group_name}' 的 is_whole 已更新为 {is_whole}")
+                    else:
+                        logging.debug(f"群组 '{group_name}' 已存在，is_whole={current_is_whole}")
         except Exception as e:
             logging.error(f"在 ensure_group 中发生错误: {e}", exc_info=True)
 
