@@ -360,15 +360,13 @@ class MessageHandler:
     def handle_admin_command(self, message: str) -> Optional[str]:
         """处理管理员发送的命令并执行相应操作"""
         commands = {
-            'add_recipient': r'^添加接收者\s+(\S+)\s+(\d+)$',
-            'delete_recipient': r'^删除接收者\s+(\S+)$',
+            # 数据库命令
             'update_remaining': r'^更新剩余积分\s+(\S+)\s+([+-]?\d+)$',
-            'query_recipient': r'^查询接收者\s+(\S+)$',
-            'get_all_recipients': r'^获取所有接收者$',
-            'help': r'^帮助$|^help$',
-            'restart_browser': r'^重启浏览器$|^restart browser$',
-            'query_logs': r'^查询日志$|^query logs$',
-            'query_browser': r'^查询浏览器$|^query browser$',
+            'query_group': r'^查询群组\s+(\S+)$',
+            'add_group': r'^添加群组\s+(\S+)\s+(whole|non-whole)\s*(\d+)?$',
+            'add_user': r'^添加用户\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)\s*积分:\s*(\d+)?$',
+
+            # 配置文件命令
             'add_monitor_group': r'^添加监听群组\s+(.+)$',
             'remove_monitor_group': r'^删除监听群组\s+(.+)$',
             'add_monitor_individual': r'^添加监听个人\s+(.+)$',
@@ -377,23 +375,18 @@ class MessageHandler:
             'remove_whole_group': r'^删除整体群组\s+(.+)$',
             'add_non_whole_group': r'^添加非整体群组\s+(.+)$',
             'remove_non_whole_group': r'^删除非整体群组\s+(.+)$',
+
+            # 其他命令
+            'help': r'^帮助$|^help$',
+            'restart_browser': r'^重启浏览器$|^restart browser$',
+            'query_logs': r'^查询日志$|^query logs$',
+            'query_browser': r'^查询浏览器$|^query browser$',
         }
 
         for cmd, pattern in commands.items():
             match = re.match(pattern, message)
             if match:
-                if cmd == 'add_recipient':
-                    name, count = match.groups()
-                    result = self.point_manager.add_recipient(name, initial_points=int(count))
-                    return result
-                elif cmd == 'delete_recipient':
-                    name = match.group(1)
-                    success = self.point_manager.delete_recipient(name)
-                    if success:
-                        return f"接收者 '{name}' 已删除。"
-                    else:
-                        return f"接收者 '{name}' 删除失败或不存在。"
-                elif cmd == 'update_remaining':
+                if cmd == 'update_remaining':
                     name, delta = match.groups()
                     delta = int(delta)
                     success = self.point_manager.update_recipient_points(name, delta)
@@ -401,15 +394,59 @@ class MessageHandler:
                         return f"接收者 '{name}' 的剩余积分已更新，变化量为 {delta}。"
                     else:
                         return f"接收者 '{name}' 的积分更新失败。"
-                elif cmd == 'query_recipient':
+                elif cmd == 'query_group':
                     name = match.group(1)
-                    info = self.point_manager.get_recipient_info(name)
+                    info = self.point_manager.get_group_info(name)
                     if info:
-                        return f"接收者 '{info['name']}' 的剩余积分为 {info['remaining_points']}。"
-                    return f"接收者 '{name}' 不存在。"
-                elif cmd == 'get_all_recipients':
-                    recipients = self.point_manager.get_all_recipients()
-                    return f"所有接收者列表：{', '.join(recipients)}" if recipients else "当前没有任何接收者。"
+                        is_whole = '整体群组' if info['is_whole'] else '非整体群组'
+                        return f"群组 '{info['name']}' 的剩余积分为 {info['remaining_points']}，类型为 {is_whole}。"
+                    return f"群组 '{name}' 不存在。"
+                elif cmd == 'add_group':
+                    name, group_type, points = match.groups()
+                    points = int(points) if points else 0
+                    is_whole = True if group_type == 'whole' else False
+                    success = self.point_manager.ensure_group(name, is_whole=is_whole, initial_points=points)
+                    if success:
+                        return f"群组 '{name}' 已添加，类型为 {'整体群组' if is_whole else '非整体群组'}，初始积分为 {points}。"
+                    else:
+                        return f"群组 '{name}' 添加失败或已存在。"
+                elif cmd == 'add_user':
+                    group_name, nickname, points = match.groups()
+                    points = int(points) if points else 0
+                    group_exists = self.point_manager.get_group_info(group_name)
+                    if not group_exists:
+                        return f"群组 '{group_name}' 不存在，无法添加用户。请先添加群组。"
+                    success = self.point_manager.ensure_user(group_name, nickname, initial_points=points)
+                    if success:
+                        return f"用户 '{nickname}' 已添加到群组 '{group_name}'，初始积分为 {points}。"
+                    else:
+                        return f"用户 '{nickname}' 添加失败或已存在。"
+                # 配置文件命令处理逻辑
+                elif cmd == 'add_monitor_group':
+                    group_names = match.group(1)
+                    return self.modify_monitor_groups(group_names, action='add')
+                elif cmd == 'remove_monitor_group':
+                    group_names = match.group(1)
+                    return self.modify_monitor_groups(group_names, action='remove')
+                elif cmd == 'add_monitor_individual':
+                    individual_names = match.group(1)
+                    return self.modify_monitor_individuals(individual_names, action='add')
+                elif cmd == 'remove_monitor_individual':
+                    individual_names = match.group(1)
+                    return self.modify_monitor_individuals(individual_names, action='remove')
+                elif cmd == 'add_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='whole', action='add')
+                elif cmd == 'remove_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='whole', action='remove')
+                elif cmd == 'add_non_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='non_whole', action='add')
+                elif cmd == 'remove_non_whole_group':
+                    group_names = match.group(1)
+                    return self.modify_group_type(group_names, group_type='non_whole', action='remove')
+                # 其他命令处理逻辑
                 elif cmd == 'help':
                     return self.get_help_message()
                 elif cmd == 'restart_browser':
@@ -448,30 +485,6 @@ class MessageHandler:
                         if self.notifier:
                             self.notifier.notify(f"处理查询浏览器命令时发生错误: {e}", is_error=True)
                     return None
-                elif cmd == 'add_monitor_group':
-                    group_names = match.group(1)
-                    return self.modify_monitor_groups(group_names, action='add')
-                elif cmd == 'remove_monitor_group':
-                    group_names = match.group(1)
-                    return self.modify_monitor_groups(group_names, action='remove')
-                elif cmd == 'add_monitor_individual':
-                    individual_names = match.group(1)
-                    return self.modify_monitor_individuals(individual_names, action='add')
-                elif cmd == 'remove_monitor_individual':
-                    individual_names = match.group(1)
-                    return self.modify_monitor_individuals(individual_names, action='remove')
-                elif cmd == 'add_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='whole', action='add')
-                elif cmd == 'remove_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='whole', action='remove')
-                elif cmd == 'add_non_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='non_whole', action='add')
-                elif cmd == 'remove_non_whole_group':
-                    group_names = match.group(1)
-                    return self.modify_group_type(group_names, group_type='non_whole', action='remove')
         logging.warning(f"未知的管理员命令：{message}")
         return "未知的命令，请检查命令格式。"
 
@@ -646,44 +659,49 @@ class MessageHandler:
         logging.info("MessageHandler 已更新配置")
 
     def get_help_message(self) -> str:
-        """返回可用命令的帮助信息"""
-        return (
+        """返回可用命令的帮助信息，按照分类整理"""
+
+        help_message = (
             "可用命令如下：\n\n"
-            "1. 添加接收者 <接收者名称> <初始剩余积分>\n"
-            "   示例：添加接收者 User1 500\n\n"
-            "2. 删除接收者 <接收者名称>\n"
-            "   示例：删除接收者 User1\n\n"
-            "3. 更新剩余积分 <接收者名称> <变化量>\n"
+            "【数据库命令】\n"
+            "1. 更新剩余积分 <接收者名称> <变化量>\n"
             "   示例：更新剩余积分 User1 -10\n\n"
-            "4. 查询接收者 <接收者名称>\n"
-            "   示例：查询接收者 User1\n\n"
-            "5. 获取所有接收者\n"
-            "   示例：获取所有接收者\n\n"
-            "6. 帮助\n"
-            "   示例：帮助\n\n"
-            "7. 重启浏览器\n"
-            "   示例：重启浏览器\n\n"
-            "8. 查询日志\n"
-            "   示例：查询日志\n\n"
-            "9. 查询浏览器\n"
-            "   示例：查询浏览器\n\n"
-            "10. 添加监听群组 <群组名称1>,<群组名称2>\n"
-            "    示例：添加监听群组 群组A,群组B\n\n"
-            "11. 删除监听群组 <群组名称1>,<群组名称2>\n"
-            "    示例：删除监听群组 群组A,群组B\n\n"
-            "12. 添加监听个人 <个人名称1>,<个人名称2>\n"
-            "    示例：添加监听个人 个人1,个人2\n\n"
-            "13. 删除监听个人 <个人名称1>,<个人名称2>\n"
-            "    示例：删除监听个人 个人1,个人2\n\n"
-            "14. 添加整体群组 <群组名称1>,<群组名称2>\n"
-            "    示例：添加整体群组 群组A,群组B\n\n"
-            "15. 删除整体群组 <群组名称1>,<群组名称2>\n"
+            "2. 查询群组 <群组名称>\n"
+            "   示例：查询群组 群组A\n\n"
+            "3. 添加群组 <群组名称> <群组类型> [初始积分]\n"
+            "   示例：添加群组 群组A whole 100\n\n"
+            "4. 添加用户 群组名: <群组名称> 昵称: <用户昵称> 积分: [初始积分]\n"
+            "   示例：添加用户 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
+
+            "【配置文件命令】\n"
+            "5. 添加监听群组 <群组名称1>,<群组名称2>\n"
+            "   示例：添加监听群组 群组A,群组B\n\n"
+            "6. 删除监听群组 <群组名称1>,<群组名称2>\n"
+            "   示例：删除监听群组 群组A,群组B\n\n"
+            "7. 添加监听个人 <个人名称1>,<个人名称2>\n"
+            "   示例：添加监听个人 个人1,个人2\n\n"
+            "8. 删除监听个人 <个人名称1>,<个人名称2>\n"
+            "   示例：删除监听个人 个人1,个人2\n\n"
+            "9. 添加整体群组 <群组名称1>,<群组名称2>\n"
+            "   示例：添加整体群组 群组A,群组B\n\n"
+            "10. 删除整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除整体群组 群组A,群组B\n\n"
-            "16. 添加非整体群组 <群组名称1>,<群组名称2>\n"
+            "11. 添加非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：添加非整体群组 群组A,群组B\n\n"
-            "17. 删除非整体群组 <群组名称1>,<群组名称2>\n"
-            "    示例：删除非整体群组 群组A,群组B\n"
+            "12. 删除非整体群组 <群组名称1>,<群组名称2>\n"
+            "    示例：删除非整体群组 群组A,群组B\n\n"
+
+            "【其他命令】\n"
+            "13. 重启浏览器\n"
+            "    示例：重启浏览器\n\n"
+            "14. 查询日志\n"
+            "    示例：查询日志\n\n"
+            "15. 查询浏览器\n"
+            "    示例：查询浏览器\n\n"
+            "16. 帮助\n"
+            "    示例：帮助\n"
         )
+        return help_message
 
     def extract_urls(self, msg) -> List[str]:
         """从消息中提取URL列表"""

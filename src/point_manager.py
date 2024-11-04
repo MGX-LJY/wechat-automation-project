@@ -23,7 +23,7 @@ class PointManager:
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS groups (
                     name TEXT PRIMARY KEY,
-                    remaining_points INTEGER DEFAULT 1000,
+                    remaining_points INTEGER DEFAULT 0,
                     is_whole BOOLEAN DEFAULT 0  -- 0 表示非整体性群组，1 表示整体性群组
                 )
             ''')
@@ -83,7 +83,7 @@ class PointManager:
                 return f"添加接收者时发生错误：{e}"
 
     # 确保群组存在
-    def ensure_group(self, group_name: str, is_whole: Optional[bool] = None, initial_points: int = 1000):
+    def ensure_group(self, group_name: str, is_whole: Optional[bool] = None, initial_points: int = 0):
         try:
             with self.lock:
                 self.cursor.execute('SELECT is_whole FROM groups WHERE name = ?', (group_name,))
