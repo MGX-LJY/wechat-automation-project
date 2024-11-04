@@ -37,7 +37,7 @@ class AdminCommandsHandler:
         self.commands = {
             # 数据库命令
             'update_individual_points': r'^更新个人积分\s+(\S+)\s+([+-]?\d+)$',
-            'update_non_whole_group_points': r'^更新整体群组积分\s+(\S+)\s+([+-]?\d+)$',
+            'update_non_whole_group_points': r'^更新群组积分\s+(\S+)\s+([+-]?\d+)$',
             'update_user_points': r'^更新用户积分\s+群组名:\s*(\S+)\s+昵称:\s*(\S+)\s*积分:\s*([+-]?\d+)$',
 
             # 新增查询积分命令
