@@ -446,6 +446,7 @@ class XKW:
         # 记录下载成功
         download_time = time.time() - start_time
         self.stats.record_task_success(url, download_time)
+        self.stats.log_statistics()
 
         # 将文件路径和 soft_id 传递给上传模块
         if self.uploader:
@@ -661,19 +662,20 @@ class XKW:
 
     def stop(self):
         """
-        停止 XKW 实例。
+        停止 AutoDownloadManager 和其内部的 XKW 实例，并保存统计数据。
         """
         try:
             logging.info("停止 XKW 实例。")
             self.work = False
             self.task.put(None)  # 发送退出信号
+            self.stats.save_statistics()
+            logging.info("统计数据已保存。")
             self.page.close()
             logging.info("XKW 实例已停止。")
         except Exception as e:
             logging.error(f"停止过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"停止过程中出错: {e}", is_error=True)
-
 
 class AutoDownloadManager:
     def __init__(self, thread=3, download_dir=None, uploader=None, notifier_config=None):
