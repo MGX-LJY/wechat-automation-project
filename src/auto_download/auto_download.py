@@ -10,6 +10,7 @@ from typing import List, Dict, Tuple
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.errors import ContextLostError
 from src.notification.notifier import Notifier
+import pickle  # 用于任务持久化
 
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
@@ -30,8 +31,80 @@ class ErrorHandler:
         self.notifier.notify(error_message, is_error=True)  # 发送错误通知
 
 
+class StatisticsManager:
+    """
+    统计管理器，用于监控和记录下载任务的执行情况。
+    """
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.total_tasks = 0
+        self.successful_tasks = 0
+        self.failed_tasks = 0
+        self.total_download_time = 0.0  # 以秒为单位
+
+    def record_task_submission(self, url):
+        with self.lock:
+            self.total_tasks += 1
+
+    def record_task_success(self, url, download_time):
+        with self.lock:
+            self.successful_tasks += 1
+            self.total_download_time += download_time
+
+    def record_task_failure(self, url):
+        with self.lock:
+            self.failed_tasks += 1
+
+    def get_statistics(self):
+        with self.lock:
+            avg_download_time = (self.total_download_time / self.successful_tasks) if self.successful_tasks else 0
+            success_rate = (self.successful_tasks / self.total_tasks * 100) if self.total_tasks else 0
+            return {
+                'total_tasks': self.total_tasks,
+                'successful_tasks': self.successful_tasks,
+                'failed_tasks': self.failed_tasks,
+                'average_download_time': avg_download_time,
+                'success_rate': success_rate
+            }
+
+    def log_statistics(self):
+        stats = self.get_statistics()
+        logging.info(f"统计信息: 总任务数={stats['total_tasks']}, 成功任务数={stats['successful_tasks']}, "
+                     f"失败任务数={stats['failed_tasks']}, 平均下载时间={stats['average_download_time']:.2f}秒, "
+                     f"成功率={stats['success_rate']:.2f}%")
+
+    def save_statistics(self, filepath):
+        """
+        保存统计数据到磁盘。
+        """
+        try:
+            stats = self.get_statistics()
+            with open(filepath, 'wb') as f:
+                pickle.dump(stats, f)
+            logging.info(f"统计数据已保存到 {filepath}。")
+        except Exception as e:
+            logging.error(f"保存统计数据时出错: {e}", exc_info=True)
+
+    def load_statistics(self, filepath):
+        """
+        从磁盘加载统计数据。
+        """
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'rb') as f:
+                    stats = pickle.load(f)
+                with self.lock:
+                    self.total_tasks = stats.get('total_tasks', 0)
+                    self.successful_tasks = stats.get('successful_tasks', 0)
+                    self.failed_tasks = stats.get('failed_tasks', 0)
+                    self.total_download_time = stats.get('average_download_time', 0.0) * stats.get('successful_tasks', 0)
+                logging.info(f"统计数据已从 {filepath} 加载。")
+            except Exception as e:
+                logging.error(f"加载统计数据时出错: {e}", exc_info=True)
+
+
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None):
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None):
         self.thread = thread
         self.work = work
         self.uploader = uploader  # 接收 Uploader 实例
@@ -55,6 +128,9 @@ class XKW:
             self.manager = threading.Thread(target=self.run, daemon=True)
             self.manager.start()
             logging.info("XKW manager 线程已启动。")
+
+        # 初始化监控与统计
+        self.stats = stats if stats else StatisticsManager()
 
     def close_tabs(self, tabs):
         for tab in tabs:
@@ -96,7 +172,6 @@ class XKW:
             logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"导航标签页到空白页时出错: {e}", is_error=True)
-
 
     def match_downloaded_file(self, title):
         logging.debug(f"开始匹配下载的文件，标题: {title}")
@@ -298,6 +373,7 @@ class XKW:
             return None, None
 
     def handle_success(self, url, title, soft_id):
+        start_time = time.time()  # 开始计时
         logging.info(f"下载成功，开始处理上传任务: {url}")
         # 匹配下载的文件
         file_path = self.match_downloaded_file(title)
@@ -305,7 +381,12 @@ class XKW:
             logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
             if self.notifier:
                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
+            self.stats.record_task_failure(url)
             return
+
+        # 记录下载成功
+        download_time = time.time() - start_time
+        self.stats.record_task_success(url, download_time)
 
         # 将文件路径和 soft_id 传递给上传模块
         if self.uploader:
@@ -323,7 +404,7 @@ class XKW:
         else:
             logging.warning("Uploader 未设置，无法传递上传任务。")
 
-    def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=5):
+    def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
         base_delay = 2  # 基础延迟时间（秒）
         while retry < max_retries:
             logging.info(f"开始下载 {url}, 重试次数: {retry}")
@@ -372,6 +453,9 @@ class XKW:
                 logging.debug(f"页面上下文丢失，等待 {total_delay:.1f} 秒后重试。")
                 time.sleep(total_delay)
                 retry += 1
+                # 重置标签页并重新导航到 URL
+                self.reset_tab(tab)
+                tab.get(url)  # 重新加载页面
             except Exception as e:
                 logging.error(f"下载过程中出错: {e}", exc_info=True)
                 if self.notifier:
@@ -383,6 +467,9 @@ class XKW:
                 logging.debug(f"下载出错，等待 {total_delay:.1f} 秒后重试。")
                 time.sleep(total_delay)
                 retry += 1
+                # 重置标签页并重新导航到 URL
+                self.reset_tab(tab)
+                tab.get(url)  # 重新加载页面
             try:
                 # 等待1秒后重置标签页
                 self.reset_tab(tab)
@@ -395,11 +482,13 @@ class XKW:
         logging.error(f"下载任务最终失败: {url}")
         if self.notifier:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
+        self.stats.record_task_failure(url)
 
         # 等待1秒后重置标签页
         self.reset_tab(tab)
 
     def download(self, url):
+        start_time = time.time()  # 记录下载开始时间
         try:
             logging.info(f"准备下载 URL: {url}")
             # 增加随机延迟，模拟人类等待页面加载
@@ -412,6 +501,12 @@ class XKW:
             tab.get(url)
 
             soft_id, title = self.extract_id_and_title(tab, url)
+            if not soft_id or not title:
+                logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                self.stats.record_task_failure(url)
+                self.reset_tab(tab)
+                return
+
             download_button = tab("#btnSoftDownload")  # 下载按钮
             if not download_button:
                 logging.error(f"无法找到下载按钮，跳过URL: {url}")
@@ -422,6 +517,7 @@ class XKW:
                     logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
                 if self.notifier:
                     self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
+                self.stats.record_task_failure(url)
                 return
 
             logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
@@ -443,6 +539,7 @@ class XKW:
                     logging.error(f"导航标签页到空白页时出错: {close_e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+            self.stats.record_task_failure(url)
         finally:
             if 'tab' in locals():
                 self.tabs.put(tab)
