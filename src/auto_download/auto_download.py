@@ -32,52 +32,99 @@ class ErrorHandler:
 
 
 class StatisticsManager:
-    """
-    统计管理器，用于监控和记录下载任务的执行情况。
-    """
-    def __init__(self):
+    _instance = None
+    _singleton_lock = threading.Lock()
+
+    def __new__(cls, save_interval=300, save_path='statistics.pkl'):
+        with cls._singleton_lock:
+            if cls._instance is None:
+                cls._instance = super(StatisticsManager, cls).__new__(cls)
+                cls._instance.__initialized = False
+        return cls._instance
+
+    def __init__(self, save_interval=300, save_path='statistics.pkl'):
+        if self.__initialized:
+            return
         self.lock = threading.Lock()
         self.total_tasks = 0
         self.successful_tasks = 0
         self.failed_tasks = 0
         self.total_download_time = 0.0  # 以秒为单位
+        self.save_interval = save_interval
+        self.save_path = save_path
+        self.__initialized = True
+        logging.info("StatisticsManager 单例实例初始化完成。")
+
+        # 启动自动保存线程
+        self.auto_save_thread = threading.Thread(target=self.auto_save, daemon=True)
+        self.auto_save_thread.start()
 
     def record_task_submission(self, url):
-        with self.lock:
-            self.total_tasks += 1
+        try:
+            with self.lock:
+                self.total_tasks += 1
+                logging.debug(f"任务提交: {url}。总任务数: {self.total_tasks}")
+        except Exception as e:
+            logging.error(f"记录任务提交时出错: {e}", exc_info=True)
 
     def record_task_success(self, url, download_time):
-        with self.lock:
-            self.successful_tasks += 1
-            self.total_download_time += download_time
+        try:
+            with self.lock:
+                self.successful_tasks += 1
+                self.total_download_time += download_time
+                logging.debug(f"任务成功: {url}。成功任务数: {self.successful_tasks}，总下载时间: {self.total_download_time:.2f}秒")
+        except Exception as e:
+            logging.error(f"记录任务成功时出错: {e}", exc_info=True)
 
     def record_task_failure(self, url):
-        with self.lock:
-            self.failed_tasks += 1
+        try:
+            with self.lock:
+                self.failed_tasks += 1
+                logging.debug(f"任务失败: {url}。失败任务数: {self.failed_tasks}")
+        except Exception as e:
+            logging.error(f"记录任务失败时出错: {e}", exc_info=True)
 
     def get_statistics(self):
-        with self.lock:
-            avg_download_time = (self.total_download_time / self.successful_tasks) if self.successful_tasks else 0
-            success_rate = (self.successful_tasks / self.total_tasks * 100) if self.total_tasks else 0
+        try:
+            with self.lock:
+                avg_download_time = (self.total_download_time / self.successful_tasks) if self.successful_tasks else 0
+                success_rate = (self.successful_tasks / self.total_tasks * 100) if self.total_tasks else 0
+                logging.debug(f"获取统计信息：总任务数={self.total_tasks}, 成功任务数={self.successful_tasks}, "
+                              f"失败任务数={self.failed_tasks}, 平均下载时间={avg_download_time:.2f}秒, "
+                              f"成功率={success_rate:.2f}%")
+                return {
+                    'total_tasks': self.total_tasks,
+                    'successful_tasks': self.successful_tasks,
+                    'failed_tasks': self.failed_tasks,
+                    'average_download_time': avg_download_time,
+                    'success_rate': success_rate
+                }
+        except Exception as e:
+            logging.error(f"获取统计信息时出错: {e}", exc_info=True)
             return {
                 'total_tasks': self.total_tasks,
                 'successful_tasks': self.successful_tasks,
                 'failed_tasks': self.failed_tasks,
-                'average_download_time': avg_download_time,
-                'success_rate': success_rate
+                'average_download_time': 0,
+                'success_rate': 0
             }
 
     def log_statistics(self):
-        stats = self.get_statistics()
-        logging.info(f"统计信息: 总任务数={stats['total_tasks']}, 成功任务数={stats['successful_tasks']}, "
-                     f"失败任务数={stats['failed_tasks']}, 平均下载时间={stats['average_download_time']:.2f}秒, "
-                     f"成功率={stats['success_rate']:.2f}%")
+        try:
+            stats = self.get_statistics()
+            logging.info(f"统计信息: 总任务数={stats['total_tasks']}, 成功任务数={stats['successful_tasks']}, "
+                         f"失败任务数={stats['failed_tasks']}, 平均下载时间={stats['average_download_time']:.2f}秒, "
+                         f"成功率={stats['success_rate']:.2f}%")
+        except Exception as e:
+            logging.error(f"记录统计信息时出错: {e}", exc_info=True)
 
-    def save_statistics(self, filepath):
+    def save_statistics(self, filepath=None):
         """
         保存统计数据到磁盘。
         """
         try:
+            if filepath is None:
+                filepath = self.save_path
             stats = self.get_statistics()
             with open(filepath, 'wb') as f:
                 pickle.dump(stats, f)
@@ -85,12 +132,14 @@ class StatisticsManager:
         except Exception as e:
             logging.error(f"保存统计数据时出错: {e}", exc_info=True)
 
-    def load_statistics(self, filepath):
+    def load_statistics(self, filepath=None):
         """
         从磁盘加载统计数据。
         """
-        if os.path.exists(filepath):
-            try:
+        try:
+            if filepath is None:
+                filepath = self.save_path
+            if os.path.exists(filepath):
                 with open(filepath, 'rb') as f:
                     stats = pickle.load(f)
                 with self.lock:
@@ -99,9 +148,19 @@ class StatisticsManager:
                     self.failed_tasks = stats.get('failed_tasks', 0)
                     self.total_download_time = stats.get('average_download_time', 0.0) * stats.get('successful_tasks', 0)
                 logging.info(f"统计数据已从 {filepath} 加载。")
-            except Exception as e:
-                logging.error(f"加载统计数据时出错: {e}", exc_info=True)
+        except Exception as e:
+            logging.error(f"加载统计数据时出错: {e}", exc_info=True)
 
+    def auto_save(self):
+        while True:
+            time.sleep(self.save_interval)
+            self.save_statistics()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.save_statistics()
 
 class XKW:
     def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None):
