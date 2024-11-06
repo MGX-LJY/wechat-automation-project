@@ -26,11 +26,9 @@ class ItChatHandler:
         self.point_manager = point_manager
         self.qr_path = self.config.get('wechat', {}).get('login_qr_path', 'qr.png')
         self.max_retries = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
-        self.retry_interval = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval',
-                                                                                                      2)
+        self.retry_interval = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval',2)
         self.login_event = threading.Event()
         self.point_manager = point_manager
-
         self.message_handler = MessageHandler(
             error_handler=error_handler,
             monitor_groups=self.monitor_groups,
@@ -59,14 +57,12 @@ class ItChatHandler:
         """绑定 Uploader 实例到消息处理器"""
         self.uploader = uploader
         self.message_handler.set_uploader(uploader)
-        logging.info("Uploader 已绑定到消息处理器")
 
     def set_auto_clicker(self, auto_clicker):
         """
         设置 MessageHandler 的 AutoClicker 实例
         """
         self.message_handler.set_auto_clicker(auto_clicker)
-        logging.info("AutoClicker 已设置到消息处理器")
 
     def login(self):
         """执行微信登录过程，处理二维码显示和会话管理"""
@@ -74,7 +70,6 @@ class ItChatHandler:
             session_file = 'itchat.pkl'
             if os.path.exists(session_file):
                 os.remove(session_file)
-                logging.info(f"已删除旧的会话文件: {session_file}")
 
             itchat.auto_login(
                 hotReload=False,
@@ -85,7 +80,6 @@ class ItChatHandler:
 
             itchat.get_friends(update=True)
             itchat.get_chatrooms(update=True)
-            logging.info("好友和群组信息已加载")
 
             self.login_event.set()
             return
@@ -112,8 +106,6 @@ class ItChatHandler:
         if status == '0':
             with open(self.qr_path, 'wb') as f:
                 f.write(qrcode)
-            logging.info(f"二维码已保存到 {self.qr_path}")
-
             Image.open(BytesIO(qrcode)).show(title="微信登录二维码")
         elif status == '201':
             logging.info("二维码已扫描，请在手机上确认登录。")
@@ -125,8 +117,6 @@ class ItChatHandler:
     def logout(self):
         """登出微信账号，结束当前会话"""
         itchat.logout()
-        logging.info("微信已退出")
-
 
 class MessageHandler:
     """
@@ -149,7 +139,7 @@ class MessageHandler:
         self.log_dir = self.config.get('logging', {}).get('directory', 'logs')
         self.point_manager = point_manager
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
-        self.admin_commands_handler = admin_commands_handler  # 新增属性
+        self.admin_commands_handler = admin_commands_handler
 
         # 初始化 AdminCommandsHandler
         self.admin_commands_handler = AdminCommandsHandler(
@@ -176,12 +166,12 @@ class MessageHandler:
         return msg.get('Text', msg.get('text', '')) if msg_type == 'Text' else msg.get('Url', msg.get('url', ''))
 
     def check_points(self, message_type, context_name, sender_name=None, group_type=None) -> bool:
+        """检查消息发送者或群组是否有足够的积分"""
         logging.debug(
             f"开始积分检查 - 消息类型: {message_type}, 上下文名称: {context_name}, 发送者: {sender_name}, 群组类型: {group_type}")
         if message_type == 'group':
             if group_type == 'whole':
                 has_points = self.point_manager.has_group_points(context_name)
-                logging.debug(f"群组 '{context_name}' 是否有足够的积分: {has_points}")
                 if not has_points:
                     logging.info(f"群组 '{context_name}' 的积分不足")
                     return False
@@ -213,12 +203,10 @@ class MessageHandler:
 
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
-        logging.debug(f"处理群组消息: {msg}")
 
         # 尝试获取群组名称
         group_name = msg.get('User', {}).get('NickName', '')
         if group_name not in self.monitor_groups:
-            logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
 
         # 获取群组类型
@@ -227,49 +215,29 @@ class MessageHandler:
         elif group_name in self.group_types.get('non_whole_groups', []):
             group_type = 'non-whole'
         else:
-            # 默认设为整体群组
             group_type = 'whole'
-
-        logging.debug(f"群组类型: {group_type}")
-
-        # 获取发送者昵称
         sender_nickname = msg.get('ActualNickName', '')
-        logging.debug(f"发送者昵称: {sender_nickname}")
-
-        # 提取URL
         urls = self.extract_urls(msg)
-        logging.debug(f"提取的URLs: {urls}")
         if not urls:
-            logging.debug("未找到任何URL，停止处理")
             return
 
         # 处理URL，得到有效的URL列表
         valid_urls = self.process_urls(urls)
-        logging.debug(f"有效的URLs: {valid_urls}")
         if not valid_urls:
-            logging.debug("未找到有效的URL，停止处理")
             return
 
-        logging.debug(f"群组名称: {group_name}")
-        logging.debug(f"发送者昵称: {sender_nickname}")
-        logging.debug(f"群组类型: {group_type}")
-
         # 在积分检查之前添加日志
-        logging.debug("即将进行积分检查")
         point_check = self.check_points(
             message_type='group',
             context_name=group_name,
             sender_name=sender_nickname,
             group_type=group_type
         )
-        logging.debug(f"积分检查结果: {point_check}")
         if not point_check:
-            logging.debug("积分检查未通过，停止处理")
             return
 
         # 通过积分检查后，调用上传和添加任务函数
         for url, soft_id in valid_urls:
-            logging.debug(f"处理 URL: {url}, soft_id: {soft_id}")
             if self.uploader and soft_id:
                 self.uploader.upload_group_id(
                     recipient_name=group_name,
@@ -278,7 +246,6 @@ class MessageHandler:
                     recipient_type='group',
                     group_type=group_type
                 )
-                logging.info(f"上传信息到 Uploader: {group_name}, {soft_id}, 发送者: {sender_nickname}")
             else:
                 logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
@@ -290,20 +257,12 @@ class MessageHandler:
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
-        logging.debug(f"处理个人消息: {msg}")
-
         sender = msg['User'].get('NickName', '')
-        logging.debug(f"发送者昵称: {sender}")
-        logging.debug(f"监控的个人列表: {self.target_individuals}")
-        logging.debug(f"管理员列表: {self.admins}")
-
         if sender not in self.target_individuals and sender not in self.admins:
-            logging.debug(f"忽略来自非监控个人的消息: {sender}")
             return
 
         if sender in self.admins:
             content = self.get_message_content(msg)  # 获取完整消息内容
-            logging.debug(f"管理员命令内容: {content}")
             response = self.handle_admin_command(content)
             if response and self.notifier:
                 self.notifier.notify(response)
@@ -311,16 +270,12 @@ class MessageHandler:
 
         # 提取URL
         urls = self.extract_urls(msg)
-        logging.debug(f"提取的URLs: {urls}")
         if not urls:
-            logging.debug("未找到任何URL，停止处理")
             return
 
         # 处理URL，得到有效的URL列表
         valid_urls = self.process_urls(urls)
-        logging.debug(f"有效的URLs: {valid_urls}")
         if not valid_urls:
-            logging.debug("未找到有效的URL，停止处理")
             return
 
         # 检查积分
@@ -338,36 +293,27 @@ class MessageHandler:
                     soft_id=soft_id,
                     recipient_type='individual'
                 )
-                logging.info(f"上传信息到 Uploader: {sender}, {soft_id}")
             else:
                 logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
             if self.auto_clicker:
                 self.auto_clicker.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
-            else:
-                logging.warning("AutoClicker 未设置，无法添加任务。")
 
     def handle_admin_command(self, message: str) -> Optional[str]:
         """委托 AdminCommandsHandler 处理管理员命令"""
         response = self.admin_commands_handler.handle_command(message)
         return response
 
-
     def extract_urls(self, msg) -> List[str]:
         """从消息中提取URL列表"""
         msg_type = msg.get('Type', getattr(msg, 'type', ''))
-        logging.debug(f"消息类型: {msg_type}")
 
         if msg_type not in ['Text', 'Sharing']:
-            logging.debug(f"忽略非文本或分享类型的消息: {msg_type}")
             return []
 
         content = msg.get('Text', msg.get('text', '')) if msg_type == 'Text' else msg.get('Url', msg.get('url', ''))
-        logging.debug(f"消息内容: {content}")
 
         urls = self.regex.findall(content)
-        logging.debug(f"正则表达式提取的URLs: {urls}")
         return urls
 
     def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
@@ -375,7 +321,6 @@ class MessageHandler:
         valid_urls = []
         for url in urls:
             clean_url = self.clean_url(url)
-            logging.debug(f"清理后的URL: {clean_url}")
 
             if self.validation and not self.validate_url(clean_url):
                 logging.warning(f"URL 验证失败: {clean_url}")
@@ -384,7 +329,6 @@ class MessageHandler:
             soft_id_match = re.search(r'/soft/(\d+)\.html', clean_url)
             if soft_id_match:
                 soft_id = soft_id_match.group(1)
-                logging.debug(f"从URL中提取的 soft_id: {soft_id}")
             else:
                 logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
                 soft_id = None
