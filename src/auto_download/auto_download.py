@@ -658,7 +658,9 @@ class XKW:
                         self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
     def add_task(self, url):
+        self.stats.record_task_submission(url)  # 记录任务提交
         self.task.put(url)
+        logging.info(f"任务已添加到队列: {url}")
 
     def stop(self):
         """

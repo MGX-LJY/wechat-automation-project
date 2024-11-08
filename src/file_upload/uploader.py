@@ -12,9 +12,10 @@ from src.point_manager import PointManager  # 导入 PointManager 模块
 
 
 class Uploader:
-    def __init__(self, upload_config: Dict, error_notification_config: Dict, error_handler, point_manager: Optional[PointManager] = None):
+    def __init__(self, update_config,upload_config: Dict, error_notification_config: Dict, error_handler, point_manager: Optional[PointManager] = None):
         self.target_groups = upload_config.get('target_groups', [])
         self.target_individuals = upload_config.get('target_individuals', [])
+        self.upload_config = upload_config
         self.processed_soft_ids = set()
         self.error_handler = error_handler
         self.max_retries = 3
@@ -45,6 +46,10 @@ class Uploader:
         # 初始化 PointManager
         self.point_manager = point_manager if point_manager else PointManager()
         logging.info("PointManager 已初始化")
+
+    def update_config(self, new_upload_config):
+        self.upload_config = new_upload_config
+        logging.info("Uploader 配置已更新")
 
     def initialize_wechat(self):
         """

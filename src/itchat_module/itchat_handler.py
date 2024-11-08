@@ -4,7 +4,6 @@ import logging
 import os
 import re
 import threading
-import time
 from collections import deque
 from io import BytesIO
 from typing import Optional, List, Tuple
@@ -118,6 +117,21 @@ class ItChatHandler:
         """登出微信账号，结束当前会话"""
         itchat.logout()
 
+    def update_config(self, new_config):
+        """更新配置并应用变化"""
+        self.config = new_config
+        self.monitor_groups = self.config.get('wechat', {}).get('monitor_groups', [])
+        self.target_individuals = self.config.get('wechat', {}).get('target_individuals', [])
+        self.admins = self.config.get('wechat', {}).get('admins', [])
+        self.qr_path = self.config.get('wechat', {}).get('login_qr_path', 'qr.png')
+        self.max_retries = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('max_retries', 5)
+        self.retry_interval = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval', 2)
+
+        # 更新 MessageHandler 的配置
+        self.message_handler.update_config(new_config)
+
+        logging.info("ItChatHandler 配置已更新")
+
 class MessageHandler:
     """
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
@@ -149,6 +163,16 @@ class MessageHandler:
             browser_controller=browser_controller,
             error_handler=error_handler
         )
+
+    def update_config(self, new_config):
+        """更新配置并应用变化"""
+        self.config = new_config
+        self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
+        self.validation = self.config.get('url', {}).get('validation', True)
+        self.log_dir = self.config.get('logging', {}).get('directory', 'logs')
+        self.group_types = self.config.get('wechat', {}).get('group_types', {})
+
+        logging.info("MessageHandler 配置已更新")
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
