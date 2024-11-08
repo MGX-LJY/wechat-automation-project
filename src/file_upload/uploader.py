@@ -12,7 +12,7 @@ from src.point_manager import PointManager  # 导入 PointManager 模块
 
 
 class Uploader:
-    def __init__(self, update_config,upload_config: Dict, error_notification_config: Dict, error_handler, point_manager: Optional[PointManager] = None):
+    def __init__(self, update_config, upload_config: Dict, error_notification_config: Dict, error_handler, point_manager: Optional[PointManager] = None):
         self.target_groups = upload_config.get('target_groups', [])
         self.target_individuals = upload_config.get('target_individuals', [])
         self.upload_config = upload_config
@@ -46,6 +46,35 @@ class Uploader:
         # 初始化 PointManager
         self.point_manager = point_manager if point_manager else PointManager()
         logging.info("PointManager 已初始化")
+
+        # 添加每日定时任务线程
+        self.schedule_daily_cleanup()
+        logging.info("每日文件清理任务已安排")
+
+    def schedule_daily_cleanup(self):
+        """安排每天12点执行文件清理任务"""
+        now = time.localtime()
+        # 计算距离下一次12点的秒数
+        seconds_until_noon = ((12 - now.tm_hour - 1) * 3600) + ((59 - now.tm_min) * 60) + (60 - now.tm_sec)
+        if seconds_until_noon <= 0:
+            # 如果已经过了12点，计算到下一天12点的时间
+            seconds_until_noon += 24 * 3600
+        self.cleanup_timer = threading.Timer(seconds_until_noon, self.daily_cleanup)
+        self.cleanup_timer.daemon = True
+        self.cleanup_timer.start()
+        logging.info(f"距离下一次文件清理还有 {seconds_until_noon} 秒")
+
+    def daily_cleanup(self):
+        """每日12点执行的文件清理任务"""
+        try:
+            self.delete_all_files()
+            logging.info("已执行每日文件清理任务")
+        except Exception as e:
+            logging.error(f"执行每日文件清理任务时出错：{e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+        finally:
+            # 重新安排下一次清理任务
+            self.schedule_daily_cleanup()
 
     def update_config(self, new_upload_config):
         self.upload_config = new_upload_config
@@ -169,10 +198,6 @@ class Uploader:
                     self.wx.SendFiles(filepath=file_path, who=recipient_name)
                     logging.info(f"文件已上传至接收者：{recipient_name} (soft_id: {soft_id})")
                     time.sleep(1)
-
-                    # 文件上传成功后删除文件
-                    self.delete_file(file_path)
-
                     # 扣除积分
                     self.deduct_points(recipient_name, sender_nickname, recipient_type, group_type)
                     break  # 上传成功，退出重试循环
@@ -188,18 +213,24 @@ class Uploader:
             logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
-    def delete_file(self, file_path: str):
-        """
-        删除指定的文件。
-        """
+    def delete_all_files(self):
+        """删除指定目录中的所有文件"""
         try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                logging.info(f"删除文件：{file_path}")
-            else:
-                logging.warning(f"尝试删除的文件不存在：{file_path}")
+            download_dir = self.upload_config.get('download_dir', '.')
+            files_deleted = 0
+            with self.lock:
+                for filename in os.listdir(download_dir):
+                    file_path = os.path.join(download_dir, filename)
+                    if os.path.isfile(file_path):
+                        try:
+                            os.remove(file_path)
+                            files_deleted += 1
+                            logging.info(f"删除文件：{file_path}")
+                        except Exception as e:
+                            logging.error(f"删除文件 {file_path} 时发生错误：{e}", exc_info=True)
+            logging.info(f"每日文件清理任务完成，共删除 {files_deleted} 个文件")
         except Exception as e:
-            logging.error(f"删除文件 {file_path} 时发生错误：{e}", exc_info=True)
+            logging.error(f"删除所有文件时发生错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def deduct_points(self, recipient_name: str, sender_nickname: Optional[str] = None, recipient_type: str = 'group', group_type: Optional[str] = None):
@@ -291,6 +322,9 @@ class Uploader:
         self.stop_event.set()
         self.upload_thread.join()
         self.point_manager.close()
+        # 停止定时器
+        if hasattr(self, 'cleanup_timer'):
+            self.cleanup_timer.cancel()
         logging.info("Uploader 已停止并清理资源")
 
     def __del__(self):
