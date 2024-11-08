@@ -50,6 +50,7 @@ def main():
         logging.info("ErrorHandler 初始化完成")
 
         # 5. 获取上传和下载的配置
+        update_config = main_config.get('update', {})  # 假设有一个 'update' 配置
         upload_config = main_config.get('upload', {})
         upload_error_notification_config = main_config.get('upload_error_notification', {})
 
@@ -58,7 +59,13 @@ def main():
         logging.info("PointManager 初始化完成")
 
         # 7. 创建 Uploader 实例
-        uploader = Uploader(upload_config, upload_error_notification_config, error_handler, point_manager=point_manager)
+        uploader = Uploader(
+            update_config=update_config,
+            upload_config=upload_config,
+            error_notification_config=upload_error_notification_config,
+            error_handler=error_handler,
+            point_manager=point_manager
+        )
         logging.info("Uploader 初始化完成")
 
         # 8. 初始化 XKW（浏览器控制器）
