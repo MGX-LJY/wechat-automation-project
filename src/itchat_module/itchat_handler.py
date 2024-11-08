@@ -29,19 +29,7 @@ class ItChatHandler:
         self.retry_interval = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval',2)
         self.login_event = threading.Event()
         self.point_manager = point_manager
-        self.message_handler = MessageHandler(
-            error_handler=error_handler,
-            monitor_groups=self.monitor_groups,
-            target_individuals=self.target_individuals,
-            admins=self.admins,
-            notifier=notifier,
-            browser_controller=browser_controller,
-            point_manager=self.point_manager,
-        )
-
         self.uploader = None
-        self.message_handler.set_uploader(self.uploader)
-
         logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
 
         # 初始化 AdminCommandsHandler
@@ -52,6 +40,18 @@ class ItChatHandler:
             browser_controller=browser_controller,
             error_handler=error_handler
         )
+
+        self.message_handler = MessageHandler(
+            error_handler=error_handler,
+            monitor_groups=self.monitor_groups,
+            target_individuals=self.target_individuals,
+            admins=self.admins,
+            notifier=notifier,
+            browser_controller=browser_controller,
+            point_manager=self.point_manager,
+            admin_commands_handler=self.admin_commands_handler  # 传递实例
+        )
+        self.message_handler.set_uploader(self.uploader)
 
     def set_uploader(self, uploader):
         """绑定 Uploader 实例到消息处理器"""
@@ -123,8 +123,8 @@ class MessageHandler:
     消息处理器，用于处理微信消息，提取URL并调用 AutoClicker
     """
 
-    def __init__(self, error_handler, monitor_groups, target_individuals, admins, notifier=None,
-                 browser_controller=None, point_manager=None, admin_commands_handler=None):
+    def __init__(self, error_handler, monitor_groups, target_individuals, admins,
+                 notifier=None, browser_controller=None, point_manager=None, admin_commands_handler=None):
         self.config = ConfigManager.load_config()
         self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
         self.validation = self.config.get('url', {}).get('validation', True)
@@ -141,14 +141,17 @@ class MessageHandler:
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
         self.admin_commands_handler = admin_commands_handler
 
-        # 初始化 AdminCommandsHandler
-        self.admin_commands_handler = AdminCommandsHandler(
-            config=self.config,
-            point_manager=self.point_manager,
-            notifier=notifier,
-            browser_controller=browser_controller,
-            error_handler=error_handler
-        )
+        if admin_commands_handler is not None:
+            self.admin_commands_handler = admin_commands_handler
+        else:
+            # 如果没有传递，则初始化一个新的实例
+            self.admin_commands_handler = AdminCommandsHandler(
+                config=self.config,
+                point_manager=self.point_manager,
+                notifier=notifier,
+                browser_controller=browser_controller,
+                error_handler=error_handler
+            )
 
     def set_auto_clicker(self, auto_clicker):
         """设置 AutoClicker 实例用于自动处理任务"""
