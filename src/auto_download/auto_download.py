@@ -393,33 +393,25 @@ class XKW:
             self.stats.record_task_failure(url)
             return
 
-        # 保存 URL 与 soft_id 和 file_path 的映射
-        with self.lock:
-            self.url_to_soft_id[url] = soft_id
-            self.url_to_file_path[url] = file_path
-            # 标记为已完成
-            self.completed_urls.add(url)
-            # 触发事件，通知等待的线程
-            event = self.url_download_events.get(url)
-            if event:
-                event.set()
-
         # 记录下载成功
         download_time = time.time() - start_time
         self.stats.record_task_success(url, download_time)
-        self.stats.log_statistics()
 
-    def send_to_uploader(self, url):
-        with self.lock:
-            count = self.url_counts.get(url, 1)
-            soft_id = self.url_to_soft_id.get(url)
-            file_path = self.url_to_file_path.get(url)
-        if not soft_id or not file_path:
-            logging.error(f"无法找到 URL {url} 对应的 soft_id 或 file_path")
-            return
-        for i in range(count):
-            self.uploader.add_upload_task(file_path, soft_id)
-            logging.info(f"第 {i+1}/{count} 次将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+        # 将文件路径和 soft_id 传递给上传模块
+        if self.uploader:
+            try:
+                self.uploader.add_upload_task(file_path, soft_id)  # 使用 add_upload_task
+                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+            except AttributeError as ae:
+                logging.error(f"上传过程中发生 AttributeError: {ae}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"上传过程中发生 AttributeError: {ae}", is_error=True)
+            except Exception as e:
+                logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+        else:
+            logging.warning("Uploader 未设置，无法传递上传任务。")
 
     def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
         base_delay = 2  # 基础延迟时间（秒）
@@ -495,17 +487,11 @@ class XKW:
                 if self.notifier:
                     self.notifier.notify(f"导航标签页到空白页时出错: {reset_e}", is_error=True)
 
-        # 超过最大重试次数，记录失败并通知
+        # 超过最大重试次数，记录失败
         logging.error(f"下载任务最终失败: {url}")
         if self.notifier:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
         self.stats.record_task_failure(url)
-
-        # 触发事件，通知等待的线程
-        with self.lock:
-            event = self.url_download_events.get(url)
-            if event:
-                event.set()
 
         # 等待1秒后重置标签页
         self.reset_tab(tab)
@@ -566,16 +552,6 @@ class XKW:
         finally:
             if 'tab' in locals():
                 self.tabs.put(tab)
-            # 触发事件，通知等待的线程
-            with self.lock:
-                event = self.url_download_events.get(url)
-                if event:
-                    event.set()
-                # 从 processing_urls 中移除
-                self.processing_urls.discard(url)
-                # 如果未标记为 completed，则标记为失败
-                if url not in self.completed_urls:
-                    self.completed_urls.add(url)
 
     def run(self):
         max_retries_per_url = 3  # 设置最大重试次数
@@ -587,49 +563,33 @@ class XKW:
                     if url is None:
                         logging.info("接收到退出信号，停止下载管理。")
                         break
+                    # 检查URL是否已经超过重试次数
+                    current_retry = self.retry_counts.get(url, 0)
+                    if current_retry >= max_retries_per_url:
+                        logging.error(f"URL {url} 已超过最大重试次数，跳过。")
+                        if self.notifier:
+                            self.notifier.notify(f"URL {url} 已超过最大重试次数，跳过。", is_error=True)
+                        continue
 
-                    with self.lock:
-                        self.url_counts[url] = self.url_counts.get(url, 0) + 1
-                        if url in self.completed_urls:
-                            logging.info(f"URL {url} 已经处理完成，直接发送到上传器")
-                            self.send_to_uploader(url)
-                            continue
-                        elif url in self.processing_urls:
-                            logging.info(f"URL {url} 正在处理中，等待处理完成后再发送到上传器")
-                            event = self.url_download_events[url]
-                        else:
-                            # 标记为正在处理
-                            self.processing_urls.add(url)
-                            # 创建一个事件用于同步
-                            event = threading.Event()
-                            self.url_download_events[url] = event
+                    # 控制下载启动间隔
+                    with self.download_lock:
+                        current_time = time.time()
+                        elapsed = current_time - self.last_download_time
+                        if elapsed < 2:
+                            wait_time = 2 - elapsed
+                            logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
+                            time.sleep(wait_time)
+                        self.last_download_time = time.time()
 
-                            # 控制下载启动间隔
-                            with self.download_lock:
-                                current_time = time.time()
-                                elapsed = current_time - self.last_download_time
-                                if elapsed < 2:
-                                    wait_time = 2 - elapsed
-                                    logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
-                                    time.sleep(wait_time)
-                                self.last_download_time = time.time()
+                    # 提交下载任务
+                    future = executor.submit(self.download, url)
+                    futures.append(future)
+                    logging.info(f"已提交下载任务到线程池: {url}")
 
-                            # 提交下载任务
-                            future = executor.submit(self.download, url)
-                            futures.append(future)
-                            logging.info(f"已提交下载任务到线程池: {url}")
-
-                            # 增加随机间隔，模拟任务分发的不规则性
-                            task_dispatch_delay = random.uniform(0.2, 1)
-                            logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
-                            time.sleep(task_dispatch_delay)
-                            continue  # 继续下一个循环
-
-                    # 等待 URL 处理完成
-                    event.wait()
-                    # 处理完成后，发送到上传器
-                    self.send_to_uploader(url)
-
+                    # 增加随机间隔，模拟任务分发的不规则性
+                    task_dispatch_delay = random.uniform(0.2, 1)
+                    logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
+                    time.sleep(task_dispatch_delay)
                 except queue.Empty:
                     continue  # 直接继续等待新任务
                 except Exception as e:
