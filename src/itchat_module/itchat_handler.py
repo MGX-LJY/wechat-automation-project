@@ -172,6 +172,7 @@ class MessageHandler:
         if message_type == 'group':
             if group_type == 'whole':
                 has_points = self.point_manager.has_group_points(context_name)
+                logging.debug(f"群组 '{context_name}' 是否有足够的积分: {has_points}")
                 if not has_points:
                     logging.info(f"群组 '{context_name}' 的积分不足")
                     return False
@@ -203,10 +204,12 @@ class MessageHandler:
 
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
+        logging.debug(f"处理群组消息: {msg}")
 
         # 尝试获取群组名称
         group_name = msg.get('User', {}).get('NickName', '')
         if group_name not in self.monitor_groups:
+            logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
 
         # 获取群组类型
@@ -257,7 +260,13 @@ class MessageHandler:
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
+        logging.debug(f"处理个人消息: {msg}")
+
         sender = msg['User'].get('NickName', '')
+        logging.debug(f"发送者昵称: {sender}")
+        logging.debug(f"监控的个人列表: {self.target_individuals}")
+        logging.debug(f"管理员列表: {self.admins}")
+
         if sender not in self.target_individuals and sender not in self.admins:
             return
 

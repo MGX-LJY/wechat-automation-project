@@ -75,10 +75,6 @@ class Uploader:
             # 重新安排下一次清理任务
             self.schedule_daily_cleanup()
 
-    def update_config(self, new_upload_config):
-        self.upload_config = new_upload_config
-        logging.info("Uploader 配置已更新")
-
     def initialize_wechat(self):
         """
         确保微信客户端已运行，并切换到主页面。
