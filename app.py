@@ -26,7 +26,6 @@ class ConfigChangeHandler(FileSystemEventHandler):
             logging.info("检测到配置文件修改，重新加载配置")
             try:
                 ConfigManager.load_config()
-                self.on_change_callback(ConfigManager.get_config())
             except Exception as e:
                 logging.error(f"重新加载配置失败: {e}")
 
@@ -48,8 +47,7 @@ def main():
         error_handler = ErrorHandler(notifier)
         logging.info("ErrorHandler 初始化完成")
 
-        # 5. 获取上传和下载的配置
-        update_config = main_config.get('update', {})  # 假设有一个 'update' 配置
+        # 5. 从主配置中获取 upload 和 download 的配置
         upload_config = main_config.get('upload', {})
         upload_error_notification_config = main_config.get('upload_error_notification', {})
 
@@ -59,7 +57,6 @@ def main():
 
         # 7. 创建 Uploader 实例
         uploader = Uploader(
-            update_config=update_config,
             upload_config=upload_config,
             error_notification_config=upload_error_notification_config,
             error_handler=error_handler,
@@ -67,7 +64,7 @@ def main():
         )
         logging.info("Uploader 初始化完成")
 
-        # 8. 初始化 XKW（浏览器控制器）
+        # 8. 初始化 XKW（浏览器控制器）并使用相对路径
         download_config = main_config.get('download', {})
         download_path = download_config.get(
             'download_path',
@@ -76,7 +73,10 @@ def main():
         xkw = XKW(thread=5, work=True, download_dir=str(download_path), uploader=uploader)
         logging.info("XKW 初始化完成")
 
-        # 9. 初始化 ItChatHandler
+        # 9. 初始化 ItChatHandler，并传递 Notifier 和管理员列表
+        wechat_config = main_config.get('wechat', {})
+        admins = wechat_config.get('admins', [])  # 获取管理员列表
+
         itchat_handler = ItChatHandler(
             error_handler=error_handler,
             notifier=notifier,
