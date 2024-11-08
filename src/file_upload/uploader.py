@@ -12,11 +12,9 @@ from src.point_manager import PointManager  # 导入 PointManager 模块
 
 
 class Uploader:
-    def __init__(self, upload_config: Dict, error_notification_config: Dict, error_handler,
-                 point_manager: Optional[PointManager] = None):
+    def __init__(self, upload_config: Dict, error_notification_config: Dict, error_handler, point_manager: Optional[PointManager] = None):
         self.target_groups = upload_config.get('target_groups', [])
         self.target_individuals = upload_config.get('target_individuals', [])
-        self.upload_config = upload_config
         self.processed_soft_ids = set()
         self.error_handler = error_handler
         self.max_retries = 3
