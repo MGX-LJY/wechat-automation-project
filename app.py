@@ -32,9 +32,8 @@ class ConfigChangeHandler(FileSystemEventHandler):
 
 def main():
     try:
-        # 1. 加载主配置文件
-        ConfigManager.load_config()
-        main_config = ConfigManager.get_config()
+        # 1. 加载主配置文件（无需传递路径参数）
+        main_config = ConfigManager.load_config()
 
         # 2. 设置日志
         setup_logging(main_config)
