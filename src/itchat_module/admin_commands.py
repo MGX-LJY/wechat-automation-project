@@ -29,10 +29,7 @@ class AdminCommandsHandler:
             '12': "删除整体群组 <群组名称1>,<群组名称2>",
             '13': "添加非整体群组 <群组名称1>,<群组名称2>",
             '14': "删除非整体群组 <群组名称1>,<群组名称2>",
-            '15': "重启浏览器",
-            '16': "查询日志",
-            '17': "查询浏览器",
-            '18': "帮助",
+            '15': "帮助",
         }
 
         self.commands = {
@@ -58,9 +55,7 @@ class AdminCommandsHandler:
 
             # 其他命令
             'help': r'^帮助$|^help$',
-            'restart_browser': r'^重启浏览器$|^restart browser$',
             'query_logs': r'^查询日志$|^query logs$',
-            'query_browser': r'^查询浏览器$|^query browser$',
         }
 
     def handle_command(self, message: str) -> Optional[str]:
@@ -163,12 +158,6 @@ class AdminCommandsHandler:
                     elif cmd == 'help':
                         return self.get_help_message()
 
-                    elif cmd == 'restart_browser':
-                        if self.browser_controller:
-                            self.browser_controller.restart_browser()
-                            return "浏览器已成功重启。"
-                        return "浏览器控制器未设置，无法重启浏览器。"
-
                     elif cmd == 'query_logs':
                         if self.notifier:
                             logs = self.get_last_n_logs(20)
@@ -178,28 +167,6 @@ class AdminCommandsHandler:
                                 self.notifier.notify("无法读取日志文件或日志文件为空。")
                         else:
                             logging.error("Notifier 未设置，无法发送日志。")
-                        return None
-
-                    elif cmd == 'query_browser':
-                        if not self.browser_controller:
-                            logging.error("浏览器控制器未设置，无法处理查询浏览器命令。")
-                            if self.notifier:
-                                self.notifier.notify("无法处理查询浏览器命令，因为浏览器控制器未设置。", is_error=True)
-                            return "浏览器控制器未设置，无法查询浏览器。"
-
-                        try:
-                            screenshots = self.browser_controller.capture_all_tabs_screenshots()
-                            if screenshots:
-                                self.notifier.notify_images(screenshots)
-                                for path in screenshots:
-                                    os.remove(path)
-                                    logging.debug(f"已删除临时截图文件: {path}")
-                            else:
-                                self.notifier.notify("无法捕获浏览器标签页的截图。", is_error=True)
-                        except Exception as e:
-                            logging.error(f"处理查询浏览器命令时发生错误: {e}", exc_info=True)
-                            if self.notifier:
-                                self.notifier.notify(f"处理查询浏览器命令时发生错误: {e}", is_error=True)
                         return None
 
                 except Exception as e:
@@ -347,16 +314,15 @@ class AdminCommandsHandler:
             "1. 更新个人积分 <个人名称> <变化量>\n"
             "   示例：更新个人积分 User1 -10\n\n"
             "2. 更新群组积分 <群组名称> <变化量>\n"
-            "   示例：更新整体群组积分 群组B -20\n\n"
+            "   示例：更新群组积分 群组B -20\n\n"
             "3. 更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]\n"
             "   示例：更新用户积分 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
             "4. 查询个人积分 <个人名称>\n"
             "   示例：查询个人积分 User1\n\n"
             "5. 查询群组积分 <群组名称>\n"
-            "   示例：查询整体群组积分 群组B\n\n"
+            "   示例：查询群组积分 群组B\n\n"
             "6. 查询用户积分 群组名: <群组名称> 昵称: <用户昵称>\n"
             "   示例：查询用户积分 群组名: 群组A 昵称: 用户1\n\n"
-
             "【配置文件命令】\n"
             "7. 添加监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：添加监听群组 群组A,群组B\n\n"
@@ -374,17 +340,8 @@ class AdminCommandsHandler:
             "    示例：添加非整体群组 群组A,群组B\n\n"
             "14. 删除非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除非整体群组 群组A,群组B\n\n"
-
-            "【其他命令】\n"
-            "15. 重启浏览器\n"
-            "    示例：重启浏览器\n\n"
-            "16. 查询日志\n"
-            "    示例：查询日志\n\n"
-            "17. 查询浏览器\n"
-            "    示例：查询浏览器\n\n"
-            "18. 帮助\n"
+            "15. 帮助\n"
             "    示例：帮助\n\n"
-
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"
             "例如，发送 '1' 获取命令模板。"

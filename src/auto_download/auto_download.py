@@ -326,66 +326,6 @@ class XKW:
                 self.notifier.notify(f"检查文件下载完成时发生错误: {e}", is_error=True)
             return False
 
-    def capture_all_tabs_screenshots(self) -> List[str]:
-        """
-        捕获所有标签页的截图，并返回截图文件路径列表
-        """
-        screenshot_paths = []
-        try:
-            tabs = self.page.get_tabs()
-            for index, tab in enumerate(tabs):
-                try:
-                    # 定义截图文件名
-                    screenshot_name = f"tab_{index + 1}.png"
-                    screenshot_path = os.path.join(DOWNLOAD_DIR, screenshot_name)
-                    success = tab.get_screenshot(path=screenshot_path, full_page=True)
-
-                    if success:
-                        screenshot_paths.append(screenshot_path)
-                        logging.info(f"已捕获标签页 {index + 1} 的截图: {screenshot_path}")
-                    else:
-                        logging.warning(f"无法捕获标签页 {index + 1} 的截图")
-                except Exception as e:
-                    logging.error(f"捕获标签页 {index + 1} 截图时出错: {e}", exc_info=True)
-        except Exception as e:
-            logging.error(f"获取标签页列表时发生错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"获取标签页列表时发生错误: {e}", is_error=True)
-        return screenshot_paths
-
-    def restart_browser(self):
-        """
-        重启浏览器：将所有标签页导航到空白页，并重新初始化它们。
-        """
-        try:
-            logging.info("开始重启浏览器。")
-            if self.page:
-                current_tabs = self.page.get_tabs()
-                for tab in current_tabs:
-                    try:
-                        tab.get('about:blank')  # 导航到空白页
-                        logging.debug("将标签页导航到空白页。")
-                    except Exception as e:
-                        logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
-
-                logging.info("所有浏览器标签页已导航到空白页。")
-                if self.notifier:
-                    self.notifier.notify("所有浏览器标签页已导航到空白页。")
-
-                # 重新初始化标签页
-                self.make_tabs()
-                logging.info("浏览器标签页已重新初始化。")
-                if self.notifier:
-                    self.notifier.notify("浏览器已成功重启。")
-            else:
-                logging.error("ChromiumPage 实例未初始化，无法重启浏览器。")
-                if self.notifier:
-                    self.notifier.notify("ChromiumPage 实例未初始化，无法重启浏览器。", is_error=True)
-        except Exception as e:
-            logging.error(f"重启浏览器时出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"重启浏览器时出错: {e}", is_error=True)
-
     def extract_id_and_title(self, tab, url) -> Tuple[str, str]:
         """
         从页面中提取 soft_id 和标题
@@ -804,23 +744,6 @@ class AutoDownloadManager:
             logging.error(f"添加单个 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"添加单个 URL 时发生错误: {e}", is_error=True)
-
-    def restart_browser(self):
-        """
-        重启浏览器，通过调用 downloader 的 restart_browser 方法。
-        """
-        try:
-            if self.downloader:
-                logging.info("调用 downloader 重启浏览器。")
-                self.downloader.restart_browser()
-            else:
-                logging.error("Downloader 未初始化，无法重启浏览器。")
-                if self.notifier:
-                    self.notifier.notify("Downloader 未初始化，无法重启浏览器。", is_error=True)
-        except Exception as e:
-            logging.error(f"重启浏览器时出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"重启浏览器时出错: {e}", is_error=True)
 
     def stop(self):
         """
