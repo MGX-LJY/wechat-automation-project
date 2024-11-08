@@ -538,7 +538,7 @@ class XKW:
                 if self.notifier:
                     self.notifier.notify(f"导航标签页到空白页时出错: {reset_e}", is_error=True)
 
-        # 超过最大重试次数，记录失败
+        # 超过最大重试次数，记录失败并通知
         logging.error(f"下载任务最终失败: {url}")
         if self.notifier:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
