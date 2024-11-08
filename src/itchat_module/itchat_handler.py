@@ -17,8 +17,7 @@ from src.itchat_module.admin_commands import AdminCommandsHandler  # 新增导�
 
 class ItChatHandler:
     def __init__(self, error_handler, notifier, browser_controller, point_manager):
-        ConfigManager.load_config()
-        self.config = ConfigManager.get_config()
+        self.config = ConfigManager.load_config()
         self.monitor_groups: List[str] = self.config.get('wechat', {}).get('monitor_groups', [])
         self.target_individuals: List[str] = self.config.get('wechat', {}).get('target_individuals', [])
         self.admins: List[str] = self.config.get('wechat', {}).get('admins', [])
