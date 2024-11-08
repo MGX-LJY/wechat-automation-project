@@ -129,10 +129,7 @@ def main():
         observer.start()
         logging.info("配置文件监控已启动")
 
-        # 15. 注册配置变化的回调（如果需要）
-        ConfigManager.register_callback(on_config_change)
-
-        # 16. 主线程等待子线程
+        # 15. 主线程等待子线程
         itchat_thread.join()
 
     except Exception as e:
