@@ -15,6 +15,7 @@ class Uploader:
     def __init__(self, upload_config: Dict, error_notification_config: Dict, error_handler, point_manager: Optional[PointManager] = None):
         self.target_groups = upload_config.get('target_groups', [])
         self.target_individuals = upload_config.get('target_individuals', [])
+        self.upload_config = upload_config
         self.processed_soft_ids = set()
         self.error_handler = error_handler
         self.max_retries = 3
@@ -74,6 +75,10 @@ class Uploader:
         finally:
             # 重新安排下一次清理任务
             self.schedule_daily_cleanup()
+
+    def update_config(self, new_upload_config):
+        self.upload_config = new_upload_config
+        logging.info("Uploader 配置已更新")
 
     def initialize_wechat(self):
         """
