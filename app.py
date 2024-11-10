@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from src.auto_download.auto_download import XKW
+from src.auto_download.auto_download import AutoDownloadManager
 from src.config.config_manager import ConfigManager
 from src.error_handling.error_handler import ErrorHandler
 from src.file_upload.uploader import Uploader
@@ -25,8 +25,8 @@ class ConfigChangeHandler(FileSystemEventHandler):
         if Path(event.src_path).resolve() == ConfigManager.CONFIG_PATH.resolve():
             logging.info("检测到配置文件修改，重新加载配置")
             try:
-                ConfigManager.load_config()
-                self.on_change_callback(ConfigManager.get_config())
+                new_config = ConfigManager.load_config()
+                self.on_change_callback(new_config)
             except Exception as e:
                 logging.error(f"重新加载配置失败: {e}")
 
@@ -49,7 +49,6 @@ def main():
         logging.info("ErrorHandler 初始化完成")
 
         # 5. 获取上传和下载的配置
-        update_config = main_config.get('update', {})  # 假设有一个 'update' 配置
         upload_config = main_config.get('upload', {})
         upload_error_notification_config = main_config.get('upload_error_notification', {})
 
@@ -59,7 +58,6 @@ def main():
 
         # 7. 创建 Uploader 实例
         uploader = Uploader(
-            update_config=update_config,
             upload_config=upload_config,
             error_notification_config=upload_error_notification_config,
             error_handler=error_handler,
@@ -67,27 +65,30 @@ def main():
         )
         logging.info("Uploader 初始化完成")
 
-        # 8. 初始化 XKW（浏览器控制器）
+        # 8. 初始化 AutoDownloadManager 并启动五个浏览器实例
         download_config = main_config.get('download', {})
         download_path = download_config.get(
             'download_path',
             Path(__file__).parent.parent / 'auto_download/Downloads'
         )
-        xkw = XKW(thread=5, work=True, download_dir=str(download_path), uploader=uploader)
-        logging.info("XKW 初始化完成")
+        auto_download_manager = AutoDownloadManager(
+            uploader=uploader,
+            notifier_config=notifier_config
+        )
+        logging.info("AutoDownloadManager 初始化完成")
 
         # 9. 初始化 ItChatHandler
         itchat_handler = ItChatHandler(
             error_handler=error_handler,
             notifier=notifier,
-            browser_controller=xkw,
+            browser_controller=auto_download_manager,
             point_manager=point_manager,
         )
         logging.info("ItChatHandler 初始化完成")
 
         # 10. 绑定 Uploader 和 AutoClicker 到 ItChatHandler
         itchat_handler.set_uploader(uploader)
-        itchat_handler.set_auto_clicker(xkw)
+        itchat_handler.set_auto_clicker(auto_download_manager)
         logging.info("Uploader 和 AutoClicker 已绑定到 ItChatHandler")
 
         # 11. 登录微信
@@ -102,8 +103,9 @@ def main():
         # 13. 注册信号处理，确保程序退出时停止下载监控和登出微信
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
-            xkw.work = False  # 停止 XKW 的运行循环
+            auto_download_manager.stop()  # 停止所有 XKW 实例
             itchat_handler.logout()
+            uploader.stop()  # 停止 Uploader 的上传线程
             sys.exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
@@ -115,11 +117,11 @@ def main():
             # 更新日志配置
             setup_logging(new_config)
 
-            # 更新 Notifier 配置
-            notifier.update_config(new_config.get('error_notification', {}))
-
             # 更新 Uploader 配置
             uploader.update_config(new_config.get('upload', {}))
+
+            # 更新 ItChatHandler 的配置
+            itchat_handler.update_config(new_config)
 
             logging.info("配置变化已应用")
 
