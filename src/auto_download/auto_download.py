@@ -164,7 +164,7 @@ class StatisticsManager:
 
 
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None):
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None):
         self.thread = thread
         self.work = work
         self.uploader = uploader  # 接收 Uploader 实例
@@ -180,6 +180,7 @@ class XKW:
         self.page = ChromiumPage(self.co)
         self.last_download_time = 0  # 记录上一次下载任务启动的时间
         self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
+        self.manager = manager  # 新增：保存 AutoDownloadManager 实例
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
@@ -511,20 +512,22 @@ class XKW:
 
     def switch_browser_and_retry(self, url):
         """
-        切换到另一个浏览器实例重新尝试下载
+        切换到另一个浏览器实例重新尝试下载。
         """
         try:
-            # 从 AutoDownloadManager 中获取其他可用的 XKW 实例
-            available_xkw_instances = AutoDownloadManager.get_available_xkw_instances(self)
-            for xkw_instance in available_xkw_instances:
-                if xkw_instance != self:
-                    logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance}")
-                    xkw_instance.add_task(url)
-                    return True
-            logging.error("没有可用的 XKW 实例进行重试。")
-            return False
+            available_xkw_instances = self.manager.get_available_xkw_instances(self)
+            if available_xkw_instances:
+                xkw_instance = random.choice(available_xkw_instances)
+                logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance}")
+                xkw_instance.add_task(url)
+                return True
+            else:
+                logging.error("没有可用的 XKW 实例进行重试。")
+                return False
         except Exception as e:
             logging.error(f"切换浏览器实例时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
             return False
 
     def download(self, url):
@@ -663,8 +666,6 @@ class XKW:
 
 
 class AutoDownloadManager:
-    xkw_instances = []
-
     def __init__(self, uploader=None, notifier_config=None):
         """
         初始化 AutoDownloadManager。
@@ -700,24 +701,32 @@ class AutoDownloadManager:
         browser4 = Chromium(co4)
         browser5 = Chromium(co5)
 
-        # 创建五个 XKW 实例，每个实例关联一个独立的浏览器
-        xkw1 = XKW(thread=5, work=True, download_dir='Downloads1', uploader=uploader, notifier=self.notifier, stats=self.stats, co=co1)
-        xkw2 = XKW(thread=5, work=True, download_dir='Downloads2', uploader=uploader, notifier=self.notifier, stats=self.stats, co=co2)
-        xkw3 = XKW(thread=5, work=True, download_dir='Downloads3', uploader=uploader, notifier=self.notifier, stats=self.stats, co=co3)
-        xkw4 = XKW(thread=5, work=True, download_dir='Downloads4', uploader=uploader, notifier=self.notifier, stats=self.stats, co=co4)
-        xkw5 = XKW(thread=5, work=True, download_dir='Downloads5', uploader=uploader, notifier=self.notifier, stats=self.stats, co=co5)
+        # 确保下载目录存在
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-        # 将每个 XKW 实例添加到列表中
+        # 使用相同的下载目录
+        download_dir = DOWNLOAD_DIR
+
+        # 创建五个 XKW 实例，所有实例使用相同的下载目录
+        xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co1, manager=self)
+        xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co2, manager=self)
+        xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co3, manager=self)
+        xkw4 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co4, manager=self)
+        xkw5 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co5, manager=self)
+
+        # 将 xkw 实例添加到 xkw_instances 列表中
         self.xkw_instances = [xkw1, xkw2, xkw3, xkw4, xkw5]
 
-        logging.info("AutoDownloadManager 已初始化。")
-
-    @classmethod
-    def get_available_xkw_instances(cls, current_instance):
+    def get_available_xkw_instances(self, current_instance):
         """
         获取可用于重试下载的 XKW 实例列表，排除当前实例。
         """
-        return [xkw for xkw in cls.xkw_instances if xkw != current_instance]
+        return [xkw for xkw in self.xkw_instances if xkw != current_instance]
 
     def open_url(self, url):
         """
