@@ -1,16 +1,16 @@
 import logging
 import os
+import pickle
 import queue
 import random
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Tuple
+from typing import Dict, Tuple
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 from src.notification.notifier import Notifier
-import pickle
 
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
@@ -56,7 +56,6 @@ class StatisticsManager:
         self.__initialized = True
         logging.info("StatisticsManager 单例实例初始化完成。")
         self.load_statistics()
-        # 启动自动保存线程
         self.auto_save_thread = threading.Thread(target=self.auto_save, daemon=True)
         self.auto_save_thread.start()
 
@@ -74,6 +73,7 @@ class StatisticsManager:
                 self.successful_tasks += 1
                 self.total_download_time += download_time
                 logging.debug(f"任务成功: {url}。成功任务数: {self.successful_tasks}，总下载时间: {self.total_download_time:.2f}秒")
+                print(f"任务成功: {url}。成功任务数: {self.successful_tasks}，总下载时间: {self.total_download_time:.2f}秒")
         except Exception as e:
             logging.error(f"记录任务成功时出错: {e}", exc_info=True)
 
@@ -82,6 +82,7 @@ class StatisticsManager:
             with self.lock:
                 self.failed_tasks += 1
                 logging.debug(f"任务失败: {url}。失败任务数: {self.failed_tasks}")
+                print(f"任务失败: {url}。失败任务数: {self.failed_tasks}")
         except Exception as e:
             logging.error(f"记录任务失败时出错: {e}", exc_info=True)
 
