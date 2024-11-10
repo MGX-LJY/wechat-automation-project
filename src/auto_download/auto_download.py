@@ -28,7 +28,8 @@ class ErrorHandler:
     def handle_exception(self, exception):
         error_message = f"ErrorHandler 捕获到异常: {exception}"
         logging.error(error_message, exc_info=True)
-        self.notifier.notify(error_message, is_error=True)  # 发送错误通知
+        if self.notifier:
+            self.notifier.notify(error_message, is_error=True)  # 发送错误通知
 
 
 class StatisticsManager:
@@ -54,7 +55,7 @@ class StatisticsManager:
         self.save_path = save_path
         self.__initialized = True
         logging.info("StatisticsManager 单例实例初始化完成。")
-
+        self.load_statistics()
         # 启动自动保存线程
         self.auto_save_thread = threading.Thread(target=self.auto_save, daemon=True)
         self.auto_save_thread.start()
@@ -186,8 +187,8 @@ class XKW:
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
         self.make_tabs()
         if self.work:
-            self.manager = threading.Thread(target=self.run, daemon=True)
-            self.manager.start()
+            self.manager_thread = threading.Thread(target=self.run, daemon=True)
+            self.manager_thread.start()
             logging.info("XKW manager 线程已启动。")
 
         # 初始化监控与统计
@@ -640,7 +641,7 @@ class XKW:
                     if self.notifier:
                         self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
-    def add_task(self, url):
+    def add_task(self, url: str):
         with self.lock:
             self.stats.record_task_submission(url)  # 记录任务提交
             self.task.put(url)
@@ -722,44 +723,15 @@ class AutoDownloadManager:
         # 将 xkw 实例添加到 xkw_instances 列表中
         self.xkw_instances = [xkw1, xkw2, xkw3, xkw4, xkw5]
 
+        # 初始化轮询计数器
+        self.next_xkw_index = 0
+        self.xkw_lock = threading.Lock()
+
     def get_available_xkw_instances(self, current_instance):
         """
         获取可用于重试下载的 XKW 实例列表，排除当前实例。
         """
         return [xkw for xkw in self.xkw_instances if xkw != current_instance]
-
-    def open_url(self, url):
-        """
-        打开指定的 URL，并将下载任务添加到下载器。
-        任务将轮询分配给不同的下载器。
-        """
-        try:
-            logging.info(f"准备处理URL: {url}")
-            # 简单的轮询分配任务到各个下载器
-            xkw = random.choice(self.xkw_instances)
-            xkw.add_task(url)
-            logging.info(f"已将URL添加到下载任务队列: {url}")
-        except Exception as e:
-            logging.error(f"处理URL时发生未知错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"处理URL时发生未知错误: {e}", is_error=True)
-
-    def add_urls(self, urls: List[str]):
-        """
-        添加多个 URL 到下载任务队列。
-
-        :param urls: 包含多个 URL 的列表或可迭代对象。
-        """
-        try:
-            logging.info(f"准备批量添加 {len(urls)} 个 URL 到下载任务队列。")
-            for idx, url in enumerate(urls):
-                xkw = self.xkw_instances[idx % len(self.xkw_instances)]
-                xkw.add_task(url)
-            logging.info(f"已批量添加 {len(urls)} 个 URL 到下载任务队列。")
-        except Exception as e:
-            logging.error(f"批量添加 URL 时发生错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"批量添加 URL 时发生错误: {e}", is_error=True)
 
     def add_task(self, url: str):
         """
@@ -767,7 +739,17 @@ class AutoDownloadManager:
 
         :param url: 要添加的单个 URL。
         """
-        self.open_url(url)
+        try:
+            logging.info(f"准备添加 URL 到下载任务队列: {url}")
+            with self.xkw_lock:
+                xkw = self.xkw_instances[self.next_xkw_index]
+                self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
+            xkw.add_task(url)
+            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw)+1} 的任务队列: {url}")
+        except Exception as e:
+            logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"添加 URL 时发生错误: {e}", is_error=True)
 
     def stop(self):
         """
