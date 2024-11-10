@@ -1,6 +1,5 @@
 import logging
 import os
-import pickle
 import queue
 import random
 import re
@@ -11,6 +10,7 @@ from typing import Dict, Tuple
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 from src.notification.notifier import Notifier
+import pickle  # 用于任务持久化
 
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
@@ -396,36 +396,26 @@ class XKW:
             self.stats.record_task_failure(url)
             return
 
-        # 保存 URL 与 soft_id 和 file_path 的映射
-        with self.lock:
-            self.url_to_soft_id[url] = soft_id
-            self.url_to_file_path[url] = file_path
-            # 标记为已完成
-            self.completed_urls.add(url)
-            # 触发事件，通知等待的线程
-            event = self.url_download_events.get(url)
-            if event:
-                event.set()
-
-        # 调用 send_to_uploader 方法，将文件传递给 Uploader
-        self.send_to_uploader(url)
-
         # 记录下载成功
         download_time = time.time() - start_time
         self.stats.record_task_success(url, download_time)
         self.stats.log_statistics()
 
-    def send_to_uploader(self, url):
-        with self.lock:
-            count = self.url_counts.get(url, 1)
-            soft_id = self.url_to_soft_id.get(url)
-            file_path = self.url_to_file_path.get(url)
-        if not soft_id or not file_path:
-            logging.error(f"无法找到 URL {url} 对应的 soft_id 或 file_path")
-            return
-        for i in range(count):
-            self.uploader.add_upload_task(file_path, soft_id)
-            logging.info(f"第 {i+1}/{count} 次将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+        # 将文件路径和 soft_id 传递给上传模块
+        if self.uploader:
+            try:
+                self.uploader.add_upload_task(file_path, soft_id)  # 使用 add_upload_task
+                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+            except AttributeError as ae:
+                logging.error(f"上传过程中发生 AttributeError: {ae}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"上传过程中发生 AttributeError: {ae}", is_error=True)
+            except Exception as e:
+                logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+        else:
+            logging.warning("Uploader 未设置，无法传递上传任务。")
 
     def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
         base_delay = 2  # 基础延迟时间（秒）
