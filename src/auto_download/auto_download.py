@@ -407,6 +407,9 @@ class XKW:
             if event:
                 event.set()
 
+        # 调用 send_to_uploader 方法，将文件传递给 Uploader
+        self.send_to_uploader(url)
+
         # 记录下载成功
         download_time = time.time() - start_time
         self.stats.record_task_success(url, download_time)
@@ -746,7 +749,12 @@ class AutoDownloadManager:
                 xkw = self.xkw_instances[self.next_xkw_index]
                 self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
             xkw.add_task(url)
-            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw)+1} 的任务队列: {url}")
+            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} 的任务队列: {url}")
+
+            # 在分配到下一个实例之前停顿几秒钟
+            delay_seconds = random.uniform(3, 6)  # 您可以根据需要调整延迟范围
+            logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
+            time.sleep(delay_seconds)
         except Exception as e:
             logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
