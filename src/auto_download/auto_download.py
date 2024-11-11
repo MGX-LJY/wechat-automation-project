@@ -6,8 +6,8 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Tuple
-from DrissionPage import ChromiumPage, ChromiumOptions
+from typing import Dict, Tuple
+from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 from src.notification.notifier import Notifier
 import pickle  # 用于任务持久化
@@ -28,7 +28,8 @@ class ErrorHandler:
     def handle_exception(self, exception):
         error_message = f"ErrorHandler 捕获到异常: {exception}"
         logging.error(error_message, exc_info=True)
-        self.notifier.notify(error_message, is_error=True)  # 发送错误通知
+        if self.notifier:
+            self.notifier.notify(error_message, is_error=True)  # 发送错误通知
 
 
 class StatisticsManager:
@@ -54,8 +55,7 @@ class StatisticsManager:
         self.save_path = save_path
         self.__initialized = True
         logging.info("StatisticsManager 单例实例初始化完成。")
-
-        # 启动自动保存线程
+        self.load_statistics()
         self.auto_save_thread = threading.Thread(target=self.auto_save, daemon=True)
         self.auto_save_thread.start()
 
@@ -73,6 +73,7 @@ class StatisticsManager:
                 self.successful_tasks += 1
                 self.total_download_time += download_time
                 logging.debug(f"任务成功: {url}。成功任务数: {self.successful_tasks}，总下载时间: {self.total_download_time:.2f}秒")
+                print(f"任务成功: {url}。成功任务数: {self.successful_tasks}，总下载时间: {self.total_download_time:.2f}秒")
         except Exception as e:
             logging.error(f"记录任务成功时出错: {e}", exc_info=True)
 
@@ -81,6 +82,7 @@ class StatisticsManager:
             with self.lock:
                 self.failed_tasks += 1
                 logging.debug(f"任务失败: {url}。失败任务数: {self.failed_tasks}")
+                print(f"任务失败: {url}。失败任务数: {self.failed_tasks}")
         except Exception as e:
             logging.error(f"记录任务失败时出错: {e}", exc_info=True)
 
@@ -164,7 +166,7 @@ class StatisticsManager:
 
 
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None):
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None):
         self.thread = thread
         self.work = work
         self.uploader = uploader  # 接收 Uploader 实例
@@ -172,7 +174,7 @@ class XKW:
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.retry_counts: Dict[str, int] = {}  # 记录每个URL的重试次数
-        self.co = ChromiumOptions()
+        self.co = co or ChromiumOptions()
         # self.co.headless()  # 不打开浏览器窗口，需要先登录然后再开启无浏览器模式
         self.co.no_imgs()  # 不加载图片
         self.co.set_download_path(download_dir or DOWNLOAD_DIR)  # 设置下载路径
@@ -180,13 +182,14 @@ class XKW:
         self.page = ChromiumPage(self.co)
         self.last_download_time = 0  # 记录上一次下载任务启动的时间
         self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
+        self.manager = manager  # 新增：保存 AutoDownloadManager 实例
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
         self.make_tabs()
         if self.work:
-            self.manager = threading.Thread(target=self.run, daemon=True)
-            self.manager.start()
+            self.manager_thread = threading.Thread(target=self.run, daemon=True)
+            self.manager_thread.start()
             logging.info("XKW manager 线程已启动。")
 
         # 初始化监控与统计
@@ -350,6 +353,13 @@ class XKW:
                 logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
                 return None, None
 
+            # 检测页面是否包含“独家”和“教辅”
+            ele_dujia = tab.ele('tag:em@text()=独家')
+            ele_jiaofu = tab.ele('tag:em@text()=教辅')
+            if ele_dujia and ele_jiaofu:
+                logging.info(f"内容包含‘独家’和‘教辅’，跳过该任务。URL: {url}")
+                return None, None  # 信号跳过
+
             # 从 URL 中提取 soft_id
             match = re.search(r'/soft/(\d+)\.html', url)
             if match:
@@ -396,6 +406,7 @@ class XKW:
         # 记录下载成功
         download_time = time.time() - start_time
         self.stats.record_task_success(url, download_time)
+        self.stats.log_statistics()
 
         # 将文件路径和 soft_id 传递给上传模块
         if self.uploader:
@@ -493,8 +504,33 @@ class XKW:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
         self.stats.record_task_failure(url)
 
-        # 等待1秒后重置标签页
-        self.reset_tab(tab)
+        # 尝试在另一个浏览器实例中重试下载
+        logging.info(f"尝试在另一个浏览器实例中重试下载: {url}")
+        if self.switch_browser_and_retry(url):
+            logging.info(f"在另一个浏览器实例中成功下载: {url}")
+            return
+        else:
+            logging.error(f"在所有浏览器实例中均未能成功下载: {url}")
+
+    def switch_browser_and_retry(self, url):
+        """
+        切换到另一个浏览器实例重新尝试下载。
+        """
+        try:
+            available_xkw_instances = self.manager.get_available_xkw_instances(self)
+            if available_xkw_instances:
+                xkw_instance = random.choice(available_xkw_instances)
+                logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance}")
+                xkw_instance.add_task(url)
+                return True
+            else:
+                logging.error("没有可用的 XKW 实例进行重试。")
+                return False
+        except Exception as e:
+            logging.error(f"切换浏览器实例时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
+            return False
 
     def download(self, url):
         start_time = time.time()  # 记录下载开始时间
@@ -511,8 +547,11 @@ class XKW:
 
             soft_id, title = self.extract_id_and_title(tab, url)
             if not soft_id or not title:
-                logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                self.stats.record_task_failure(url)
+                if soft_id is None and title is None:
+                    logging.info(f"任务被跳过: {url}")
+                else:
+                    logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                    self.stats.record_task_failure(url)
                 self.reset_tab(tab)
                 return
 
@@ -606,7 +645,7 @@ class XKW:
                     if self.notifier:
                         self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
-    def add_task(self, url):
+    def add_task(self, url: str):
         with self.lock:
             self.stats.record_task_submission(url)  # 记录任务提交
             self.task.put(url)
@@ -615,7 +654,7 @@ class XKW:
 
     def stop(self):
         """
-        停止 AutoDownloadManager 和其内部的 XKW 实例，并保存统计数据。
+        停止 XKW 实例，并保存统计数据。
         """
         try:
             logging.info("停止 XKW 实例。")
@@ -632,12 +671,10 @@ class XKW:
 
 
 class AutoDownloadManager:
-    def __init__(self, thread=3, download_dir=None, uploader=None, notifier_config=None):
+    def __init__(self, uploader=None, notifier_config=None):
         """
         初始化 AutoDownloadManager。
 
-        :param thread: 下载线程数。
-        :param download_dir: 下载文件的目标目录。
         :param uploader: 上传模块实例，用于处理上传任务。
         :param notifier_config: 通知配置字典，包含 'method' 和 'error_recipient'
         """
@@ -650,45 +687,55 @@ class AutoDownloadManager:
                 logging.error(f"初始化 Notifier 时出错: {e}", exc_info=True)
 
         self.error_handler = ErrorHandler(self.notifier)
-        self.downloader = XKW(
-            thread=thread,
-            work=True,
-            download_dir=download_dir,
-            uploader=uploader,
-            notifier=self.notifier
-        )
-        logging.info("AutoDownloadManager 已初始化。")
+        self.uploader = uploader
 
-    def open_url(self, url):
-        """
-        打开指定的 URL，并将下载任务添加到 downloader。
+        # 初始化统计管理器
+        self.stats = StatisticsManager()
 
-        :param url: 要打开的 URL。
-        """
-        try:
-            logging.info(f"准备处理URL: {url}")
-            self.downloader.add_task(url)
-            logging.info(f"已将URL添加到下载任务队列: {url}")
-        except Exception as e:
-            logging.error(f"处理URL时发生未知错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"处理URL时发生未知错误: {e}", is_error=True)
+        # 创建五个 ChromiumOptions，每个指定不同的端口和用户数据路径
+        co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
+        co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
+        co3 = ChromiumOptions().set_local_port(9444).set_user_data_path('data3')
+        co4 = ChromiumOptions().set_local_port(9555).set_user_data_path('data4')
+        co5 = ChromiumOptions().set_local_port(9666).set_user_data_path('data5')
 
-    def add_urls(self, urls: List[str]):
-        """
-        添加多个 URL 到下载任务队列。
+        # 启动五个 Chromium 浏览器实例
+        browser1 = Chromium(co1)
+        browser2 = Chromium(co2)
+        browser3 = Chromium(co3)
+        browser4 = Chromium(co4)
+        browser5 = Chromium(co5)
 
-        :param urls: 包含多个 URL 的列表或可迭代对象。
+        # 确保下载目录存在
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+        # 使用相同的下载目录
+        download_dir = DOWNLOAD_DIR
+
+        # 创建五个 XKW 实例，所有实例使用相同的下载目录
+        xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co1, manager=self)
+        xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co2, manager=self)
+        xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co3, manager=self)
+        xkw4 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co4, manager=self)
+        xkw5 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   stats=self.stats, co=co5, manager=self)
+
+        # 将 xkw 实例添加到 xkw_instances 列表中
+        self.xkw_instances = [xkw1, xkw2, xkw3, xkw4, xkw5]
+
+        # 初始化轮询计数器
+        self.next_xkw_index = 0
+        self.xkw_lock = threading.Lock()
+
+    def get_available_xkw_instances(self, current_instance):
         """
-        try:
-            logging.info(f"准备批量添加 {len(urls)} 个 URL 到下载任务队列。")
-            for url in urls:
-                self.downloader.add_task(url)
-            logging.info(f"已批量添加 {len(urls)} 个 URL 到下载任务队列。")
-        except Exception as e:
-            logging.error(f"批量添加 URL 时发生错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"批量添加 URL 时发生错误: {e}", is_error=True)
+        获取可用于重试下载的 XKW 实例列表，排除当前实例。
+        """
+        return [xkw for xkw in self.xkw_instances if xkw != current_instance]
 
     def add_task(self, url: str):
         """
@@ -697,21 +744,30 @@ class AutoDownloadManager:
         :param url: 要添加的单个 URL。
         """
         try:
-            logging.info(f"准备添加单个 URL 到下载任务队列: {url}")
-            self.downloader.add_task(url)
-            logging.info(f"已添加单个 URL 到下载任务队列: {url}")
+            logging.info(f"准备添加 URL 到下载任务队列: {url}")
+            with self.xkw_lock:
+                xkw = self.xkw_instances[self.next_xkw_index]
+                self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
+            xkw.add_task(url)
+            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} 的任务队列: {url}")
+
+            # 在分配到下一个实例之前停顿几秒钟
+            delay_seconds = random.uniform(3, 6)  # 您可以根据需要调整延迟范围
+            logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
+            time.sleep(delay_seconds)
         except Exception as e:
-            logging.error(f"添加单个 URL 时发生错误: {e}", exc_info=True)
+            logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
-                self.notifier.notify(f"添加单个 URL 时发生错误: {e}", is_error=True)
+                self.notifier.notify(f"添加 URL 时发生错误: {e}", is_error=True)
 
     def stop(self):
         """
-        停止 AutoDownloadManager 和其内部的 XKW 实例。
+        停止 AutoDownloadManager 和其内部的所有 XKW 实例。
         """
         try:
-            logging.info("停止 AutoDownloadManager 和 XKW 实例。")
-            self.downloader.stop()
+            logging.info("停止 AutoDownloadManager 和所有 XKW 实例。")
+            for xkw in self.xkw_instances:
+                xkw.stop()
         except Exception as e:
             logging.error(f"停止过程中出错: {e}", exc_info=True)
             if self.notifier:
