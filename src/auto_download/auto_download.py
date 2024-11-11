@@ -752,7 +752,7 @@ class AutoDownloadManager:
             logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} 的任务队列: {url}")
 
             # 在分配到下一个实例之前停顿几秒钟
-            delay_seconds = random.uniform(3, 6)  # 您可以根据需要调整延迟范围
+            delay_seconds = random.uniform(2, 4)  # 您可以根据需要调整延迟范围
             logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
             time.sleep(delay_seconds)
         except Exception as e:
