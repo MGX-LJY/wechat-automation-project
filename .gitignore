@@ -4,4 +4,81 @@
 /counts.json
 /_pycache_
 /__pycache__
-/points.db
+/points.db# PyCharm项目配置
+/.idea/
+
+# 忽略所有的XML文件
+*.xml
+
+# 日志目录
+/logs/
+
+# 数据库文件
+points.db
+
+# Python编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+ENV/
+env/
+.venv/
+.env/
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 编辑器和IDE生成的文件
+*.swp
+*.swo
+*.bak
+*.tmp
+*.temp
+*.log
+
+# 打包和分发文件
+build/
+dist/
+*.egg-info/
+*.egg
+
+# 配置和密钥文件（确保敏感信息不被上传）
+*.env
+*.secret
+*.config
+
+# 数据库迁移文件（如果不需要跟踪）
+migrations/
+
+# Jupyter Notebook检查点
+.ipynb_checkpoints/
+
+# Coverage报告
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Pytest缓存
+.pytest_cache/
+
+# mypy类型检查
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Flask/Django等框架的临时文件
+instance/
+.webassets-cache
+
+# 其他可能的临时文件
+*.pid
+*.lock
+*.sqlite3
