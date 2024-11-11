@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import threading
+import time
 from collections import deque
 from io import BytesIO
 from typing import Optional, List, Tuple
@@ -28,19 +29,7 @@ class ItChatHandler:
         self.retry_interval = self.config.get('wechat', {}).get('itchat', {}).get('qr_check', {}).get('retry_interval',2)
         self.login_event = threading.Event()
         self.point_manager = point_manager
-        self.message_handler = MessageHandler(
-            error_handler=error_handler,
-            monitor_groups=self.monitor_groups,
-            target_individuals=self.target_individuals,
-            admins=self.admins,
-            notifier=notifier,
-            browser_controller=browser_controller,
-            point_manager=self.point_manager,
-        )
-
         self.uploader = None
-        self.message_handler.set_uploader(self.uploader)
-
         logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
 
         # 初始化 AdminCommandsHandler
@@ -51,6 +40,18 @@ class ItChatHandler:
             browser_controller=browser_controller,
             error_handler=error_handler
         )
+
+        self.message_handler = MessageHandler(
+            error_handler=error_handler,
+            monitor_groups=self.monitor_groups,
+            target_individuals=self.target_individuals,
+            admins=self.admins,
+            notifier=notifier,
+            browser_controller=browser_controller,
+            point_manager=self.point_manager,
+            admin_commands_handler=self.admin_commands_handler  # 传递实例
+        )
+        self.message_handler.set_uploader(self.uploader)
 
     def set_uploader(self, uploader):
         """绑定 Uploader 实例到消息处理器"""
@@ -155,14 +156,17 @@ class MessageHandler:
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
         self.admin_commands_handler = admin_commands_handler
 
-        # 初始化 AdminCommandsHandler
-        self.admin_commands_handler = AdminCommandsHandler(
-            config=self.config,
-            point_manager=self.point_manager,
-            notifier=notifier,
-            browser_controller=browser_controller,
-            error_handler=error_handler
-        )
+        if admin_commands_handler is not None:
+            self.admin_commands_handler = admin_commands_handler
+        else:
+            # 如果没有传递，则初始化一个新的实例
+            self.admin_commands_handler = AdminCommandsHandler(
+                config=self.config,
+                point_manager=self.point_manager,
+                notifier=notifier,
+                browser_controller=browser_controller,
+                error_handler=error_handler
+            )
 
     def update_config(self, new_config):
         """更新配置并应用变化"""
@@ -196,6 +200,7 @@ class MessageHandler:
         if message_type == 'group':
             if group_type == 'whole':
                 has_points = self.point_manager.has_group_points(context_name)
+                logging.debug(f"群组 '{context_name}' 是否有足够的积分: {has_points}")
                 if not has_points:
                     logging.info(f"群组 '{context_name}' 的积分不足")
                     return False
@@ -227,10 +232,12 @@ class MessageHandler:
 
     def handle_group_message(self, msg):
         """处理来自群组的消息，提取并处理URL"""
+        logging.debug(f"处理群组消息: {msg}")
 
         # 尝试获取群组名称
         group_name = msg.get('User', {}).get('NickName', '')
         if group_name not in self.monitor_groups:
+            logging.debug(f"忽略来自非监控群组的消息: {group_name}")
             return
 
         # 获取群组类型
@@ -281,7 +288,13 @@ class MessageHandler:
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
+        logging.debug(f"处理个人消息: {msg}")
+
         sender = msg['User'].get('NickName', '')
+        logging.debug(f"发送者昵称: {sender}")
+        logging.debug(f"监控的个人列表: {self.target_individuals}")
+        logging.debug(f"管理员列表: {self.admins}")
+
         if sender not in self.target_individuals and sender not in self.admins:
             return
 
