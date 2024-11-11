@@ -7,9 +7,6 @@
 /points.db# PyCharm项目配置
 /.idea/
 
-# 忽略所有的XML文件
-*.xml
-
 # 日志目录
 /logs/
 
