@@ -53,13 +53,14 @@ class PointManager:
             logging.error(f"初始化 PointManager 数据库时出错：{e}", exc_info=True)
 
     # 确保接收者存在（个人）
-    def ensure_recipient(self, recipient_name: str, initial_points: int = 100):
+    def ensure_recipient(self, recipient_name: str, initial_points: int = 0):
         with self.lock:
             self.cursor.execute('''
                 INSERT OR IGNORE INTO recipients (name, remaining_points)
                 VALUES (?, ?)
             ''', (recipient_name, initial_points))
             self.conn.commit()
+            logging.debug(f"接收者 '{recipient_name}' 已确保存在，初始积分={initial_points}")
 
     # 添加接收者（新方法）
     def add_recipient(self, recipient_name: str, initial_points: int = 100) -> str:
@@ -101,7 +102,7 @@ class PointManager:
                             VALUES (?, ?, 0)
                         ''', (group_name, initial_points))  # 默认为非整体性群组
                     self.conn.commit()
-                    logging.debug(f"群组 '{group_name}' 已添加，is_whole={is_whole}")
+                    logging.debug(f"群组 '{group_name}' 已添加，is_whole={is_whole}, initial_points={initial_points}")
                 else:
                     # 群组已存在，检查是否需要更新 is_whole 值
                     current_is_whole = bool(result[0])
@@ -126,7 +127,7 @@ class PointManager:
             logging.debug(f"群组 '{group_name}' 的 is_whole 已更新为 {is_whole}")
 
     # 确保用户存在于群组中
-    def ensure_user(self, group_name: str, nickname: str, initial_points: int = 100):
+    def ensure_user(self, group_name: str, nickname: str, initial_points: int = 0):
         with self.lock:
             self.ensure_group(group_name)  # 确保群组存在
             self.cursor.execute('''
@@ -134,7 +135,7 @@ class PointManager:
                 VALUES (?, ?, ?)
             ''', (group_name, nickname, initial_points))
             self.conn.commit()
-            logging.debug(f"用户 '{nickname}' 已确保存在于群组 '{group_name}' 中")
+            logging.debug(f"用户 '{nickname}' 已确保存在于群组 '{group_name}' 中，初始积分={initial_points}")
 
     # 检查整体性群组是否有足够的积分
     def has_group_points(self, group_name: str, required_points: int = 1) -> bool:
@@ -353,6 +354,9 @@ class PointManager:
 
     # 更新接收者积分
     def update_recipient_points(self, recipient_name: str, delta: int) -> bool:
+        """
+        更新接收者的积分。delta 可以是正数（添加积分）或负数（扣除积分）。
+        """
         with self.lock:
             self.ensure_recipient(recipient_name)
             self.cursor.execute('''
@@ -368,18 +372,26 @@ class PointManager:
             return True
 
     # 更新群组积分（仅适用于整体性群组）
-    def update_group_points(self, group_name: str, delta: int) -> bool:
+    def update_group_points(self, group_name: str, delta: int, is_whole: Optional[bool] = None) -> bool:
         with self.lock:
-            # 确认群组存在且为整体性群组
+            # 确保群组存在，如果不存在则创建
+            self.ensure_group(group_name, is_whole=is_whole, initial_points=0)
+
+            # 确认群组是否为整体性群组
             self.cursor.execute('''
                 SELECT is_whole FROM groups WHERE name = ?
             ''', (group_name,))
             result = self.cursor.fetchone()
             if not result:
-                logging.error(f"群组 '{group_name}' 不存在")
+                logging.error(f"群组 '{group_name}' 创建失败")
                 return False
-            is_whole = bool(result[0])
-            if not is_whole:
+            is_whole_current = bool(result[0])
+            if is_whole is not None and is_whole_current != is_whole:
+                # 如果提供了 is_whole 参数且与当前值不符，更新 is_whole
+                self.set_group_is_whole(group_name, is_whole)
+                is_whole_current = is_whole
+
+            if not is_whole_current:
                 logging.error(f"群组 '{group_name}' 不是整体性群组，无法更新群组积分")
                 return False
 
@@ -398,8 +410,16 @@ class PointManager:
 
     # 更新用户积分
     def update_user_points(self, group_name: str, nickname: str, delta: int) -> bool:
+        """
+        更新用户的积分。delta 可以是正数（添加积分）或负数（扣除积分）。
+
+        :param group_name: 群组名称
+        :param nickname: 用户昵称
+        :param delta: 积分变化量
+        :return: 成功返回True，失败返回False
+        """
         with self.lock:
-            self.ensure_user(group_name, nickname)
+            self.ensure_user(group_name, nickname)  # 确保用户存在
             self.cursor.execute('''
                 UPDATE users
                 SET remaining_points = remaining_points + ?
