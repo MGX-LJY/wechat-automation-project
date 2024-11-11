@@ -353,6 +353,13 @@ class XKW:
                 logging.error(f"无法从页面中找到 h1.res-title 标签，URL: {url}")
                 return None, None
 
+            # 检测页面是否包含“独家”和“教辅”
+            ele_dujia = tab.ele('tag:em@text()=独家')
+            ele_jiaofu = tab.ele('tag:em@text()=教辅')
+            if ele_dujia and ele_jiaofu:
+                logging.info(f"标题包含‘独家’和‘教辅’，跳过该任务。URL: {url}")
+                return None, None  # 信号跳过
+
             # 从 URL 中提取 soft_id
             match = re.search(r'/soft/(\d+)\.html', url)
             if match:
@@ -540,8 +547,11 @@ class XKW:
 
             soft_id, title = self.extract_id_and_title(tab, url)
             if not soft_id or not title:
-                logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                self.stats.record_task_failure(url)
+                if soft_id is None and title is None:
+                    logging.info(f"任务被跳过: {url}")
+                else:
+                    logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                    self.stats.record_task_failure(url)
                 self.reset_tab(tab)
                 return
 
