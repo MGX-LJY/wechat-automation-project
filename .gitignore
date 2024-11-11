@@ -2,3 +2,6 @@
 *.xml
 /logs
 /counts.json
+/_pycache_
+/__pycache__
+/points.db
