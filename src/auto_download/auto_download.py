@@ -357,7 +357,7 @@ class XKW:
             ele_dujia = tab.ele('tag:em@text()=独家')
             ele_jiaofu = tab.ele('tag:em@text()=教辅')
             if ele_dujia and ele_jiaofu:
-                logging.info(f"标题包含‘独家’和‘教辅’，跳过该任务。URL: {url}")
+                logging.info(f"内容包含‘独家’和‘教辅’，跳过该任务。URL: {url}")
                 return None, None  # 信号跳过
 
             # 从 URL 中提取 soft_id
