@@ -372,10 +372,10 @@ class PointManager:
             return True
 
     # 更新群组积分（仅适用于整体性群组）
-    def update_group_points(self, group_name: str, delta: int, is_whole: Optional[bool] = None) -> bool:
+    def update_group_points(self, group_name: str, delta: int) -> bool:
         with self.lock:
-            # 确保群组存在，如果不存在则创建
-            self.ensure_group(group_name, is_whole=is_whole, initial_points=0)
+            # 确保群组存在，并强制设置为整体性群组
+            self.ensure_group(group_name, is_whole=True, initial_points=0)
 
             # 确认群组是否为整体性群组
             self.cursor.execute('''
@@ -386,10 +386,6 @@ class PointManager:
                 logging.error(f"群组 '{group_name}' 创建失败")
                 return False
             is_whole_current = bool(result[0])
-            if is_whole is not None and is_whole_current != is_whole:
-                # 如果提供了 is_whole 参数且与当前值不符，更新 is_whole
-                self.set_group_is_whole(group_name, is_whole)
-                is_whole_current = is_whole
 
             if not is_whole_current:
                 logging.error(f"群组 '{group_name}' 不是整体性群组，无法更新群组积分")
