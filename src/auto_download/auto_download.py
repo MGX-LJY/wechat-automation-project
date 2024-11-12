@@ -695,16 +695,10 @@ class AutoDownloadManager:
         # 创建五个 ChromiumOptions，每个指定不同的端口和用户数据路径
         co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
-        co3 = ChromiumOptions().set_local_port(9444).set_user_data_path('data3')
-        co4 = ChromiumOptions().set_local_port(9555).set_user_data_path('data4')
-        co5 = ChromiumOptions().set_local_port(9666).set_user_data_path('data5')
 
         # 启动五个 Chromium 浏览器实例
         browser1 = Chromium(co1)
         browser2 = Chromium(co2)
-        browser3 = Chromium(co3)
-        browser4 = Chromium(co4)
-        browser5 = Chromium(co5)
 
         # 确保下载目录存在
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -717,15 +711,9 @@ class AutoDownloadManager:
                    stats=self.stats, co=co1, manager=self)
         xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    stats=self.stats, co=co2, manager=self)
-        xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co3, manager=self)
-        xkw4 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co4, manager=self)
-        xkw5 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co5, manager=self)
 
         # 将 xkw 实例添加到 xkw_instances 列表中
-        self.xkw_instances = [xkw1, xkw2, xkw3, xkw4, xkw5]
+        self.xkw_instances = [xkw1, xkw2]
 
         # 初始化轮询计数器
         self.next_xkw_index = 0
