@@ -778,10 +778,6 @@ class AutoDownloadManager:
                 self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
             xkw.add_task(url)
             logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} (ID: {xkw.id}) 的任务队列: {url}")
-
-            delay_seconds = random.uniform(2, 4)
-            logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
-            time.sleep(delay_seconds)
         except Exception as e:
             logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
