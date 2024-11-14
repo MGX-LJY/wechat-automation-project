@@ -183,6 +183,8 @@ class XKW:
         self.last_download_time = 0  # 记录上一次下载任务启动的时间
         self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
         self.manager = manager  # 新增：保存 AutoDownloadManager 实例
+        self.consecutive_failures = 0  # 新增：记录连续失败次数
+        self.is_active = True  # 新增：标记实例是否可用
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
@@ -391,8 +393,21 @@ class XKW:
                 self.notifier.notify(f"提取 ID 和标题时出错: {e}", is_error=True)
             return None, None
 
+    def increment_failure_count(self):
+        with self.lock:
+            self.consecutive_failures += 1
+            logging.warning(f"实例 {self} 的连续失败次数增加到 {self.consecutive_failures}。")
+            if self.consecutive_failures >= 3:
+                self.is_active = False
+                logging.error(f"实例 {self} 已达到最大连续失败次数，标记为不可用。")
+                if self.manager:
+                    self.manager.disable_xkw_instance(self)
+                if self.notifier:
+                    self.notifier.notify(f"实例 {self} 已被禁用，因连续三次下载失败。", is_error=True)
+
     def handle_success(self, url, title, soft_id):
         start_time = time.time()  # 开始计时
+        self.consecutive_failures = 0  # 重置失败计数
         logging.info(f"下载成功，开始处理上传任务: {url}")
         # 匹配下载的文件
         file_path = self.match_downloaded_file(title)
@@ -501,8 +516,9 @@ class XKW:
         # 超过最大重试次数，记录失败
         logging.error(f"下载任务最终失败: {url}")
         if self.notifier:
-            self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
+            self.notifier.notify(f"下载任务最终失败: {url}，未配置。", is_error=True)  # 修改消息
         self.stats.record_task_failure(url)
+        self.increment_failure_count()  # 新增：增加失败计数
 
         # 尝试在另一个浏览器实例中重试下载
         logging.info(f"尝试在另一个浏览器实例中重试下载: {url}")
@@ -715,15 +731,31 @@ class AutoDownloadManager:
         # 将 xkw 实例添加到 xkw_instances 列表中
         self.xkw_instances = [xkw1, xkw2]
 
+        # 初始化活跃实例列表
+        self.active_xkw_instances = self.xkw_instances.copy()
+
         # 初始化轮询计数器
         self.next_xkw_index = 0
         self.xkw_lock = threading.Lock()
+
+    def disable_xkw_instance(self, xkw_instance):
+        with self.xkw_lock:
+            if xkw_instance in self.active_xkw_instances:
+                self.active_xkw_instances.remove(xkw_instance)
+                logging.info(f"实例 {xkw_instance} 已从活跃列表中移除。")
+                if self.notifier:
+                    self.notifier.notify(f"实例 {xkw_instance} 已被禁用。", is_error=True)
+                # 检查是否还有活跃实例
+                if not self.active_xkw_instances:
+                    logging.error("所有浏览器实例均不可用，向管理员发送报告。")
+                    if self.notifier:
+                        self.notifier.notify("所有浏览器实例均不可用，请检查系统配置。", is_error=True)
 
     def get_available_xkw_instances(self, current_instance):
         """
         获取可用于重试下载的 XKW 实例列表，排除当前实例。
         """
-        return [xkw for xkw in self.xkw_instances if xkw != current_instance]
+        return [xkw for xkw in self.active_xkw_instances if xkw != current_instance]
 
     def add_task(self, url: str):
         """
@@ -734,7 +766,23 @@ class AutoDownloadManager:
         try:
             logging.info(f"准备添加 URL 到下载任务队列: {url}")
             with self.xkw_lock:
+                if not self.active_xkw_instances:
+                    logging.error("没有可用的 XKW 实例来处理任务。向管理员发送报告。")
+                    if self.notifier:
+                        self.notifier.notify("没有可用的 XKW 实例来处理下载任务。", is_error=True)
+                    return
                 xkw = self.xkw_instances[self.next_xkw_index]
+                # 如果实例不可用，则跳过
+                while not xkw.is_active:
+                    self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
+                    xkw = self.xkw_instances[self.next_xkw_index]
+                    if not xkw.is_active:
+                        logging.warning(f"实例 {xkw} 不可用，尝试下一个实例。")
+                        if all(not inst.is_active for inst in self.xkw_instances):
+                            logging.error("所有浏览器实例均不可用，无法添加任务。")
+                            if self.notifier:
+                                self.notifier.notify("所有浏览器实例均不可用，无法添加下载任务。", is_error=True)
+                            return
                 self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
             xkw.add_task(url)
             logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} 的任务队列: {url}")

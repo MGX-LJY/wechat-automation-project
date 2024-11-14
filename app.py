@@ -103,7 +103,6 @@ def main():
         # 13. 注册信号处理，确保程序退出时停止下载监控和登出微信
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
-            auto_download_manager.stop()  # 停止所有 XKW 实例
             itchat_handler.logout()
             uploader.stop()  # 停止 Uploader 的上传线程
             sys.exit(0)
