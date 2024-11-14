@@ -455,16 +455,13 @@ class XKW:
                 download.click(by_js=True)
                 for item in tab.listen.steps(timeout=10):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
-                        logging.info(f"下载链接获取成功: {item.url}")
-
                         tab.listen.stop()
                         tab.stop_loading()
-                        time.sleep(1)
-                        self.tabs.put(tab)
-                        logging.debug("已释放标签页并放回队列。")
-
+                        logging.info(f"下载链接获取成功: {item.url}")
                         self.handle_success(url, title, soft_id)
 
+                        # 等待1秒后重置标签页
+                        self.reset_tab(tab)
                         return
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
@@ -619,7 +616,7 @@ class XKW:
                 self.tabs.put(tab)
 
     def run(self):
-        max_retries_per_url = 1  # 设置最大重试次数
+        max_retries_per_url = 3  # 设置最大重试次数
         with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
             futures = []
             while self.work:
