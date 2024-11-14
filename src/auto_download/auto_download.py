@@ -726,9 +726,9 @@ class AutoDownloadManager:
         download_dir = DOWNLOAD_DIR
 
         # 创建两个 XKW 实例，分配唯一 ID
-        xkw1 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+        xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    stats=self.stats, co=co1, manager=self, id='xkw1')
-        xkw2 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+        xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    stats=self.stats, co=co2, manager=self, id='xkw2')
 
         self.xkw_instances = [xkw1, xkw2]
