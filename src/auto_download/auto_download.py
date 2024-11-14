@@ -13,7 +13,6 @@ from src.notification.notifier import Notifier
 import pickle
 import uuid
 
-
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')
@@ -206,7 +205,7 @@ class XKW:
         self.url_counts = {}
         self.processing_urls = set()
         self.completed_urls = set()
-        self.url_download_events = {}  # 用于同步等待
+        self.url_download_events = {}
         self.url_to_soft_id = {}
         self.url_to_file_path = {}
 
@@ -608,9 +607,11 @@ class XKW:
             # **设置用于同步的 Event 对象**
             event = threading.Event()
             self.url_download_events[url] = event
+            logging.info(f"设置下载完成的 Event 对象: {event}")
 
             # 开始下载并处理后续任务
             self.listener(tab, download_button, url, title, soft_id)
+            logging.info(f"下载任务完成: {url}")
 
             # **等待下载完成或失败的信号**
             download_timeout = 300  # 设置下载超时时间为 300 秒
@@ -661,55 +662,62 @@ class XKW:
     def run(self):
         max_retries_per_url = 3  # 设置最大重试次数
         with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
-            futures = []
             while self.work:
                 try:
-                    url = self.task.get(timeout=5)  # 等待新任务
-                    if url is None:
-                        logging.info("接收到退出信号，停止下载管理。")
-                        break
-                    # 检查URL是否已经超过重试次数
-                    current_retry = self.retry_counts.get(url, 0)
-                    if current_retry >= max_retries_per_url:
-                        logging.error(f"URL {url} 已超过最大重试次数，跳过。")
-                        if self.notifier:
-                            self.notifier.notify(f"URL {url} 已超过最大重试次数，跳过。", is_error=True)
+                    # **修改开始：每次获取6个URL**
+                    urls = []
+                    for _ in range(6):
+                        url = self.task.get(timeout=5)
+                        if url is None:
+                            logging.info("接收到退出信号，停止下载管理。")
+                            self.work = False  # 停止循环
+                            break
+                        # 检查URL是否已经超过重试次数
+                        current_retry = self.retry_counts.get(url, 0)
+                        if current_retry >= max_retries_per_url:
+                            logging.error(f"URL {url} 已超过最大重试次数，跳过。")
+                            if self.notifier:
+                                self.notifier.notify(f"URL {url} 已超过最大重试次数，跳过。", is_error=True)
+                            continue
+                        urls.append(url)
+                    if not urls:
                         continue
-
-                    # 控制下载启动间隔
-                    with self.download_lock:
-                        current_time = time.time()
-                        elapsed = current_time - self.last_download_time
-                        if elapsed < 2:
-                            wait_time = 2 - elapsed
-                            logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
-                            time.sleep(wait_time)
-                        self.last_download_time = time.time()
-
                     # 提交下载任务
-                    future = executor.submit(self.download, url)
-                    futures.append(future)
-                    logging.info(f"已提交下载任务到线程池: {url}")
-
-                    # 增加随机间隔，模拟任务分发的不规则性
-                    task_dispatch_delay = random.uniform(0.2, 1)
-                    logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
-                    time.sleep(task_dispatch_delay)
+                    futures = []
+                    for url in urls:
+                        with self.download_lock:
+                            current_time = time.time()
+                            elapsed = current_time - self.last_download_time
+                            if elapsed < 2:
+                                wait_time = 2 - elapsed
+                                logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
+                                time.sleep(wait_time)
+                            self.last_download_time = time.time()
+                        future = executor.submit(self.download, url)
+                        futures.append(future)
+                        logging.info(f"已提交下载任务到线程池: {url}")
+                        # 增加随机间隔，模拟任务分发的不规则性
+                        task_dispatch_delay = random.uniform(0.2, 1)
+                        logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
+                        time.sleep(task_dispatch_delay)
+                    # 等待所有下载任务完成
+                    for future in futures:
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logging.error(f"下载任务中出现未捕获的异常: {e}", exc_info=True)
+                            if self.notifier:
+                                self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
+                    # **修改结束：等待当前批次的所有任务完成后再进行下一批**
                 except queue.Empty:
                     continue
                 except Exception as e:
                     logging.error(f"任务分发时出错: {e}", exc_info=True)
                     if self.notifier:
                         self.notifier.notify(f"任务分发时出错: {e}", is_error=True)
-
-            # 等待所有任务完成
-            for future in futures:
-                try:
-                    future.result()
-                except Exception as e:
-                    logging.error(f"下载任务中出现未捕获的异常: {e}", exc_info=True)
-                    if self.notifier:
-                        self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
+            # 等待所有剩余任务完成
+            executor.shutdown(wait=True)
+            logging.info("所有下载任务已完成。")
 
     def add_task(self, url: str):
         with self.lock:
