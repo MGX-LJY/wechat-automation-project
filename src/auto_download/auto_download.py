@@ -445,94 +445,35 @@ class XKW:
         else:
             logging.warning("Uploader 未设置，无法传递上传任务。")
 
-    def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
-        base_delay = 2  # 基础延迟时间（秒）
-        while retry < max_retries:
-            logging.info(f"开始下载 {url}, 重试次数: {retry}")
-            try:
-                tab.listen.start(True, method="GET")
-                download.click(by_js=True)
-                for item in tab.listen.steps(timeout=10):
-                    if item.url.startswith("https://files.zxxk.com/?mkey="):
-                        tab.listen.stop()
-                        tab.stop_loading()
-                        logging.info(f"下载链接获取成功: {item.url}")
-                        self.handle_success(url, title, soft_id)
-
-                        # 等待1秒后重置标签页
-                        self.reset_tab(tab)
+    def listener(self, tab, download, url, title, soft_id):
+        try:
+            logging.info(f"开始监听下载链接: {url}")
+            tab.listen.start(True, method="GET")
+            download.click(by_js=True)
+            for item in tab.listen.steps(timeout=10):
+                if item.url.startswith("https://files.zxxk.com/?mkey="):
+                    tab.listen.stop()
+                    tab.stop_loading()
+                    logging.info(f"下载链接获取成功: {item.url}")
+                    self.handle_success(url, title, soft_id)
+                    return
+                elif "20600001" in item.url:
+                    tab.listen.stop()
+                    logging.warning("请求过于频繁，暂停后重试。")
+                    raise Exception("请求过于频繁")
+            else:
+                iframe = tab.get_frame('#layui-layer-iframe100002')
+                if iframe:
+                    a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                    if a:
+                        a.click()
+                        logging.info("点击确认按钮成功。")
                         return
-                    elif "20600001" in item.url:
-                        logging.warning("请求过于频繁，暂停后重试。")
-                        backoff = base_delay * (2 ** retry)
-                        jitter = random.uniform(0, 1)
-                        total_delay = backoff + jitter
-                        logging.debug(f"请求过于频繁，等待 {total_delay:.1f} 秒后重试。")
-                        time.sleep(total_delay)
-                        retry += 1
-                        break
-                else:
-                    # 其他未处理的情况
-                    time.sleep(1)
-                    iframe = tab.get_frame('#layui-layer-iframe100002')
-                    if iframe:
-                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                        if a:
-                            a.click()
-                            logging.info("点击确认按钮成功。")
-                            continue
-                    logging.warning(f"下载失败，尝试重新下载: {url}, 当前重试次数: {retry}")
-                    time.sleep(3)
-                    retry += 1
-            except ContextLostError as e:
-                logging.warning(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}")
-                if self.notifier:
-                    self.notifier.notify(f"页面上下文丢失，重试下载: {url}, 错误信息: {e}", is_error=True)
-                backoff = base_delay * (2 ** retry)
-                jitter = random.uniform(0, 1)
-                total_delay = backoff + jitter
-                logging.debug(f"页面上下文丢失，等待 {total_delay:.1f} 秒后重试。")
-                time.sleep(total_delay)
-                retry += 1
-                # 重置标签页并重新导航到 URL
-                self.reset_tab(tab)
-                tab.get(url)  # 重新加载页面
-            except Exception as e:
-                logging.error(f"下载过程中出错: {e}", exc_info=True)
-                if self.notifier:
-                    self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-                # 指数退避
-                backoff = base_delay * (2 ** retry)
-                jitter = random.uniform(0, 1)
-                total_delay = backoff + jitter
-                logging.debug(f"下载出错，等待 {total_delay:.1f} 秒后重试。")
-                time.sleep(total_delay)
-                retry += 1
-                # 重置标签页并重新导航到 URL
-                self.reset_tab(tab)
-                tab.get(url)  # 重新加载页面
-            try:
-                # 等待1秒后重置标签页
-                self.reset_tab(tab)
-            except Exception as reset_e:
-                logging.error(f"导航标签页到空白页时出错: {reset_e}", exc_info=True)
-                if self.notifier:
-                    self.notifier.notify(f"导航标签页到空白页时出错: {reset_e}", is_error=True)
-
-        # 超过最大重试次数，记录失败
-        logging.error(f"下载任务最终失败: {url}")
-        if self.notifier:
-            self.notifier.notify(f"下载任务最终失败: {url}，未配置。", is_error=True)  # 修改消息
-        self.stats.record_task_failure(url)
-        self.increment_failure_count()  # 新增：增加失败计数
-
-        # 尝试在另一个浏览器实例中重试下载
-        logging.info(f"尝试在另一个浏览器实例中重试下载: {url}")
-        if self.switch_browser_and_retry(url):
-            logging.info(f"在另一个浏览器实例中成功下载: {url}")
-            return
-        else:
-            logging.error(f"在所有浏览器实例中均未能成功下载: {url}")
+                logging.error("未能捕获到下载链接")
+                raise Exception("未能捕获到下载链接")
+        except Exception as e:
+            logging.error(f"监听下载过程中出错: {e}", exc_info=True)
+            raise e
 
     def switch_browser_and_retry(self, url):
         """
@@ -555,92 +496,89 @@ class XKW:
             return False
 
     def download(self, url):
-        start_time = time.time()  # 记录下载开始时间
-        try:
-            logging.info(f"准备下载 URL: {url}")
-            # 增加随机延迟，模拟人类等待页面加载
-            pre_download_delay = random.uniform(2, 5)
-            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
-            time.sleep(pre_download_delay)
+        max_retries = 1  # 最大重试次数
+        retry = 0
+        while retry < max_retries:
+            start_time = time.time()
+            try:
+                logging.info(f"准备下载 URL: {url}，重试次数: {retry}")
+                # 增加随机延迟，模拟人类等待页面加载
+                pre_download_delay = random.uniform(2, 5)
+                logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
+                time.sleep(pre_download_delay)
 
-            tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
-            logging.info(f"获取到一个标签页用于下载: {tab}")
-            tab.get(url)
+                tab = self.tabs.get(timeout=30)
+                logging.info(f"获取到一个标签页用于下载: {tab}")
+                tab.get(url)
 
-            soft_id, title = self.extract_id_and_title(tab, url)
-            if not soft_id or not title:
-                if soft_id is None and title is None:
-                    logging.info(f"任务被跳过: {url}")
-                else:
-                    logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                soft_id, title = self.extract_id_and_title(tab, url)
+                if not soft_id or not title:
+                    if soft_id is None and title is None:
+                        logging.info(f"任务被跳过: {url}")
+                    else:
+                        logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                        self.stats.record_task_failure(url)
+                    self.reset_tab(tab)
+                    return
+
+                download_button = tab("#btnSoftDownload")
+                if not download_button:
+                    logging.error(f"无法找到下载按钮，跳过 URL: {url}")
+                    self.reset_tab(tab)
+                    if self.notifier:
+                        self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
                     self.stats.record_task_failure(url)
-                self.reset_tab(tab)
-                return
+                    return
 
-            download_button = tab("#btnSoftDownload")  # 下载按钮
-            if not download_button:
-                logging.error(f"无法找到下载按钮，跳过URL: {url}")
-                try:
-                    # 等待1秒后重置标签页
-                    self.reset_tab(tab)
-                except Exception as e:
-                    logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
+                logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
+                click_delay = random.uniform(1, 3)
+                logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
+                time.sleep(click_delay)
+
+                # 开始监听并下载
+                self.listener(tab, download_button, url, title, soft_id)
+
+                # 下载成功，退出循环
+                break
+
+            except Exception as e:
+                logging.error(f"下载过程中出错: {e}", exc_info=True)
                 if self.notifier:
-                    self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
-                self.stats.record_task_failure(url)
-                return
-
-            logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
-            click_delay = random.uniform(1, 3)
-            logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
-            time.sleep(click_delay)
-
-            # 开始下载并处理后续任务
-            self.listener(tab, download_button, url, title, soft_id)
-        except queue.Empty:
-            logging.warning("任务队列为空，等待新任务。")
-        except Exception as e:
-            logging.error(f"下载过程中出错: {e}", exc_info=True)
-            if 'tab' in locals():
-                try:
-                    # 等待1秒后重置标签页
+                    self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+                retry += 1
+                if retry >= max_retries:
+                    logging.error(f"下载任务最终失败: {url}")
+                    self.stats.record_task_failure(url)
+                    self.increment_failure_count()
+                    # 尝试在另一个浏览器实例中重试下载
+                    logging.info(f"尝试在另一个浏览器实例中重试下载: {url}")
+                    if self.switch_browser_and_retry(url):
+                        logging.info(f"在另一个浏览器实例中成功下载: {url}")
+                        return
+                    else:
+                        logging.error(f"在所有浏览器实例中均未能成功下载: {url}")
+                else:
+                    # 指数退避延迟
+                    base_delay = 2
+                    backoff = base_delay * (2 ** retry)
+                    jitter = random.uniform(0, 1)
+                    total_delay = backoff + jitter
+                    logging.debug(f"下载出错，等待 {total_delay:.1f} 秒后重试。")
+                    time.sleep(total_delay)
+            finally:
+                if 'tab' in locals():
                     self.reset_tab(tab)
-                except Exception as close_e:
-                    logging.error(f"导航标签页到空白页时出错: {close_e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-            self.stats.record_task_failure(url)
-        finally:
-            if 'tab' in locals():
-                self.tabs.put(tab)
+                    self.tabs.put(tab)
 
     def run(self):
-        max_retries_per_url = 3  # 设置最大重试次数
         with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
             futures = []
             while self.work:
                 try:
-                    url = self.task.get(timeout=5)  # 等待新任务
+                    url = self.task.get(timeout=5)
                     if url is None:
                         logging.info("接收到退出信号，停止下载管理。")
                         break
-                    # 检查URL是否已经超过重试次数
-                    current_retry = self.retry_counts.get(url, 0)
-                    if current_retry >= max_retries_per_url:
-                        logging.error(f"URL {url} 已超过最大重试次数，跳过。")
-                        if self.notifier:
-                            self.notifier.notify(f"URL {url} 已超过最大重试次数，跳过。", is_error=True)
-                        continue
-
-                    # 控制下载启动间隔
-                    with self.download_lock:
-                        current_time = time.time()
-                        elapsed = current_time - self.last_download_time
-                        if elapsed < 2:
-                            wait_time = 2 - elapsed
-                            logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
-                            time.sleep(wait_time)
-                        self.last_download_time = time.time()
 
                     # 提交下载任务
                     future = executor.submit(self.download, url)
@@ -652,7 +590,7 @@ class XKW:
                     logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
                     time.sleep(task_dispatch_delay)
                 except queue.Empty:
-                    continue  # 直接继续等待新任务
+                    continue
                 except Exception as e:
                     logging.error(f"任务分发时出错: {e}", exc_info=True)
                     if self.notifier:
