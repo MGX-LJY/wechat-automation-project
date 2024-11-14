@@ -30,6 +30,8 @@ class AdminCommandsHandler:
             '13': "添加非整体群组 <群组名称1>,<群组名称2>",
             '14': "删除非整体群组 <群组名称1>,<群组名称2>",
             '15': "帮助",
+            '16': "恢复指定实例 <实例ID>",
+            '17': "全部恢复",
         }
 
         self.commands = {
@@ -56,6 +58,8 @@ class AdminCommandsHandler:
             # 其他命令
             'help': r'^帮助$|^help$',
             'query_logs': r'^查询日志$|^query logs$',
+            'restore_specific_instance': r'^恢复实例\s+(\S+)$',
+            'restore_all_instances': r'^全部恢复$',
         }
 
     def handle_command(self, message: str) -> Optional[str]:
@@ -153,6 +157,14 @@ class AdminCommandsHandler:
                             group_type = 'non_whole'
                             action = 'add' if 'add' in cmd else 'remove'
                             return self.modify_group_type(group_names, group_type, action)
+                        elif cmd == 'restore_specific_instance':
+                            instance_id = match.group(1)
+                            response = self.browser_controller.enable_xkw_instance(instance_id)
+                            return response
+
+                        elif cmd == 'restore_all_instances':
+                            response = self.browser_controller.enable_all_instances()
+                            return response
 
                     # 其他命令处理逻辑
                     elif cmd == 'help':
@@ -342,6 +354,11 @@ class AdminCommandsHandler:
             "    示例：删除非整体群组 群组A,群组B\n\n"
             "15. 帮助\n"
             "    示例：帮助\n\n"
+            "【恢复实例命令】\n"
+            "16. 恢复指定实例 <实例ID>\n"
+            "    示例：恢复实例 xkw1\n\n"
+            "17. 全部恢复\n"
+            "    示例：全部恢复\n\n"
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"
             "例如，发送 '1' 获取命令模板。"

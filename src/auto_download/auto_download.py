@@ -11,6 +11,8 @@ from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 from src.notification.notifier import Notifier
 import pickle  # 用于任务持久化
+import uuid
+
 
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
@@ -166,7 +168,8 @@ class StatisticsManager:
 
 
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None):
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None, id=None):
+        self.id = id or str(uuid.uuid4())  # 分配唯一 ID
         self.thread = thread
         self.work = work
         self.uploader = uploader  # 接收 Uploader 实例
@@ -205,6 +208,9 @@ class XKW:
         self.url_download_events = {}  # 用于同步等待
         self.url_to_soft_id = {}
         self.url_to_file_path = {}
+
+    def __repr__(self):
+        return f"XKW(id={self.id})"
 
     def close_tabs(self, tabs):
         for tab in tabs:
@@ -690,9 +696,6 @@ class AutoDownloadManager:
     def __init__(self, uploader=None, notifier_config=None):
         """
         初始化 AutoDownloadManager。
-
-        :param uploader: 上传模块实例，用于处理上传任务。
-        :param notifier_config: 通知配置字典，包含 'method' 和 'error_recipient'
         """
         self.notifier = None
         if notifier_config:
@@ -705,36 +708,27 @@ class AutoDownloadManager:
         self.error_handler = ErrorHandler(self.notifier)
         self.uploader = uploader
 
-        # 初始化统计管理器
         self.stats = StatisticsManager()
 
-        # 创建五个 ChromiumOptions，每个指定不同的端口和用户数据路径
+        # 创建两个 ChromiumOptions，指定不同的端口和用户数据路径
         co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
 
-        # 启动五个 Chromium 浏览器实例
+        # 启动两个 Chromium 浏览器实例
         browser1 = Chromium(co1)
         browser2 = Chromium(co2)
 
-        # 确保下载目录存在
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-        # 使用相同的下载目录
         download_dir = DOWNLOAD_DIR
 
-        # 创建五个 XKW 实例，所有实例使用相同的下载目录
+        # 创建两个 XKW 实例，分配唯一 ID
         xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co1, manager=self)
+                   stats=self.stats, co=co1, manager=self, id='xkw1')
         xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co2, manager=self)
+                   stats=self.stats, co=co2, manager=self, id='xkw2')
 
-        # 将 xkw 实例添加到 xkw_instances 列表中
         self.xkw_instances = [xkw1, xkw2]
-
-        # 初始化活跃实例列表
         self.active_xkw_instances = self.xkw_instances.copy()
-
-        # 初始化轮询计数器
         self.next_xkw_index = 0
         self.xkw_lock = threading.Lock()
 
@@ -742,10 +736,10 @@ class AutoDownloadManager:
         with self.xkw_lock:
             if xkw_instance in self.active_xkw_instances:
                 self.active_xkw_instances.remove(xkw_instance)
-                logging.info(f"实例 {xkw_instance} 已从活跃列表中移除。")
+                logging.info(f"实例 {xkw_instance.id} 已从活跃列表中移除。")
                 if self.notifier:
-                    self.notifier.notify(f"实例 {xkw_instance} 已被禁用。", is_error=True)
-                # 检查是否还有活跃实例
+                    self.notifier.notify(f"实例 {xkw_instance.id} 已被禁用。", is_error=True)
+
                 if not self.active_xkw_instances:
                     logging.error("所有浏览器实例均不可用，向管理员发送报告。")
                     if self.notifier:
@@ -760,8 +754,6 @@ class AutoDownloadManager:
     def add_task(self, url: str):
         """
         添加单个 URL 到下载任务队列。
-
-        :param url: 要添加的单个 URL。
         """
         try:
             logging.info(f"准备添加 URL 到下载任务队列: {url}")
@@ -772,12 +764,11 @@ class AutoDownloadManager:
                         self.notifier.notify("没有可用的 XKW 实例来处理下载任务。", is_error=True)
                     return
                 xkw = self.xkw_instances[self.next_xkw_index]
-                # 如果实例不可用，则跳过
                 while not xkw.is_active:
                     self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
                     xkw = self.xkw_instances[self.next_xkw_index]
                     if not xkw.is_active:
-                        logging.warning(f"实例 {xkw} 不可用，尝试下一个实例。")
+                        logging.warning(f"实例 {xkw.id} 不可用，尝试下一个实例。")
                         if all(not inst.is_active for inst in self.xkw_instances):
                             logging.error("所有浏览器实例均不可用，无法添加任务。")
                             if self.notifier:
@@ -785,16 +776,55 @@ class AutoDownloadManager:
                             return
                 self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
             xkw.add_task(url)
-            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} 的任务队列: {url}")
+            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} (ID: {xkw.id}) 的任务队列: {url}")
 
-            # 在分配到下一个实例之前停顿几秒钟
-            delay_seconds = random.uniform(2, 4)  # 您可以根据需要调整延迟范围
+            delay_seconds = random.uniform(2, 4)
             logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
             time.sleep(delay_seconds)
         except Exception as e:
             logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"添加 URL 时发生错误: {e}", is_error=True)
+
+    def enable_xkw_instance(self, instance_id: str) -> str:
+        """
+        恢复指定的 XKW 实例。
+        """
+        with self.xkw_lock:
+            for xkw in self.xkw_instances:
+                if xkw.id == instance_id:
+                    if not xkw.is_active:
+                        xkw.is_active = True
+                        self.active_xkw_instances.append(xkw)
+                        logging.info(f"实例 {xkw.id} 已被恢复。")
+                        if self.notifier:
+                            self.notifier.notify(f"实例 {xkw.id} 已被恢复。")
+                        return f"实例 {xkw.id} 已被恢复。"
+                    else:
+                        logging.info(f"实例 {xkw.id} 已经是活跃状态。")
+                        return f"实例 {xkw.id} 已经是活跃状态。"
+            logging.warning(f"未找到实例 ID: {instance_id}。")
+            return f"未找到实例 ID: {instance_id}。"
+
+    def enable_all_instances(self) -> str:
+        """
+        恢复所有被抛弃的 XKW 实例。
+        """
+        with self.xkw_lock:
+            restored = []
+            for xkw in self.xkw_instances:
+                if not xkw.is_active:
+                    xkw.is_active = True
+                    self.active_xkw_instances.append(xkw)
+                    restored.append(xkw.id)
+            if restored:
+                logging.info(f"实例 {', '.join(restored)} 已全部恢复。")
+                if self.notifier:
+                    self.notifier.notify(f"实例 {', '.join(restored)} 已全部恢复。")
+                return f"实例 {', '.join(restored)} 已全部恢复。"
+            else:
+                logging.info("所有实例已经是活跃状态。")
+                return "所有实例已经是活跃状态。"
 
     def stop(self):
         """
