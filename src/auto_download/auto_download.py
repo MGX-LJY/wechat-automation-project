@@ -188,6 +188,7 @@ class XKW:
         self.manager = manager  # 新增：保存 AutoDownloadManager 实例
         self.consecutive_failures = 0  # 新增：记录连续失败次数
         self.is_active = True  # 新增：标记实例是否可用
+        self.url_download_events = {}  # 用于同步等待
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
@@ -423,6 +424,9 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
             self.stats.record_task_failure(url)
+            # **设置 Event，通知下载已完成**
+            if url in self.url_download_events:
+                self.url_download_events[url].set()
             return
 
         # 记录下载成功
@@ -445,6 +449,10 @@ class XKW:
                     self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
         else:
             logging.warning("Uploader 未设置，无法传递上传任务。")
+
+        # **设置 Event，通知下载已完成**
+        if url in self.url_download_events:
+            self.url_download_events[url].set()
 
     def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
         base_delay = 2  # 基础延迟时间（秒）
@@ -556,6 +564,7 @@ class XKW:
             return False
 
     def download(self, url):
+        max_retries_per_url = 3  # 设置最大重试次数
         start_time = time.time()  # 记录下载开始时间
         try:
             logging.info(f"准备下载 URL: {url}")
@@ -596,8 +605,30 @@ class XKW:
             logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
             time.sleep(click_delay)
 
+            # **设置用于同步的 Event 对象**
+            event = threading.Event()
+            self.url_download_events[url] = event
+
             # 开始下载并处理后续任务
             self.listener(tab, download_button, url, title, soft_id)
+
+            # **等待下载完成或失败的信号**
+            download_timeout = 300  # 设置下载超时时间为 300 秒
+            if event.wait(timeout=download_timeout):
+                logging.info(f"下载完成：{url}")
+                # 下载成功或失败的处理已经在 handle_success 中完成
+            else:
+                logging.error(f"下载超时或未能完成：{url}")
+                # 下载超时，将链接重新添加到任务队列
+                with self.lock:
+                    self.retry_counts[url] = self.retry_counts.get(url, 0) + 1
+                    if self.retry_counts[url] < max_retries_per_url:
+                        self.task.put(url)
+                        logging.info(f"重新添加 URL 到任务队列: {url}")
+                    else:
+                        logging.error(f"URL {url} 已超过最大重试次数，记录为失败。")
+                        self.stats.record_task_failure(url)
+
         except queue.Empty:
             logging.warning("任务队列为空，等待新任务。")
         except Exception as e:
@@ -611,9 +642,21 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
             self.stats.record_task_failure(url)
+            # 出现异常时，重新添加任务
+            with self.lock:
+                self.retry_counts[url] = self.retry_counts.get(url, 0) + 1
+                if self.retry_counts[url] < max_retries_per_url:
+                    self.task.put(url)
+                    logging.info(f"重新添加 URL 到任务队列: {url}")
+                else:
+                    logging.error(f"URL {url} 已超过最大重试次数，记录为失败。")
+                    self.stats.record_task_failure(url)
         finally:
             if 'tab' in locals():
                 self.tabs.put(tab)
+            # 清理事件
+            if url in self.url_download_events:
+                del self.url_download_events[url]
 
     def run(self):
         max_retries_per_url = 3  # 设置最大重试次数
@@ -778,6 +821,10 @@ class AutoDownloadManager:
                 self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
             xkw.add_task(url)
             logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} (ID: {xkw.id}) 的任务队列: {url}")
+
+            delay_seconds = random.uniform(2, 4)
+            logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
+            time.sleep(delay_seconds)
         except Exception as e:
             logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
