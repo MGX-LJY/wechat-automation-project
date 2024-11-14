@@ -565,11 +565,6 @@ class XKW:
         start_time = time.time()  # 记录下载开始时间
         try:
             logging.info(f"准备下载 URL: {url}")
-            # 增加随机延迟，模拟人类等待页面加载
-            pre_download_delay = random.uniform(2, 5)
-            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
-            time.sleep(pre_download_delay)
-
             tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
             logging.info(f"获取到一个标签页用于下载: {tab}")
             tab.get(url)
@@ -607,32 +602,6 @@ class XKW:
             click_delay = random.uniform(1, 3)
             logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
             time.sleep(click_delay)
-
-            # **设置用于同步的 Event 对象**
-            event = threading.Event()
-            self.url_download_events[url] = event
-            logging.info(f"设置下载完成的 Event 对象: {event}")
-
-            # 开始下载并处理后续任务
-            self.listener(tab, download_button, url, title, soft_id)
-            logging.info(f"下载任务完成: {url}")
-
-            # **等待下载完成或失败的信号**
-            download_timeout = 300  # 设置下载超时时间为 300 秒
-            if event.wait(timeout=download_timeout):
-                logging.info(f"下载完成：{url}")
-                # 下载成功或失败的处理已经在 handle_success 中完成
-            else:
-                logging.error(f"下载超时或未能完成：{url}")
-                # 下载超时，将链接重新添加到任务队列
-                with self.lock:
-                    self.retry_counts[url] = self.retry_counts.get(url, 0) + 1
-                    if self.retry_counts[url] < max_retries_per_url:
-                        self.task.put(url)
-                        logging.info(f"重新添加 URL 到任务队列: {url}")
-                    else:
-                        logging.error(f"URL {url} 已超过最大重试次数，记录为失败。")
-                        self.stats.record_task_failure(url)
         except queue.Empty:
             logging.warning("任务队列为空，等待新任务。")
         except Exception as e:
@@ -646,15 +615,6 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
             self.stats.record_task_failure(url)
-            # 出现异常时，重新添加任务
-            with self.lock:
-                self.retry_counts[url] = self.retry_counts.get(url, 0) + 1
-                if self.retry_counts[url] < max_retries_per_url:
-                    self.task.put(url)
-                    logging.info(f"重新添加 URL 到任务队列: {url}")
-                else:
-                    logging.error(f"URL {url} 已超过最大重试次数，记录为失败。")
-                    self.stats.record_task_failure(url)
         finally:
             if 'tab' in locals():
                 self.tabs.put(tab)
@@ -703,7 +663,6 @@ class XKW:
                         future = executor.submit(self.download, url)
                         futures.append(future)
                         logging.info(f"已提交下载任务到线程池: {url}")
-                        # 增加随机间隔，模拟任务分发的不规则性
                         task_dispatch_delay = random.uniform(0.2, 1)
                         logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
                         time.sleep(task_dispatch_delay)
@@ -835,7 +794,7 @@ class AutoDownloadManager:
             xkw.add_task(url)
             logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} (ID: {xkw.id}) 的任务队列: {url}")
 
-            delay_seconds = random.uniform(2, 4)
+            delay_seconds = random.uniform(1, 2)
             logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
             time.sleep(delay_seconds)
         except Exception as e:
