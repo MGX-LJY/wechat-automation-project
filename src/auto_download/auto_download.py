@@ -455,13 +455,16 @@ class XKW:
                 download.click(by_js=True)
                 for item in tab.listen.steps(timeout=10):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
+                        logging.info(f"下载链接获取成功: {item.url}")
+
                         tab.listen.stop()
                         tab.stop_loading()
-                        logging.info(f"下载链接获取成功: {item.url}")
+                        time.sleep(1)
+                        self.tabs.put(tab)
+                        logging.debug("已释放标签页并放回队列。")
+
                         self.handle_success(url, title, soft_id)
 
-                        # 等待1秒后重置标签页
-                        self.reset_tab(tab)
                         return
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
@@ -495,9 +498,9 @@ class XKW:
                 logging.debug(f"页面上下文丢失，等待 {total_delay:.1f} 秒后重试。")
                 time.sleep(total_delay)
                 retry += 1
-                # 重置标签页并重新导航到 URL
+                # 尝试重置标签页并重新加载 URL
                 self.reset_tab(tab)
-                tab.get(url)  # 重新加载页面
+                tab.get(url)
             except Exception as e:
                 logging.error(f"下载过程中出错: {e}", exc_info=True)
                 if self.notifier:
@@ -509,9 +512,9 @@ class XKW:
                 logging.debug(f"下载出错，等待 {total_delay:.1f} 秒后重试。")
                 time.sleep(total_delay)
                 retry += 1
-                # 重置标签页并重新导航到 URL
+                # 尝试重置标签页并重新加载 URL
                 self.reset_tab(tab)
-                tab.get(url)  # 重新加载页面
+                tab.get(url)
             try:
                 # 等待1秒后重置标签页
                 self.reset_tab(tab)
@@ -616,7 +619,7 @@ class XKW:
                 self.tabs.put(tab)
 
     def run(self):
-        max_retries_per_url = 3  # 设置最大重试次数
+        max_retries_per_url = 1  # 设置最大重试次数
         with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
             futures = []
             while self.work:
