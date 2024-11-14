@@ -172,8 +172,8 @@ class XKW:
         self.id = id or str(uuid.uuid4())  # 分配唯一 ID
         self.thread = thread
         self.work = work
-        self.uploader = uploader  # 接收 Uploader 实例
-        self.notifier = notifier  # 接收 Notifier 实例
+        self.uploader = uploader
+        self.notifier = notifier
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.retry_counts: Dict[str, int] = {}  # 记录每个URL的重试次数
