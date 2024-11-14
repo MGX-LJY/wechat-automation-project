@@ -90,9 +90,9 @@
     },
     "logging": {
         "directory": "logs",
-        "level": "DEBUG",
-        "file_level": "DEBUG",
-        "console_level": "DEBUG",
+        "level": "INFO",
+        "file_level": "INFO",
+        "console_level": "INFO",
         "backup_count": 30,
         "encoding": "utf-8",
         "third_party_libs": [
