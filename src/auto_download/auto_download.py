@@ -506,7 +506,7 @@ class XKW:
                 self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
             return False
 
-    def download(self, url, retry=0, max_retries=3):
+    def download(self, url, retry=0, max_retries=1):
         start_time = time.time()  # 记录下载开始时间
         try:
             logging.info(f"准备下载 URL: {url}")
