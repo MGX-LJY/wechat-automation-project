@@ -1,35 +1,17 @@
-# src/logging_module.py
+# src/logging_module/logger.py
+
 import logging
 import os
 from datetime import datetime, timedelta, timezone
 from logging import Formatter, StreamHandler
-import requests
-from urllib3.exceptions import ProxyError as UrllibProxyError, MaxRetryError
-from http.client import RemoteDisconnected
+from src.config.config_manager import ConfigManager
+from typing import Optional, List
 
 
 class ReplaceNetworkErrorFilter(logging.Filter):
     """
     日志过滤器，用于将与网络相关的错误日志消息替换为“网络问题”。
     """
-    def filter(self, record):
-        # 检查日志记录中是否包含异常信息
-        if record.exc_info:
-            exc_type, exc_value, exc_tb = record.exc_info
-            # 检查是否是 ProxyError、MaxRetryError 或 RemoteDisconnected
-            if isinstance(exc_value, (requests.exceptions.ProxyError,
-                                      UrllibProxyError,
-                                      MaxRetryError,
-                                      RemoteDisconnected)):
-                # 替换日志消息
-                record.msg = '网络问题'
-                # 保留 record.exc_info 以确保异常处理正常
-        else:
-            # 如果没有异常信息，检查消息中是否包含特定关键词
-            if any(keyword in record.getMessage() for keyword in ['ProxyError', 'MaxRetryError', 'RemoteDisconnected']):
-                record.msg = '网络问题'
-        return True  # 继续处理所有日志记录
-
 
 class DateBasedFileHandler(logging.Handler):
     def __init__(self, log_dir, backup_days=30, encoding='utf-8'):
@@ -93,8 +75,14 @@ def setup_logging(config: dict) -> logging.Logger:
     log_dir = config.get('logging', {}).get('directory', 'logs')
     os.makedirs(log_dir, exist_ok=True)
 
-    # 创建日志记录器
+    # 获取根日志记录器
     logger = logging.getLogger()
+
+    # 移除所有现有的处理器
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # 设置日志级别
     logger.setLevel(getattr(logging, config.get('logging', {}).get('level', 'INFO').upper(), logging.INFO))
 
     # 日志格式
