@@ -415,6 +415,7 @@ class XKW:
         start_time = time.time()  # 开始计时
         self.consecutive_failures = 0  # 重置失败计数
         logging.info(f"下载成功，开始处理上传任务: {url}")
+
         # 匹配下载的文件
         file_path = self.match_downloaded_file(title)
         if not file_path:
@@ -452,9 +453,11 @@ class XKW:
             download.click(by_js=True)
             for item in tab.listen.steps(timeout=10):
                 if item.url.startswith("https://files.zxxk.com/?mkey="):
-                    tab.listen.stop()
-                    tab.stop_loading()
                     logging.info(f"下载链接获取成功: {item.url}")
+                    # 等待2秒钟后释放标签页
+                    time.sleep(2)
+                    self.reset_tab(tab)
+                    # 处理上传任务
                     self.handle_success(url, title, soft_id)
                     return
                 elif "20600001" in item.url:
@@ -567,8 +570,7 @@ class XKW:
                     time.sleep(total_delay)
             finally:
                 if 'tab' in locals():
-                    self.reset_tab(tab)
-                    self.tabs.put(tab)
+                    pass
 
     def run(self):
         with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
