@@ -532,7 +532,7 @@ class XKW:
             if not soft_id or not title:
                 if soft_id is None and title is None:
                     logging.info(f"任务被跳过: {url}")
-                    self.stats.record_task_skipped(url)  # 新增：记录被跳过的任务
+                    self.stats.record_task_skipped(url)  # 记录被跳过的任务
                 else:
                     logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
                     self.stats.record_task_failure(url)
@@ -554,11 +554,35 @@ class XKW:
             logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
             time.sleep(click_delay)
 
-            # 开始下载并监听
+            # 点击下载按钮
+            download_button.click(by_js=True)
+            logging.info(f"点击下载按钮成功: {url}")
+
+            # 点击确认按钮
+            try:
+                logging.info("尝试点击确认按钮。")
+                time.sleep(1)  # 等待确认按钮出现
+                iframe = tab.get_frame('#layui-layer-iframe100002')
+                if iframe:
+                    confirm_button = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                    if confirm_button:
+                        confirm_button.click()
+                        logging.info("点击确认按钮成功。")
+                    else:
+                        logging.warning("确认按钮未找到。")
+                else:
+                    logging.warning("确认按钮的 iframe 未找到。")
+            except Exception as e:
+                logging.error(f"点击确认按钮时出错: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"点击确认按钮时出错: {e}", is_error=True)
+                # 如果点击确认按钮失败，可以选择是否继续或重试
+                # 这里选择继续监听
+
+            # 开始监听下载并处理
             download_success = self.listener(tab, download_button, url, title, soft_id)
             time.sleep(1)
             self.tabs.put(tab)
-            self.reset_tab(tab)
             logging.debug("已释放标签页回队列。")
 
             if download_success:
