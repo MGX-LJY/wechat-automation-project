@@ -515,6 +515,42 @@ class XKW:
             self.url_counts[url] = self.url_counts.get(url, 0) + 1
         logging.info(f"任务已添加到队列以进行重试: {url}，重试次数: {retry_count}")
 
+    def click_confirm_button(self, tab):
+        """
+        尝试点击确认按钮，使用显式等待机制。
+        """
+        try:
+            logging.info("尝试点击确认按钮。")
+            max_wait_time = 10  # 最大等待时间（秒）
+            interval = 1  # 检查间隔（秒）
+            elapsed = 0
+
+            while elapsed < max_wait_time:
+                iframe = tab.get_frame('#layui-layer-iframe100002')  # 验证 iframe 选择器
+                if iframe:
+                    confirm_button = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                    if confirm_button:
+                        confirm_button.click()
+                        logging.info("点击确认按钮成功。")
+                        return True
+                    else:
+                        logging.debug("确认按钮未找到，继续等待...")
+                else:
+                    logging.debug("确认按钮的 iframe 未找到，继续等待...")
+
+                time.sleep(interval)
+                elapsed += interval
+
+            # 超时未找到确认按钮
+            logging.warning("超时未找到确认按钮。")
+            return False
+
+        except Exception as e:
+            logging.error(f"点击确认按钮时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"点击确认按钮时出错: {e}", is_error=True)
+            return False
+
     def download(self, url, retry=0, max_retries=3):
         start_time = time.time()  # 记录下载开始时间
         try:
@@ -559,25 +595,9 @@ class XKW:
             logging.info(f"点击下载按钮成功: {url}")
 
             # 点击确认按钮
-            try:
-                logging.info("尝试点击确认按钮。")
-                time.sleep(1)  # 等待确认按钮出现
-                iframe = tab.get_frame('#layui-layer-iframe100002')
-                if iframe:
-                    confirm_button = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                    if confirm_button:
-                        confirm_button.click()
-                        logging.info("点击确认按钮成功。")
-                    else:
-                        logging.warning("确认按钮未找到。")
-                else:
-                    logging.warning("确认按钮的 iframe 未找到。")
-            except Exception as e:
-                logging.error(f"点击确认按钮时出错: {e}", exc_info=True)
-                if self.notifier:
-                    self.notifier.notify(f"点击确认按钮时出错: {e}", is_error=True)
-                # 如果点击确认按钮失败，可以选择是否继续或重试
-                # 这里选择继续监听
+            confirm_clicked = self.click_confirm_button(tab)
+            if not confirm_clicked:
+                logging.warning(f"确认按钮点击失败: {url}")
 
             # 开始监听下载并处理
             download_success = self.listener(tab, download_button, url, title, soft_id)
