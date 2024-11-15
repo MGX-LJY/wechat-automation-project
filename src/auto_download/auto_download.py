@@ -6,7 +6,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 from src.notification.notifier import Notifier
@@ -446,7 +446,7 @@ class XKW:
         else:
             logging.warning("Uploader 未设置，无法传递上传任务。")
 
-    def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
+    def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2) -> bool:
         base_delay = 2  # 基础延迟时间（秒）
         while retry < max_retries:
             logging.info(f"开始下载 {url}, 重试次数: {retry}")
@@ -455,17 +455,11 @@ class XKW:
                 download.click(by_js=True)
                 for item in tab.listen.steps(timeout=10):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
-                        logging.info(f"下载链接获取成功: {item.url}")
-
                         tab.listen.stop()
                         tab.stop_loading()
-                        time.sleep(1)
-                        self.tabs.put(tab)
-                        logging.debug("已释放标签页并放回队列。")
-
-                        self.handle_success(url, title, soft_id)
-
-                        return
+                        logging.info(f"下载链接获取成功: {item.url}")
+                        # 返回成功信号
+                        return True
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
                         backoff = base_delay * (2 ** retry)
@@ -476,7 +470,7 @@ class XKW:
                         retry += 1
                         break
                 else:
-                    # 其他未处理的情况
+                    # 处理其他未处理的情况
                     time.sleep(1)
                     iframe = tab.get_frame('#layui-layer-iframe100002')
                     if iframe:
@@ -515,6 +509,7 @@ class XKW:
                 # 重置标签页并重新导航到 URL
                 self.reset_tab(tab)
                 tab.get(url)  # 重新加载页面
+
             try:
                 # 等待1秒后重置标签页
                 self.reset_tab(tab)
@@ -526,17 +521,18 @@ class XKW:
         # 超过最大重试次数，记录失败
         logging.error(f"下载任务最终失败: {url}")
         if self.notifier:
-            self.notifier.notify(f"下载任务最终失败: {url}，未配置。", is_error=True)  # 修改消息
+            self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
         self.stats.record_task_failure(url)
-        self.increment_failure_count()  # 新增：增加失败计数
+        self.increment_failure_count()  # 增加失败计数
 
         # 尝试在另一个浏览器实例中重试下载
         logging.info(f"尝试在另一个浏览器实例中重试下载: {url}")
         if self.switch_browser_and_retry(url):
             logging.info(f"在另一个浏览器实例中成功下载: {url}")
-            return
+            return True
         else:
             logging.error(f"在所有浏览器实例中均未能成功下载: {url}")
+            return False
 
     def switch_browser_and_retry(self, url):
         """
@@ -579,28 +575,33 @@ class XKW:
                     logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
                     self.stats.record_task_failure(url)
                 self.reset_tab(tab)
+                self.tabs.put(tab)  # 释放 tab
                 return
 
             download_button = tab("#btnSoftDownload")  # 下载按钮
             if not download_button:
                 logging.error(f"无法找到下载按钮，跳过URL: {url}")
-                try:
-                    # 等待1秒后重置标签页
-                    self.reset_tab(tab)
-                except Exception as e:
-                    logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
                 if self.notifier:
                     self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
                 self.stats.record_task_failure(url)
+                self.reset_tab(tab)
+                self.tabs.put(tab)  # 释放 tab
                 return
-
             logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
             click_delay = random.uniform(1, 3)
             logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
             time.sleep(click_delay)
 
             # 开始下载并处理后续任务
-            self.listener(tab, download_button, url, title, soft_id)
+            download_success = self.listener(tab, download_button, url, title, soft_id)
+            time.sleep(1)
+            self.tabs.put(tab)
+            logging.debug("已释放标签页回队列。")
+
+            if download_success:
+                self.handle_success(url, title, soft_id)
+            else:
+                logging.error(f"监听器报告下载失败: {url}")
         except queue.Empty:
             logging.warning("任务队列为空，等待新任务。")
         except Exception as e:
@@ -614,13 +615,12 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
             self.stats.record_task_failure(url)
-        finally:
             if 'tab' in locals():
-                self.tabs.put(tab)
+                self.tabs.put(tab)  # 释放 tab
 
     def run(self):
-        max_retries_per_url = 1  # 设置最大重试次数
-        with ThreadPoolExecutor(max_workers=self.thread * 2) as executor:
+        max_retries_per_url = 1
+        with ThreadPoolExecutor(max_workers=self.thread) as executor:
             futures = []
             while self.work:
                 try:
@@ -671,7 +671,7 @@ class XKW:
                     if self.notifier:
                         self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
-    def add_task(self, url: str):
+    def add_task(self, url):
         with self.lock:
             self.stats.record_task_submission(url)  # 记录任务提交
             self.task.put(url)
@@ -680,7 +680,7 @@ class XKW:
 
     def stop(self):
         """
-        停止 XKW 实例，并保存统计数据。
+        停止 AutoDownloadManager 和其内部的 XKW 实例，并保存统计数据。
         """
         try:
             logging.info("停止 XKW 实例。")
@@ -754,6 +754,37 @@ class AutoDownloadManager:
         获取可用于重试下载的 XKW 实例列表，排除当前实例。
         """
         return [xkw for xkw in self.active_xkw_instances if xkw != current_instance]
+
+    def open_url(self, url):
+        """
+        打开指定的 URL，并将下载任务添加到 downloader。
+
+        :param url: 要打开的 URL。
+        """
+        try:
+            logging.info(f"准备处理URL: {url}")
+            self.add_task(url)
+            logging.info(f"已将URL添加到下载任务队列: {url}")
+        except Exception as e:
+            logging.error(f"处理URL时发生未知错误: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"处理URL时发生未知错误: {e}", is_error=True)
+
+    def add_urls(self, urls: List[str]):
+        """
+        添加多个 URL 到下载任务队列。
+
+        :param urls: 包含多个 URL 的列表或可迭代对象。
+        """
+        try:
+            logging.info(f"准备批量添加 {len(urls)} 个 URL 到下载任务队列。")
+            for url in urls:
+                self.add_task(url)
+            logging.info(f"已批量添加 {len(urls)} 个 URL 到下载任务队列。")
+        except Exception as e:
+            logging.error(f"批量添加 URL 时发生错误: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"批量添加 URL 时发生错误: {e}", is_error=True)
 
     def add_task(self, url: str):
         """

@@ -2,7 +2,6 @@
 
 import logging
 import time
-from src.auto_click.auto_clicker import AutoClicker
 from src.error_handling.error_handler import ErrorHandler
 from src.notification.notifier import Notifier
 
@@ -16,9 +15,6 @@ notifier = Notifier({
 
 # 创建 ErrorHandler 实例
 error_handler = ErrorHandler(notifier)
-
-# 创建 AutoClicker 实例
-auto_clicker = AutoClicker(error_handler)
 
 # 添加测试URL
 test_urls = [
