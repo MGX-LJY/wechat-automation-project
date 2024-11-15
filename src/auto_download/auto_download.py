@@ -33,8 +33,8 @@ class ErrorHandler:
 
 
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, co=None, manager=None, id=None):
-        self.id = id or str(uuid.uuid4())  # 分配唯一 ID
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, co=None, manager=None,instance_id=None):
+        self.id = instance_id or str(uuid.uuid4())  # 分配唯一 ID
         self.thread = thread
         self.work = work
         self.uploader = uploader  # 接收 Uploader 实例
@@ -376,6 +376,7 @@ class XKW:
 
     def download(self, url):
         start_time = time.time()  # 记录下载开始时间
+        tab = None  # 初始化 tab 变量
         try:
             logging.info(f"准备下载 URL: {url}")
             # 增加随机延迟，模拟人类等待页面加载
@@ -417,7 +418,7 @@ class XKW:
             if 'tab' in locals():
                 try:
                     # 等待0.1秒后重置标签页
-                    self.reset_tab(tab)
+                    self.reset_tab( tab)
                 except Exception as close_e:
                     logging.error(f"导航标签页到空白页时出错: {close_e}", exc_info=True)
             if self.notifier:
@@ -529,9 +530,9 @@ class AutoDownloadManager:
 
         # 创建两个 XKW 实例，分配唯一 ID
         xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   co=co1, manager=self, id='xkw1')
+                   co=co1, manager=self, instance_id='xkw1')
         xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   co=co2, manager=self, id='xkw2')
+                   co=co2, manager=self, instance_id='xkw2')
 
         self.xkw_instances = [xkw1, xkw2]
         self.active_xkw_instances = self.xkw_instances.copy()
@@ -541,10 +542,11 @@ class AutoDownloadManager:
     def disable_xkw_instance(self, xkw_instance):
         with self.xkw_lock:
             if xkw_instance in self.active_xkw_instances:
+                xkw_instance.is_active = False  # 添加此行
                 self.active_xkw_instances.remove(xkw_instance)
-                logging.info(f"实例 {xkw_instance.id} 已从活跃列表中移除。")
+                logging.info(f"实例 {xkw_instance.instance_id} 已从活跃列表中移除。")
                 if self.notifier:
-                    self.notifier.notify(f"实例 {xkw_instance.id} 已被禁用。", is_error=True)
+                    self.notifier.notify(f"实例 {xkw_instance.instance_id} 已被禁用。", is_error=True)
 
                 if not self.active_xkw_instances:
                     logging.error("所有浏览器实例均不可用，向管理员发送报告。")
