@@ -174,6 +174,7 @@ class Uploader:
 
                     # 新增：上传成功后删除文件
                     try:
+                        time.sleep(10)
                         os.remove(file_path)
                         logging.info(f"上传成功后已删除文件：{file_path}")
                     except Exception as e:
