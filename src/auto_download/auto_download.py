@@ -655,6 +655,7 @@ class XKW:
             self.stats.record_task_submission(url)  # 记录任务提交
             self.task.put(url)
             self.url_counts[url] = self.url_counts.get(url, 0) + 1
+            self.task_manager.add_task(url)  # 添加这行代码
         logging.info(f"任务已添加到队列: {url}")
 
     def stop(self):
