@@ -558,6 +558,7 @@ class XKW:
             download_success = self.listener(tab, download_button, url, title, soft_id)
             time.sleep(1)
             self.tabs.put(tab)
+            self.reset_tab(tab)
             logging.debug("已释放标签页回队列。")
 
             if download_success:
