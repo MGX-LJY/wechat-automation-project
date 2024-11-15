@@ -210,19 +210,16 @@ class Uploader:
 
     def upload_files(self, recipient_name, tasks):
         try:
-            # 切换到指定的聊天窗口
-            try:
-                self.wx.ChatWith(who=recipient_name)
-                logging.info(f"切换到接收者 '{recipient_name}' 的聊天窗口")
-                time.sleep(0.5)  # 适当的等待时间
-            except Exception as e:
-                logging.error(f"切换聊天窗口失败：{e}", exc_info=True)
-                self.error_handler.handle_exception(e)
-                return
-
-            # 发送文件，带重试机制
-            for attempt in range(1, self.max_retries + 1):
+            max_total_retries = self.max_retries * 2  # 允许最多双倍的重试次数
+            attempt = 1
+            while attempt <= max_total_retries:
                 try:
+                    if attempt == self.max_retries + 1:
+                        # 在初始 max_retries 次尝试后，重新激活聊天窗口
+                        self.wx.ChatWith(who=recipient_name)
+                        logging.info(f"重新激活接收者 '{recipient_name}' 的聊天窗口")
+                        time.sleep(0.5)  # 等待窗口激活完成
+
                     logging.info(
                         f"正在上传文件至接收者：{recipient_name}，文件数：{len(tasks)}，尝试次数：{attempt}")
                     for task in tasks:
@@ -238,16 +235,18 @@ class Uploader:
                         )
                         # 将文件路径添加到删除队列
                         self.add_file_to_delete(file_path)
-                    break  # 上传成功，退出重试循环
+                    break  # 上传成功，退出循环
                 except Exception as e:
-                    if attempt < self.max_retries:
+                    if attempt < max_total_retries:
                         logging.warning(f"上传失败，稍后重试... (尝试次数：{attempt}) - 错误：{e}")
                         time.sleep(self.retry_delay)
+                        attempt += 1
                     else:
-                        logging.error(f"上传失败 (recipient: {recipient_name}) - 错误：{e}")
+                        logging.error(f"上传失败 (接收者: {recipient_name}) - 错误：{e}")
                         self.error_handler.handle_exception(e)
+                        break
         except Exception as e:
-            logging.error(f"批量上传文件时发生错误 (recipient: {recipient_name}) - 错误：{e}", exc_info=True)
+            logging.error(f"批量上传文件时发生错误 (接收者: {recipient_name}) - 错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def deduct_points(self, recipient_name: str, sender_nickname: Optional[str] = None, recipient_type: str = 'group', group_type: Optional[str] = None):
