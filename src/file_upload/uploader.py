@@ -6,9 +6,8 @@ import threading
 import queue
 import time
 from typing import Optional, List, Dict
-
 from lib.wxauto.wxauto import WeChat
-from src.point_manager import PointManager  # 导入 PointManager 模块
+from src.point_manager import PointManager
 
 
 class Uploader:

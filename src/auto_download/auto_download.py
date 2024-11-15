@@ -169,7 +169,7 @@ class StatisticsManager:
 
 class XKW:
     def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None, id=None):
-        self.id = id or str(uuid.uuid4())  # 分配唯一 ID
+        self.id = id or str(uuid.uuid4())
         self.thread = thread
         self.work = work
         self.uploader = uploader
@@ -286,11 +286,10 @@ class XKW:
                     if pattern.search(file_name):
                         file_path = os.path.join(download_dir, file_name)
                         if os.path.exists(file_path):
-                            if self.is_file_download_complete(file_path):
-                                logging.info(f"匹配到下载的文件: {file_path}")
-                                return file_path
-                            else:
-                                logging.debug(f"文件 {file_path} 尚未下载完成，等待中...")
+                            logging.info(f"匹配到下载的文件: {file_path}")
+                            return file_path
+                        else:
+                            logging.debug(f"文件 {file_path} 不存在，等待中...")
 
                 # 确定下一次的重试间隔
                 if elapsed_time < initial_wait:
@@ -317,25 +316,6 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"匹配下载文件时发生错误: {e}", is_error=True)
             return None
-
-    def is_file_download_complete(self, file_path):
-        """
-        检查文件是否下载完成，通过检查文件大小是否稳定。
-        """
-        try:
-            initial_size = os.path.getsize(file_path)
-            time.sleep(2)  # 增加等待时间，确保文件下载完成
-            final_size = os.path.getsize(file_path)
-            if initial_size == final_size:
-                return True
-            else:
-                logging.debug(f"文件 {file_path} 大小变化，可能正在下载中。")
-                return False
-        except Exception as e:
-            logging.error(f"检查文件下载完成时发生错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"检查文件下载完成时发生错误: {e}", is_error=True)
-            return False
 
     def extract_id_and_title(self, tab, url) -> Tuple[str, str]:
         """
