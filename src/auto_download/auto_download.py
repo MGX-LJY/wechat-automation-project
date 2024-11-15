@@ -129,13 +129,7 @@ class StatisticsManager:
         try:
             if filepath is None:
                 filepath = self.save_path
-            with self.lock:
-                stats = {
-                    'total_tasks': self.total_tasks,
-                    'successful_tasks': self.successful_tasks,
-                    'failed_tasks': self.failed_tasks,
-                    'total_download_time': self.total_download_time
-                }
+            stats = self.get_statistics()
             with open(filepath, 'wb') as f:
                 pickle.dump(stats, f)
             logging.info(f"统计数据已保存到 {filepath}。")
@@ -143,6 +137,9 @@ class StatisticsManager:
             logging.error(f"保存统计数据时出错: {e}", exc_info=True)
 
     def load_statistics(self, filepath=None):
+        """
+        从磁盘加载统计数据。
+        """
         try:
             if filepath is None:
                 filepath = self.save_path
@@ -153,7 +150,7 @@ class StatisticsManager:
                     self.total_tasks = stats.get('total_tasks', 0)
                     self.successful_tasks = stats.get('successful_tasks', 0)
                     self.failed_tasks = stats.get('failed_tasks', 0)
-                    self.total_download_time = stats.get('total_download_time', 0.0)
+                    self.total_download_time = stats.get('average_download_time', 0.0) * stats.get('successful_tasks', 0)
                 logging.info(f"统计数据已从 {filepath} 加载。")
         except Exception as e:
             logging.error(f"加载统计数据时出错: {e}", exc_info=True)
@@ -171,13 +168,12 @@ class StatisticsManager:
 
 
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None, id=None, task_manager=None):
-        self.id = id or str(uuid.uuid4())
-        self.task_manager = task_manager  # 引用 TaskManager
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, stats=None, co=None, manager=None, id=None):
+        self.id = id or str(uuid.uuid4())  # 分配唯一 ID
         self.thread = thread
         self.work = work
-        self.uploader = uploader
-        self.notifier = notifier
+        self.uploader = uploader  # 接收 Uploader 实例
+        self.notifier = notifier  # 接收 Notifier 实例
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.retry_counts: Dict[str, int] = {}  # 记录每个URL的重试次数
@@ -414,9 +410,6 @@ class XKW:
         self.stats.record_task_success(url, download_time)
         self.stats.log_statistics()
 
-        # 更新任务状态为 'Completed'
-        self.task_manager.update_status(url, 'Completed')
-
         # 将文件路径和 soft_id 传递给上传模块
         if self.uploader:
             try:
@@ -434,7 +427,6 @@ class XKW:
             logging.warning("Uploader 未设置，无法传递上传任务。")
 
     def listener(self, tab, download, url, title, soft_id, retry=0, max_retries=2):
-        self.task_manager.update_status(url, 'In Progress')
         base_delay = 2  # 基础延迟时间（秒）
         while retry < max_retries:
             logging.info(f"开始下载 {url}, 重试次数: {retry}")
@@ -515,7 +507,7 @@ class XKW:
             self.notifier.notify(f"下载任务最终失败: {url}", is_error=True)
         self.stats.record_task_failure(url)
         self.increment_failure_count()  # 新增：增加失败计数
-        self.task_manager.update_status(url, 'Failed')  # 更新任务状态
+
         # 尝试在另一个浏览器实例中重试下载
         logging.info(f"尝试在另一个浏览器实例中重试下载: {url}")
         if self.switch_browser_and_retry(url):
@@ -548,7 +540,11 @@ class XKW:
         start_time = time.time()  # 记录下载开始时间
         try:
             logging.info(f"准备下载 URL: {url}")
-            self.task_manager.update_status(url, 'In Progress')  # 更新状态
+            # 增加随机延迟，模拟人类等待页面加载
+            pre_download_delay = random.uniform(2, 5)
+            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
+            time.sleep(pre_download_delay)
+
             tab = self.tabs.get(timeout=30)  # 设置超时避免阻塞
             logging.info(f"获取到一个标签页用于下载: {tab}")
             tab.get(url)
@@ -593,7 +589,6 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
             self.stats.record_task_failure(url)
-            self.task_manager.update_status(url, 'Failed')  # 更新状态
             if 'tab' in locals():
                 self.tabs.put(tab)  # 释放 tab
 
@@ -655,7 +650,6 @@ class XKW:
             self.stats.record_task_submission(url)  # 记录任务提交
             self.task.put(url)
             self.url_counts[url] = self.url_counts.get(url, 0) + 1
-            self.task_manager.add_task(url)  # 添加这行代码
         logging.info(f"任务已添加到队列: {url}")
 
     def stop(self):
@@ -694,9 +688,6 @@ class AutoDownloadManager:
 
         self.stats = StatisticsManager()
 
-        # 初始化 TaskManager
-        self.task_manager = TaskManager()
-
         # 创建两个 ChromiumOptions，指定不同的端口和用户数据路径
         co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
@@ -708,21 +699,16 @@ class AutoDownloadManager:
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         download_dir = DOWNLOAD_DIR
 
-        # 创建两个 XKW 实例，分配唯一 ID，并传递 task_manager
+        # 创建两个 XKW 实例，分配唯一 ID
         xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co1, manager=self, id='xkw1', task_manager=self.task_manager)
+                   stats=self.stats, co=co1, manager=self, id='xkw1')
         xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   stats=self.stats, co=co2, manager=self, id='xkw2', task_manager=self.task_manager)
+                   stats=self.stats, co=co2, manager=self, id='xkw2')
 
         self.xkw_instances = [xkw1, xkw2]
         self.active_xkw_instances = self.xkw_instances.copy()
         self.next_xkw_index = 0
         self.xkw_lock = threading.Lock()
-
-        # 恢复未完成的任务
-        pending_tasks = self.task_manager.get_pending_tasks()
-        for url in pending_tasks:
-            self.add_task(url)
 
     def disable_xkw_instance(self, xkw_instance):
         with self.xkw_lock:
@@ -768,8 +754,7 @@ class AutoDownloadManager:
                             return
                 self.next_xkw_index = (self.next_xkw_index + 1) % len(self.xkw_instances)
             xkw.add_task(url)
-            logging.info(
-                f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} (ID: {xkw.id}) 的任务队列: {url}")
+            logging.info(f"已将 URL 添加到 XKW 实例 {self.xkw_instances.index(xkw) + 1} (ID: {xkw.id}) 的任务队列: {url}")
 
             delay_seconds = random.uniform(2, 4)
             logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
@@ -831,65 +816,3 @@ class AutoDownloadManager:
             logging.error(f"停止过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"停止过程中出错: {e}", is_error=True)
-
-
-class TaskManager:
-    def __init__(self, save_path='tasks.pkl', auto_save_interval=300):
-        self.lock = threading.Lock()
-        self.tasks = {}  # key: url, value: status
-        self.save_path = save_path
-        self.load_tasks()
-        self.auto_save_interval = auto_save_interval
-        self.auto_save_thread = threading.Thread(target=self.auto_save, daemon=True)
-        self.auto_save_thread.start()
-
-    def add_task(self, url):
-        with self.lock:
-            if url not in self.tasks:
-                self.tasks[url] = 'Pending'
-                logging.info(f"任务已添加: {url}")
-                self.save_tasks()
-            else:
-                logging.info(f"任务已存在: {url}")
-
-    def update_status(self, url, status):
-        with self.lock:
-            if url in self.tasks:
-                self.tasks[url] = status
-                logging.info(f"任务状态更新: {url} -> {status}")
-                self.save_tasks()
-            else:
-                logging.warning(f"尝试更新不存在的任务: {url}")
-
-    def get_status(self, url):
-        with self.lock:
-            return self.tasks.get(url, None)
-
-    def get_pending_tasks(self):
-        with self.lock:
-            return [url for url, status in self.tasks.items() if status == 'Pending' or status == 'Failed']
-
-    def save_tasks(self):
-        try:
-            with open(self.save_path, 'wb') as f:
-                pickle.dump(self.tasks, f)
-            logging.info("任务字典已保存。")
-        except Exception as e:
-            logging.error(f"保存任务字典时出错: {e}", exc_info=True)
-
-    def load_tasks(self):
-        if os.path.exists(self.save_path):
-            try:
-                with open(self.save_path, 'rb') as f:
-                    self.tasks = pickle.load(f)
-                logging.info("任务字典已加载。")
-            except Exception as e:
-                logging.error(f"加载任务字典时出错: {e}", exc_info=True)
-                self.tasks = {}
-        else:
-            logging.info("任务字典文件不存在，初始化为空字典。")
-
-    def auto_save(self):
-        while True:
-            time.sleep(self.auto_save_interval)
-            self.save_tasks()
