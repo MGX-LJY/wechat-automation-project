@@ -62,8 +62,7 @@ class Uploader:
         while not self.stop_event.is_set():
             try:
                 file_path = self.delete_queue.get(timeout=1)
-                # 延迟删除，可以根据需要调整等待时间
-                time.sleep(2)  # 等待 2 秒，确保文件已被微信程序占用完毕
+                time.sleep(10)
                 if os.path.exists(file_path):
                     os.remove(file_path)
                     logging.info(f"已删除文件：{file_path}")
