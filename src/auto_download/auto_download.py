@@ -37,8 +37,8 @@ class XKW:
         self.id = id or str(uuid.uuid4())  # 分配唯一 ID
         self.thread = thread
         self.work = work
-        self.uploader = uploader  # 接收 Uploader 实例
-        self.notifier = notifier  # 接收 Notifier 实例
+        self.uploader = uploader
+        self.notifier = notifier
         self.tabs = queue.Queue()
         self.task = queue.Queue()
         self.retry_counts: Dict[str, int] = {}  # 记录每个URL的重试次数
@@ -376,7 +376,6 @@ class XKW:
 
     def download(self, url):
         start_time = time.time()  # 记录下载开始时间
-        tab = None  # 初始化 tab 变量
         try:
             logging.info(f"准备下载 URL: {url}")
             # 增加随机延迟，模拟人类等待页面加载
