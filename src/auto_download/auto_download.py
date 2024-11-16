@@ -33,8 +33,8 @@ class ErrorHandler:
 
 
 class XKW:
-    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, co=None, manager=None,instance_id=None):
-        self.id = instance_id or str(uuid.uuid4())  # 分配唯一 ID
+    def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, co=None, manager=None,id=None):
+        self.id = id or str(uuid.uuid4())  # 分配唯一 ID
         self.thread = thread
         self.work = work
         self.uploader = uploader  # 接收 Uploader 实例
@@ -530,9 +530,9 @@ class AutoDownloadManager:
 
         # 创建两个 XKW 实例，分配唯一 ID
         xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   co=co1, manager=self, instance_id='xkw1')
+                   co=co1, manager=self, id='xkw1')
         xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   co=co2, manager=self, instance_id='xkw2')
+                   co=co2, manager=self, id='xkw2')
 
         self.xkw_instances = [xkw1, xkw2]
         self.active_xkw_instances = self.xkw_instances.copy()
@@ -540,18 +540,27 @@ class AutoDownloadManager:
         self.xkw_lock = threading.Lock()
 
     def disable_xkw_instance(self, xkw_instance):
-        with self.xkw_lock:
-            if xkw_instance in self.active_xkw_instances:
-                xkw_instance.is_active = False  # 添加此行
-                self.active_xkw_instances.remove(xkw_instance)
-                logging.info(f"实例 {xkw_instance.instance_id} 已从活跃列表中移除。")
-                if self.notifier:
-                    self.notifier.notify(f"实例 {xkw_instance.instance_id} 已被禁用。", is_error=True)
-
-                if not self.active_xkw_instances:
-                    logging.error("所有浏览器实例均不可用，向管理员发送报告。")
+        try:
+            with self.xkw_lock:
+                if xkw_instance in self.active_xkw_instances:
+                    xkw_instance.is_active = False
+                    self.active_xkw_instances.remove(xkw_instance)
+                    logging.info(f"实例 {xkw_instance.id} 已从活跃列表中移除。")
                     if self.notifier:
-                        self.notifier.notify("所有浏览器实例均不可用，请检查系统配置。", is_error=True)
+                        self.notifier.notify(f"实例 {xkw_instance.id} 已被禁用。", is_error=True)
+
+                    if not self.active_xkw_instances:
+                        logging.error("所有浏览器实例均不可用，向管理员发送报告。")
+                        if self.notifier:
+                            self.notifier.notify("所有浏览器实例均不可用，请检查系统配置。", is_error=True)
+        except AttributeError as e:
+            logging.error(f"禁用实例时发生 AttributeError: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"禁用实例时发生 AttributeError: {e}", is_error=True)
+        except Exception as e:
+            logging.error(f"禁用实例时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"禁用实例时出错: {e}", is_error=True)
 
     def get_available_xkw_instances(self, current_instance):
         """
@@ -594,13 +603,13 @@ class AutoDownloadManager:
             if self.notifier:
                 self.notifier.notify(f"添加 URL 时发生错误: {e}", is_error=True)
 
-    def enable_xkw_instance(self, instance_id: str) -> str:
+    def enable_xkw_instance(self, id: str) -> str:
         """
         恢复指定的 XKW 实例。
         """
         with self.xkw_lock:
             for xkw in self.xkw_instances:
-                if xkw.id == instance_id:
+                if xkw.id == id:
                     if not xkw.is_active:
                         xkw.is_active = True
                         self.active_xkw_instances.append(xkw)
@@ -611,8 +620,8 @@ class AutoDownloadManager:
                     else:
                         logging.info(f"实例 {xkw.id} 已经是活跃状态。")
                         return f"实例 {xkw.id} 已经是活跃状态。"
-            logging.warning(f"未找到实例 ID: {instance_id}。")
-            return f"未找到实例 ID: {instance_id}。"
+            logging.warning(f"未找到实例 ID: {id}。")
+            return f"未找到实例 ID: {id}。"
 
     def enable_all_instances(self) -> str:
         """
