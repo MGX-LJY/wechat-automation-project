@@ -157,6 +157,7 @@ class AdminCommandsHandler:
                             group_type = 'non_whole'
                             action = 'add' if 'add' in cmd else 'remove'
                             return self.modify_group_type(group_names, group_type, action)
+
                         elif cmd == 'restore_specific_instance':
                             instance_id = match.group(1)
                             response = self.browser_controller.enable_xkw_instance(instance_id)

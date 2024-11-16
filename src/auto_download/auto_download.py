@@ -527,6 +527,16 @@ class XKW:
             self.task.put(url)
         logging.info(f"任务已添加到队列: {url}")
 
+    def start(self):
+        """启动或重新启动 XKW 实例的运行线程。"""
+        with self.lock:
+            if not self.work:
+                self.work = True
+                self.consecutive_failures = 0  # 重置失败计数
+                self.manager_thread = threading.Thread(target=self.run, daemon=True)
+                self.manager_thread.start()
+                logging.info(f"XKW manager 线程已重新启动，实例 ID: {self.id}")
+
     def stop(self):
         """
         停止 XKW 实例，关闭浏览器和线程。
@@ -675,6 +685,7 @@ class AutoDownloadManager:
                     if not xkw.is_active:
                         xkw.is_active = True
                         self.active_xkw_instances.append(xkw)
+                        xkw.start()  # 重新启动实例的运行线程
                         logging.info(f"实例 {xkw.id} 已被恢复。")
                         if self.notifier:
                             self.notifier.notify(f"实例 {xkw.id} 已被恢复。")
@@ -697,6 +708,7 @@ class AutoDownloadManager:
             for xkw in self.xkw_instances:
                 if not xkw.is_active:
                     xkw.is_active = True
+                    xkw.start()  # 重新启动实例的运行线程
                     self.active_xkw_instances.append(xkw)
                     restored.append(xkw.id)
             if restored:
