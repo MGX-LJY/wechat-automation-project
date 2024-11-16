@@ -407,7 +407,7 @@ class XKW:
                 self.tabs.put(tab)  # 释放 tab
                 return
             logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
-            click_delay = random.uniform(0.2, 0.5)  # 从1-3秒减少到0.5-1.5秒
+            click_delay = random.uniform(0.5, 1.5)  # 从1-3秒减少到0.5-1.5秒
             logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
             time.sleep(click_delay)
             self.listener(tab, download_button, url, title, soft_id)
@@ -418,7 +418,7 @@ class XKW:
             if 'tab' in locals():
                 try:
                     # 等待0.1秒后重置标签页
-                    self.reset_tab( tab)
+                    self.reset_tab(tab)
                 except Exception as close_e:
                     logging.error(f"导航标签页到空白页时出错: {close_e}", exc_info=True)
             if self.notifier:
@@ -460,7 +460,7 @@ class XKW:
                     logging.info(f"已提交下载任务到线程池: {url}")
 
                     # 增加随机间隔，模拟任务分发的不规则性
-                    task_dispatch_delay = random.uniform(0.1, 0.3)
+                    task_dispatch_delay = random.uniform(0.1, 0.5)  # 从0.2-1秒减少到0.1-0.5秒
                     logging.debug(f"任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
                     time.sleep(task_dispatch_delay)
                 except queue.Empty:
