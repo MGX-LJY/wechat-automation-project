@@ -318,6 +318,7 @@ class XKW:
         """
         try:
             # 尝试找到页面上的“登录”按钮或链接
+            tab.git('https://www.zxxk.com')
             login_element = tab.ele('text:登录', timeout=5)
             if login_element:
                 return False
@@ -382,6 +383,7 @@ class XKW:
         """
         try:
             # 等待 '我的' 元素出现并将鼠标移动到其上方
+            tab.git('https://www.zxxk.com')
             my_element = tab.ele('text:我的', timeout=10)
             my_element.hover()
             time.sleep(1)  # 等待下拉菜单显示
