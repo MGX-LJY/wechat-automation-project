@@ -58,12 +58,6 @@ class ItChatHandler:
         self.uploader = uploader
         self.message_handler.set_uploader(uploader)
 
-    def set_auto_clicker(self, auto_clicker):
-        """
-        设置 MessageHandler 的 AutoClicker 实例
-        """
-        self.message_handler.set_auto_clicker(auto_clicker)
-
     def login(self):
         """执行微信登录过程，处理二维码显示和会话管理"""
         for attempt in range(1, self.max_retries + 1):
@@ -143,7 +137,7 @@ class MessageHandler:
         self.config = ConfigManager.load_config()
         self.regex = re.compile(self.config.get('url', {}).get('regex', r'https?://[^\s"」]+'))
         self.validation = self.config.get('url', {}).get('validation', True)
-        self.auto_clicker = None
+        self.browser_controller = browser_controller
         self.uploader = None
         self.error_handler = error_handler
         self.monitor_groups = monitor_groups
@@ -177,10 +171,6 @@ class MessageHandler:
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
 
         logging.info("MessageHandler 配置已更新")
-
-    def set_auto_clicker(self, auto_clicker):
-        """设置 AutoClicker 实例用于自动处理任务"""
-        self.auto_clicker = auto_clicker
 
     def set_uploader(self, uploader):
         """设置 Uploader 实例用于上传相关信息"""
@@ -280,11 +270,11 @@ class MessageHandler:
             else:
                 logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
-            if self.auto_clicker:
-                self.auto_clicker.add_task(url)
+            if self.browser_controller:  # 直接使用 browser_controller
+                self.browser_controller.add_task(url)
                 logging.info(f"已添加任务到下载队列: {url}")
             else:
-                logging.warning("AutoClicker 未设置，无法添加任务。")
+                logging.warning("BrowserController 未设置，无法添加任务。")
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
@@ -333,8 +323,9 @@ class MessageHandler:
             else:
                 logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
-            if self.auto_clicker:
-                self.auto_clicker.add_task(url)
+            if self.browser_controller:  # 直接使用 browser_controller
+                self.browser_controller.add_task(url)
+                logging.info(f"已添加任务到下载队列: {url}")
 
     def handle_admin_command(self, message: str) -> Optional[str]:
         """委托 AdminCommandsHandler 处理管理员命令"""
@@ -397,6 +388,7 @@ class MessageHandler:
 
         with open(log_path, 'r', encoding='utf-8') as f:
             return ''.join(deque(f, n))
+
 
 def send_long_message(notifier, message: str, max_length: int = 2000):
     """将长消息分割为多个部分并逐段发送"""

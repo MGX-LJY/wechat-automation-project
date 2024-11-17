@@ -16,6 +16,7 @@ from src.logging_module.logger import setup_logging
 from src.notification.notifier import Notifier
 from src.point_manager import PointManager
 
+
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, on_change_callback):
         super().__init__()
@@ -29,6 +30,7 @@ class ConfigChangeHandler(FileSystemEventHandler):
                 self.on_change_callback(new_config)
             except Exception as e:
                 logging.error(f"重新加载配置失败: {e}")
+
 
 def main():
     try:
@@ -86,10 +88,9 @@ def main():
         )
         logging.info("ItChatHandler 初始化完成")
 
-        # 10. 绑定 Uploader 和 AutoClicker 到 ItChatHandler
+        # 10. 绑定 Uploader 到 ItChatHandler
         itchat_handler.set_uploader(uploader)
-        itchat_handler.set_auto_clicker(auto_download_manager)
-        logging.info("Uploader 和 AutoClicker 已绑定到 ItChatHandler")
+        logging.info("Uploader 已绑定到 ItChatHandler")
 
         # 11. 登录微信
         itchat_handler.login()
@@ -141,6 +142,7 @@ def main():
             # 如果 logging 未导入，则直接打印错误
             print(f"应用启动失败: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
