@@ -131,6 +131,15 @@ class AdminCommandsHandler:
                         else:
                             return f"未找到用户 '{nickname}' 在群组 '{group_name}' 的积分信息。"
 
+                    elif cmd == 'restore_specific_instance':
+                        instance_id = match.group(1)
+                        response = self.browser_controller.enable_xkw_instance(instance_id)
+                        return response
+
+                    elif cmd == 'restore_all_instances':
+                        response = self.browser_controller.enable_all_instances()
+                        return response
+
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
                                  'add_monitor_individual', 'remove_monitor_individual',
@@ -157,15 +166,6 @@ class AdminCommandsHandler:
                             group_type = 'non_whole'
                             action = 'add' if 'add' in cmd else 'remove'
                             return self.modify_group_type(group_names, group_type, action)
-
-                        elif cmd == 'restore_specific_instance':
-                            instance_id = match.group(1)
-                            response = self.browser_controller.enable_xkw_instance(instance_id)
-                            return response
-
-                        elif cmd == 'restore_all_instances':
-                            response = self.browser_controller.enable_all_instances()
-                            return response
 
                     # 其他命令处理逻辑
                     elif cmd == 'help':
