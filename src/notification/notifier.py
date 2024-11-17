@@ -156,6 +156,10 @@ class Notifier:
         """
         if self.method == 'wechat':
             notifier = self.wechat_error_notifier if is_error else self.wechat_notifier
+            if notifier is None:
+                # 如果未配置错误通知接收者，使用默认接收者
+                notifier = self.wechat_notifier
+                logging.warning("未配置错误通知接收者，使用默认接收者发送错误通知")
             if notifier:
                 return notifier.send_message(message)
             else:

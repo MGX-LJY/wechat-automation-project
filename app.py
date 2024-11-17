@@ -65,7 +65,7 @@ def main():
         )
         logging.info("Uploader 初始化完成")
 
-        # 8. 初始化 AutoDownloadManager 并启动五个浏览器实例
+        # 8. 初始化 AutoDownloadManager 并启动浏览器实例
         download_config = main_config.get('download', {})
         download_path = download_config.get(
             'download_path',
@@ -103,9 +103,9 @@ def main():
         # 13. 注册信号处理，确保程序退出时停止下载监控和登出微信
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
-            auto_download_manager.stop()  # 停止所有 XKW 实例
             itchat_handler.logout()
             uploader.stop()  # 停止 Uploader 的上传线程
+            auto_download_manager.stop()  # 停止下载管理器
             sys.exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)

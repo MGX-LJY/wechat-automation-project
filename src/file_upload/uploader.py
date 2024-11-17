@@ -6,9 +6,8 @@ import threading
 import queue
 import time
 from typing import Optional, List, Dict
-
 from lib.wxauto.wxauto import WeChat
-from src.point_manager import PointManager  # 导入 PointManager 模块
+from src.point_manager import PointManager
 
 
 class Uploader:
@@ -38,6 +37,12 @@ class Uploader:
         self.upload_thread.start()
         logging.info("上传任务处理线程已启动")
 
+        # 初始化文件删除队列和线程
+        self.delete_queue = queue.Queue()
+        self.delete_thread = threading.Thread(target=self.process_file_deletion, daemon=True)
+        self.delete_thread.start()
+        logging.info("文件删除线程已启动")
+
         # 初始化 wxauto WeChat 实例
         self.wx = WeChat()
         self.initialize_wechat()
@@ -47,34 +52,28 @@ class Uploader:
         self.point_manager = point_manager if point_manager else PointManager()
         logging.info("PointManager 已初始化")
 
-        # 添加每日定时任务线程
-        self.schedule_daily_cleanup()
-        logging.info("每日文件清理任务已安排")
+    def add_file_to_delete(self, file_path):
+        """将待删除的文件路径添加到删除队列"""
+        self.delete_queue.put(file_path)
+        logging.info(f"文件已添加到删除队列：{file_path}")
 
-    def schedule_daily_cleanup(self):
-        """安排每天12点执行文件清理任务"""
-        now = time.localtime()
-        # 计算距离下一次12点的秒数
-        seconds_until_noon = ((12 - now.tm_hour - 1) * 3600) + ((59 - now.tm_min) * 60) + (60 - now.tm_sec)
-        if seconds_until_noon <= 0:
-            # 如果已经过了12点，计算到下一天12点的时间
-            seconds_until_noon += 24 * 3600
-        self.cleanup_timer = threading.Timer(seconds_until_noon, self.daily_cleanup)
-        self.cleanup_timer.daemon = True
-        self.cleanup_timer.start()
-        logging.info(f"距离下一次文件清理还有 {seconds_until_noon} 秒")
-
-    def daily_cleanup(self):
-        """每日12点执行的文件清理任务"""
-        try:
-            self.delete_all_files()
-            logging.info("已执行每日文件清理任务")
-        except Exception as e:
-            logging.error(f"执行每日文件清理任务时出错：{e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-        finally:
-            # 重新安排下一次清理任务
-            self.schedule_daily_cleanup()
+    def process_file_deletion(self):
+        """处理文件删除的线程"""
+        while not self.stop_event.is_set():
+            try:
+                file_path = self.delete_queue.get(timeout=1)
+                time.sleep(10)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logging.info(f"已删除文件：{file_path}")
+                else:
+                    logging.warning(f"文件不存在，无法删除：{file_path}")
+                self.delete_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logging.error(f"删除文件时发生错误：{e}", exc_info=True)
+                self.error_handler.handle_exception(e)
 
     def update_config(self, new_upload_config):
         self.upload_config = new_upload_config
@@ -152,85 +151,101 @@ class Uploader:
 
     def process_uploads(self):
         """
-        处理上传队列中的任务。
+        处理上传队列中的任务，支持批量发送。
         """
+        recipient_tasks = {}
+        last_send_time = time.time()
+        batch_interval = 5  # 批量发送的时间间隔，单位：秒
+
         while not self.stop_event.is_set():
             try:
-                file_path, soft_id, recipient_type = self.upload_queue.get(timeout=1)  # 设置超时以检查停止事件
-                self.upload_file(file_path, soft_id, recipient_type)
+                # 从队列中获取任务
+                file_path, soft_id, recipient_type = self.upload_queue.get(timeout=1)
+                with self.lock:
+                    recipient_name = self.softid_to_recipient.get(soft_id)
+                    sender_nickname = self.softid_to_sender.get(soft_id)
+                    group_type = self.softid_to_group_type.get(soft_id)
+
+                if not recipient_name:
+                    logging.error(f"未找到 soft_id {soft_id} 对应的接收者。")
+                    continue
+
+                # 将任务添加到 recipient_tasks 中
+                if recipient_name not in recipient_tasks:
+                    recipient_tasks[recipient_name] = []
+                recipient_tasks[recipient_name].append({
+                    'file_path': file_path,
+                    'soft_id': soft_id,
+                    'recipient_type': recipient_type,
+                    'sender_nickname': sender_nickname,
+                    'group_type': group_type
+                })
                 self.upload_queue.task_done()
+
+                # 检查是否需要批量发送
+                current_time = time.time()
+                if (current_time - last_send_time >= batch_interval) or \
+                        any(len(tasks) >= self.upload_config.get('batch_size', 5) for tasks in
+                            recipient_tasks.values()):
+                    # 批量发送
+                    for recipient_name, tasks in recipient_tasks.items():
+                        self.upload_files(recipient_name, tasks)
+                    # 清空 recipient_tasks
+                    recipient_tasks.clear()
+                    last_send_time = current_time
+
             except queue.Empty:
+                # 队列为空，检查是否有待发送的任务
+                current_time = time.time()
+                if recipient_tasks and (current_time - last_send_time >= batch_interval):
+                    for recipient_name, tasks in recipient_tasks.items():
+                        self.upload_files(recipient_name, tasks)
+                    recipient_tasks.clear()
+                    last_send_time = current_time
                 continue
             except Exception as e:
                 logging.error(f"处理上传任务时出错：{e}", exc_info=True)
                 self.error_handler.handle_exception(e)
 
-    def upload_file(self, file_path: str, soft_id: str, recipient_type: str):
+    def upload_files(self, recipient_name, tasks):
         try:
-            if not os.path.exists(file_path):
-                logging.error(f"文件不存在，无法上传：{file_path}")
-                return
-
-            with self.lock:
-                recipient_name = self.softid_to_recipient.get(soft_id)
-                sender_nickname = self.softid_to_sender.get(soft_id)  # 获取发送者昵称
-                group_type = self.softid_to_group_type.get(soft_id)  # 获取 group_type
-
-            if not recipient_name:
-                logging.error(f"未找到 soft_id {soft_id} 对应的接收者。")
-                return
-
-            # 切换到指定的聊天窗口
-            try:
-                self.wx.ChatWith(who=recipient_name)
-                logging.info(f"切换到接收者 '{recipient_name}' 的聊天窗口")
-                time.sleep(1)  # 等待界面切换完成
-            except Exception as e:
-                logging.error(f"切换聊天窗口失败：{e}", exc_info=True)
-                self.error_handler.handle_exception(e)
-                return
-
-            # 发送文件，带重试机制
-            for attempt in range(1, self.max_retries + 1):
+            max_total_retries = self.max_retries * 2  # 允许最多双倍的重试次数
+            attempt = 1
+            while attempt <= max_total_retries:
                 try:
+                    if attempt == self.max_retries + 1:
+                        # 在初始 max_retries 次尝试后，重新激活聊天窗口
+                        self.wx.ChatWith(who=recipient_name)
+                        logging.info(f"重新激活接收者 '{recipient_name}' 的聊天窗口")
+                        time.sleep(0.5)  # 等待窗口激活完成
+
                     logging.info(
-                        f"正在上传文件：{file_path} 至接收者：{recipient_name} (soft_id: {soft_id})，尝试次数：{attempt}")
-                    self.wx.SendFiles(filepath=file_path, who=recipient_name)
-                    logging.info(f"文件已上传至接收者：{recipient_name} (soft_id: {soft_id})")
-                    time.sleep(1)
-                    # 扣除积分
-                    self.deduct_points(recipient_name, sender_nickname, recipient_type, group_type)
-                    break  # 上传成功，退出重试循环
+                        f"正在上传文件至接收者：{recipient_name}，文件数：{len(tasks)}，尝试次数：{attempt}")
+                    for task in tasks:
+                        file_path = task['file_path']
+                        self.wx.SendFiles(filepath=file_path, who=recipient_name)
+                        logging.info(f"已上传文件：{file_path}")
+                        # 扣除积分并处理文件删除
+                        self.deduct_points(
+                            recipient_name=recipient_name,
+                            sender_nickname=task['sender_nickname'],
+                            recipient_type=task['recipient_type'],
+                            group_type=task['group_type']
+                        )
+                        # 将文件路径添加到删除队列
+                        self.add_file_to_delete(file_path)
+                    break  # 上传成功，退出循环
                 except Exception as e:
-                    if attempt < self.max_retries:
-                        logging.warning(f"上传失败，网络问题，稍后重试... (尝试次数：{attempt}) - 错误：{e}")
+                    if attempt < max_total_retries:
+                        logging.warning(f"上传失败，稍后重试... (尝试次数：{attempt}) - 错误：{e}")
                         time.sleep(self.retry_delay)
+                        attempt += 1
                     else:
-                        logging.error(f"上传失败，网络问题 (soft_id: {soft_id}) - 错误：{e}")
+                        logging.error(f"上传失败 (接收者: {recipient_name}) - 错误：{e}")
                         self.error_handler.handle_exception(e)
-
+                        break
         except Exception as e:
-            logging.error(f"上传文件时发生错误 (soft_id: {soft_id}, file_path: {file_path}) - 错误：{e}", exc_info=True)
-            self.error_handler.handle_exception(e)
-
-    def delete_all_files(self):
-        """删除指定目录中的所有文件"""
-        try:
-            download_dir = self.upload_config.get('download_dir', '.')
-            files_deleted = 0
-            with self.lock:
-                for filename in os.listdir(download_dir):
-                    file_path = os.path.join(download_dir, filename)
-                    if os.path.isfile(file_path):
-                        try:
-                            os.remove(file_path)
-                            files_deleted += 1
-                            logging.info(f"删除文件：{file_path}")
-                        except Exception as e:
-                            logging.error(f"删除文件 {file_path} 时发生错误：{e}", exc_info=True)
-            logging.info(f"每日文件清理任务完成，共删除 {files_deleted} 个文件")
-        except Exception as e:
-            logging.error(f"删除所有文件时发生错误：{e}", exc_info=True)
+            logging.error(f"批量上传文件时发生错误 (接收者: {recipient_name}) - 错误：{e}", exc_info=True)
             self.error_handler.handle_exception(e)
 
     def deduct_points(self, recipient_name: str, sender_nickname: Optional[str] = None, recipient_type: str = 'group', group_type: Optional[str] = None):
@@ -321,10 +336,8 @@ class Uploader:
         """停止上传线程并清理资源。"""
         self.stop_event.set()
         self.upload_thread.join()
+        self.delete_thread.join()  # 确保文件删除线程正常关闭
         self.point_manager.close()
-        # 停止定时器
-        if hasattr(self, 'cleanup_timer'):
-            self.cleanup_timer.cancel()
         logging.info("Uploader 已停止并清理资源")
 
     def __del__(self):
