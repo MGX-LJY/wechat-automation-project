@@ -62,7 +62,7 @@ class Uploader:
         while not self.stop_event.is_set():
             try:
                 file_path = self.delete_queue.get(timeout=1)
-                time.sleep(10)
+                time.sleep(30)
                 if os.path.exists(file_path):
                     os.remove(file_path)
                     logging.info(f"已删除文件：{file_path}")
