@@ -1,3 +1,5 @@
+import time
+
 from DrissionPage import Chromium
 
 
@@ -28,13 +30,18 @@ class XkwLogin:
             print(f'登录过程中出现错误：{e}')
 
     def logout(self):
-        # 访问主页
-        self.tab.get('https://www.zxxk.com/')
-        iframes = self.tab.get_frames()
-        iframe = self.tab.ele('tag:iframe@@id=login_iframe')  # 修改为实际iframe的选择器
-        avatar = target_iframe.ele('a.user-btn')
-        target_iframe.actions.move_to('a.user-btn').click('a.dl-quit.fr')
-        self.tab.actions.move_to('a.user-btn').click('a.dl-quit.fr')
+        try:
+            # 等待 '我的' 元素出现并将鼠标移动到其上方
+            my_element = self.tab.ele('text:我的', timeout=10)
+            my_element.hover()
+            time.sleep(1)  # 等待下拉菜单显示
+
+            # 等待 '退出' 元素出现并点击
+            logout_element = self.tab.ele('text:退出', timeout=10)
+            logout_element.click()
+
+        except Exception as e:
+            print(f'退出过程中出现错误：{e}')
 
 
 if __name__ == '__main__':
