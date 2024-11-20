@@ -74,6 +74,7 @@ class XKW:
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
         self.lock = threading.Lock()  # 线程锁
+        self.failed_tasks = []  # 添加用于记录失败任务的列表
 
         # 添加账号列表和当前账号索引
         self.accounts = accounts if accounts else []
@@ -513,6 +514,8 @@ class XKW:
                             logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
                             if self.notifier:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
+                            # 记录失败的任务
+                            self.record_failed_task(url, title, soft_id, reason="匹配下载的文件失败")
                             return
 
                         # 将文件路径和 soft_id 传递给上传模块
@@ -533,6 +536,8 @@ class XKW:
                                     if self.notifier:
                                         self.notifier.notify(f"文件在 {max_wait} 秒内不可用，无法上传: {file_path}",
                                                              is_error=True)
+                                    # 记录失败的任务
+                                    self.record_failed_task(url, title, soft_id, reason="文件在规定时间内不可用")
                                     return
 
                                 self.uploader.add_upload_task(file_path, soft_id)
@@ -541,9 +546,12 @@ class XKW:
                                 logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
                                 if self.notifier:
                                     self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+                                # 记录失败的任务
+                                self.record_failed_task(url, title, soft_id, reason=f"添加上传任务时发生错误: {e}")
                         else:
                             logging.warning("Uploader 未设置，无法传递上传任务。")
-
+                            # 记录失败的任务
+                            self.record_failed_task(url, title, soft_id, reason="Uploader 未设置")
                         # 重置标签页
                         self.reset_tab(tab)
                         success = True
@@ -552,6 +560,8 @@ class XKW:
                         logging.warning("请求过于频繁，暂停后重试。")
                         # 不进行重试，直接处理为失败
                         logging.warning(f"下载失败: {url}")
+                        # 记录失败的任务
+                        self.record_failed_task(url, title, soft_id, reason="请求过于频繁")
                         break
                 else:
                     # 未捕获到下载链接，处理特殊情况
@@ -564,20 +574,43 @@ class XKW:
                             logging.info("点击确认按钮成功。")
                             continue
                     logging.warning(f"下载失败: {url}")
+                    # 记录失败的任务
+                    self.record_failed_task(url, title, soft_id, reason="未捕获到下载链接")
                     break  # 退出监听循环
             # 如果执行到这里，说明下载失败
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+            # 记录失败的任务
+            self.record_failed_task(url, title, soft_id, reason=f"下载过程中出错: {e}")
         finally:
             if not success:
                 # 增加当前账号的失败计数并尝试切换账号
                 self.increment_failure_count()
                 self.reset_tab(tab)
                 self.tabs.put(tab)
-                # 不再切换到其他实例，因为实例可能仍有可用账号
-                # 如果所有账号都不可用，实例会在 increment_failure_count 中被禁用
+
+    def record_failed_task(self, url, title, soft_id, reason=""):
+        """
+        记录下载失败的任务，以便后续处理。
+
+        参数:
+        - url: 下载页面的 URL。
+        - title: 文件标题。
+        - soft_id: 文件的 soft_id。
+        - reason: 失败的原因（可选）。
+        """
+        failed_task = {
+            "url": url,
+            "title": title,
+            "soft_id": soft_id,
+            "reason": reason,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        with self.lock:
+            self.failed_tasks.append(failed_task)
+        logging.info(f"记录失败的任务: {failed_task}")
 
     def is_file_available(self, file_path: str) -> bool:
         """检查文件是否可用（未被其他进程占用）。"""
@@ -656,7 +689,7 @@ class XKW:
         管理下载任务的主循环，使用线程池执行下载任务。
         """
         with ThreadPoolExecutor(max_workers=self.thread) as executor:
-            futures = []
+            futures = set()
             while self.work:
                 try:
                     url = self.task.get(timeout=5)  # 获取新任务
@@ -673,10 +706,21 @@ class XKW:
                         time.sleep(wait_time)
                     self.last_download_time = time.time()
 
-                    # 提交下载任务到线程池，直接调用 download 函数
+                    # 提交下载任务到线程池
                     future = executor.submit(self._download_task, url)
-                    futures.append(future)
+                    futures.add(future)
                     logging.info(f"已提交下载任务到线程池: {url}")
+
+                    # 清理已完成的 futures
+                    done_futures = set(f for f in futures if f.done())
+                    for done_future in done_futures:
+                        futures.remove(done_future)
+                        try:
+                            done_future.result()
+                        except Exception as e:
+                            logging.error(f"下载任务中出现未捕获的异常: {e}", exc_info=True)
+                            if self.notifier:
+                                self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
                     # 增加随机间隔，模拟任务分发的不规则性
                     task_dispatch_delay = random.uniform(0.1, 0.5)
@@ -690,6 +734,7 @@ class XKW:
                         self.notifier.notify(f"任务分发时出错: {e}", is_error=True)
 
             # 等待所有任务完成
+            logging.info("等待所有下载任务完成...")
             for future in futures:
                 try:
                     future.result()
