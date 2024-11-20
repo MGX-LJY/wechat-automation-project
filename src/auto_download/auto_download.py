@@ -350,39 +350,60 @@ class XKW:
                 # 访问登录页面
                 tab.get('https://sso.zxxk.com/login')
                 logging.info('访问登录页面成功。')
-                time.sleep(1)  # 增加延迟，等待页面完全加载
+                time.sleep(random.uniform(1, 2))  # 增加随机延迟，等待页面完全加载
 
                 # 点击“账户密码/验证码登录”按钮
                 login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
                 login_switch_button.click()
                 logging.info('点击“账户密码/验证码登录”按钮成功。')
-                time.sleep(0.5)  # 等待登录表单切换完成
+                time.sleep(random.uniform(0.5, 1))  # 等待登录表单切换完成
 
                 # 获取用户名和密码输入框
                 username_field = tab.ele('#username', timeout=10)
                 password_field = tab.ele('#password', timeout=10)
 
-                # 清空输入框，确保没有残留内容
-                username_field.clear()
-                password_field.clear()
-                logging.info('清空用户名和密码输入框成功。')
-                time.sleep(0.2)  # 等待输入框清空
+                # 获取输入框中的现有内容长度
+                existing_username = username_field.get_attribute('value') or ''
+                existing_password = password_field.get_attribute('value') or ''
 
-                # 输入用户名
-                username_field.input(username)
+                # 模拟按退格键删除用户名
+                username_field.click()
+                for _ in range(len(existing_username)):
+                    username_field.input('\b')
+                    time.sleep(random.uniform(0.05, 0.15))  # 模拟退格键按下的间隔
+
+                # 模拟按退格键删除密码
+                password_field.click()
+                for _ in range(len(existing_password)):
+                    password_field.input('\b')
+                    time.sleep(random.uniform(0.05, 0.15))
+
+                logging.info('模拟退格键清空用户名和密码输入框成功。')
+                time.sleep(random.uniform(0.2, 0.5))  # 等待输入框清空
+
+                # 输入用户名，逐个字符输入
+                username_field.click()
+                for char in username:
+                    username_field.input(char)
+                    time.sleep(random.uniform(0.1, 0.3))  # 模拟人类输入间隔
                 logging.info('输入用户名成功。')
-                time.sleep(0.2)  # 增加延迟，模拟人类输入速度
 
-                # 输入密码
-                password_field.input(password)
+                time.sleep(random.uniform(0.2, 0.5))
+
+                # 输入密码，逐个字符输入
+                password_field.click()
+                for char in password:
+                    password_field.input(char)
+                    time.sleep(random.uniform(0.1, 0.3))
                 logging.info('输入密码成功。')
-                time.sleep(0.2)  # 增加延迟
+
+                time.sleep(random.uniform(0.2, 0.5))
 
                 # 点击登录按钮
                 login_button = tab.ele('#accountLoginBtn', timeout=10)
                 login_button.click()
                 logging.info('点击登录按钮成功。')
-                time.sleep(1)  # 等待登录结果
+                time.sleep(random.uniform(1, 2))  # 等待登录结果
 
                 # 检查是否登录成功
                 if self.is_logged_in(tab):
@@ -396,7 +417,7 @@ class XKW:
                 logging.error(f'登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
                 self.switch_account()
-        # 如果重试次数用尽，返回False
+        # 如果重试次数用尽，返回 False
         return False
 
     def logout(self, tab):
