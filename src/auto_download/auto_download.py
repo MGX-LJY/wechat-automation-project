@@ -292,13 +292,12 @@ class XKW:
             return None, None
 
     def increment_failure_count(self):
-        """
-        增加连续失败计数器，如果达到上限则禁用实例。
-        """
         with self.lock:
             self.consecutive_failures += 1
-            logging.warning(f"实例 {self.id} 的连续失败次数增加到 {self.consecutive_failures}。")
-            if self.consecutive_failures >= 3:
+            failure_count = self.consecutive_failures
+        logging.warning(f"实例 {self.id} 的连续失败次数增加到 {failure_count}。")
+        if failure_count >= 3:
+            with self.lock:
                 self.is_active = False
                 logging.error(f"实例 {self.id} 已达到最大连续失败次数，标记为不可用。")
                 if self.manager:
@@ -445,7 +444,7 @@ class XKW:
         if not self.is_logged_in(tab):
             logging.info('当前未登录，无需执行退出操作。')
             return
-            # 等待 '我的' 元素出现并将鼠标移动到其上方
+        # 等待 '我的' 元素出现并将鼠标移动到其上方
         my_element = tab.ele('text:我的', timeout=10)
         my_element.hover()
         time.sleep(1)  # 等待下拉菜单显示
@@ -459,35 +458,10 @@ class XKW:
         """
         切换到下一个账号。
         """
-        self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-        account = self.accounts[self.current_account_index]
+        with self.lock:
+            self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
+            account = self.accounts[self.current_account_index]
         logging.info(f'切换到账号：{account["username"]}')
-
-    def run_download(self, url):
-        """
-        尝试执行下载操作。
-
-        参数:
-        - url: 要下载的文件的 URL。
-
-        返回:
-        - True: 下载成功。
-        - False: 下载失败。
-        """
-        try:
-            tab = self.tabs.get(timeout=30)  # 获取一个标签页，设置超时避免阻塞
-            logging.info(f"获取到一个标签页用于下载: {tab}")
-
-            self.download(url, tab)
-            self.tabs.put(tab)
-            return True
-        except Exception as e:
-            logging.error(f"运行下载过程中出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"运行下载过程中出错: {e}", is_error=True)
-            if 'tab' in locals():
-                self.tabs.put(tab)
-            return False
 
     def listener(self, tab, download, url, title, soft_id):
         """
@@ -715,8 +689,8 @@ class XKW:
                             time.sleep(wait_time)
                         self.last_download_time = time.time()
 
-                    # 提交下载任务到线程池
-                    future = executor.submit(self.run_download, url)
+                    # 提交下载任务到线程池，直接调用 download 函数
+                    future = executor.submit(self._download_task, url)
                     futures.append(future)
                     logging.info(f"已提交下载任务到线程池: {url}")
 
@@ -740,26 +714,38 @@ class XKW:
                     if self.notifier:
                         self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
-    def add_task(self, url: str):
+    def _download_task(self, url):
         """
-        向任务队列添加一个下载任务。
+        下载任务的辅助函数，用于在线程池中执行。
 
         参数:
         - url: 要下载的文件的 URL。
         """
-        with self.lock:
-            self.task.put(url)
+        try:
+            tab = self.tabs.get(timeout=30)  # 获取一个标签页，设置超时避免阻塞
+            logging.info(f"获取到一个标签页用于下载: {tab}")
+
+            self.download(url, tab)
+            self.tabs.put(tab)
+        except Exception as e:
+            logging.error(f"运行下载过程中出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"运行下载过程中出错: {e}", is_error=True)
+            if 'tab' in locals():
+                self.tabs.put(tab)
+
+    def add_task(self, url: str):
+        self.task.put(url)
         logging.info(f"任务已添加到队列: {url}")
 
     def start(self):
-        """启动或重新启动 XKW 实例的运行线程。"""
-        with self.lock:
-            if not self.work:
+        if not self.work:
+            with self.lock:
                 self.work = True
                 self.consecutive_failures = 0  # 重置失败计数
-                self.manager_thread = threading.Thread(target=self.run, daemon=True)
-                self.manager_thread.start()
-                logging.info(f"XKW manager 线程已重新启动，实例 ID: {self.id}")
+            self.manager_thread = threading.Thread(target=self.run, daemon=True)
+            self.manager_thread.start()
+            logging.info(f"XKW manager 线程已重新启动，实例 ID: {self.id}")
 
     def stop(self):
         """
