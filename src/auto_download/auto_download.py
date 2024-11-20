@@ -348,16 +348,20 @@ class XKW:
             try:
                 # 访问登录页面
                 tab.get('https://sso.zxxk.com/login')
+                logging.info('访问登录页面成功。')
 
                 # 点击“账户密码/验证码登录”按钮
                 tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10).click()
+                logging.info('点击“账户密码/验证码登录”按钮成功。')
 
                 # 输入用户名和密码
                 tab.ele('#username', timeout=10).input(username)
                 tab.ele('#password', timeout=10).input(password)
+                logging.info('输入用户名和密码成功。')
 
                 # 点击登录按钮
                 tab.ele('#accountLoginBtn', timeout=10).click()
+                logging.info('点击登录按钮成功。')
 
                 # 检查是否登录成功
                 if self.is_logged_in(tab):
