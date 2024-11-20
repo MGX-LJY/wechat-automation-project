@@ -319,6 +319,7 @@ class XKW:
         try:
             # 尝试找到页面上的“登录”按钮或链接
             tab.get('https://www.zxxk.com')
+            time.sleep(5)
             login_element = tab.ele('text:登录', timeout=5)
             if login_element:
                 return False
