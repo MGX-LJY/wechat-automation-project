@@ -186,6 +186,11 @@ class XKW:
                 for file_name in os.listdir(download_dir):
                     logging.debug(f" - {file_name}")
 
+                    # 忽略未下载完成的文件
+                    if file_name.endswith('.crdownload'):
+                        logging.debug(f"文件 {file_name} 尚未下载完成，跳过。")
+                        continue
+
                     if pattern.search(file_name):
                         file_path = os.path.join(download_dir, file_name)
                         if os.path.exists(file_path):
@@ -517,6 +522,28 @@ class XKW:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
                             # 记录失败的任务
                             self.record_failed_task(url, title, soft_id, reason="匹配下载的文件失败")
+                            return
+
+                        # 新增：等待文件可用
+                        max_wait_time = 300  # 最大等待时间（秒）
+                        wait_interval = 5  # 等待间隔（秒）
+                        elapsed_time = 0
+
+                        while elapsed_time < max_wait_time:
+                            if self.is_file_available(file_path):
+                                logging.info(f"文件 {file_path} 已可用，开始处理上传任务。")
+                                break
+                            else:
+                                logging.debug(f"文件 {file_path} 被占用，等待 {wait_interval} 秒后重试...")
+                                time.sleep(wait_interval)
+                                elapsed_time += wait_interval
+                        else:
+                            logging.error(f"文件 {file_path} 在 {max_wait_time} 秒内一直被占用，放弃处理。")
+                            if self.notifier:
+                                self.notifier.notify(f"文件 {file_path} 在 {max_wait_time} 秒内一直被占用，放弃处理。",
+                                                     is_error=True)
+                            # 记录失败的任务
+                            self.record_failed_task(url, title, soft_id, reason="文件长时间被占用")
                             return
 
                         # 将文件路径和 soft_id 传递给上传模块
