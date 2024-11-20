@@ -4,6 +4,7 @@ import queue
 import random
 import re
 import threading
+import ctypes
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -482,6 +483,38 @@ class XKW:
                         # 将文件路径和 soft_id 传递给上传模块
                         if self.uploader:
                             try:
+                                # 等待文件可用
+                                max_wait = 600  # 最长等待时间（秒）
+                                wait_interval = 1  # 每次等待的间隔（秒）
+                                elapsed = 0
+                                while elapsed < max_wait:
+                                    try:
+                                        # 尝试以独占模式打开文件
+                                        handle = ctypes.windll.kernel32.CreateFileW(
+                                            file_path,
+                                            0,  # 只打开，不读写
+                                            0,  # 不共享
+                                            None,
+                                            3,  # 打开现有文件
+                                            0,
+                                            None
+                                        )
+                                        if handle != -1:
+                                            ctypes.windll.kernel32.CloseHandle(handle)
+                                            break  # 文件可用
+                                    except Exception:
+                                        pass
+                                    time.sleep(wait_interval)
+                                    elapsed += wait_interval
+                                    logging.info(f"等待文件可用: {file_path} ({elapsed}/{max_wait} 秒)")
+                                else:
+                                    logging.error(f"文件在 {max_wait} 秒内不可用: {file_path}")
+                                    if self.notifier:
+                                        self.notifier.notify(f"文件在 {max_wait} 秒内不可用，无法上传: {file_path}",
+                                                             is_error=True)
+                                    return  # 放弃上传
+
+                                # 文件可用，继续添加上传任务
                                 self.uploader.add_upload_task(file_path, soft_id)
                                 logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
