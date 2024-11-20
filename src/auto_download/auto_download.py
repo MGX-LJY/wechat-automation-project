@@ -782,6 +782,7 @@ class AutoDownloadManager:
         # 为每个实例提供不同的账号列表
         accounts_xkw1 = [
             {'username': '19061531853', 'password': '428199Li@'},
+            {'username': '19568101843', 'password': '428199Li@'},
             {'username': '13343297668', 'password': '428199Li@'},
             {'username': '19536946597', 'password': '428199Li@'},
             {'username': '19563630322', 'password': '428199Li@'}
