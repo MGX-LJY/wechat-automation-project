@@ -318,7 +318,7 @@ class XKW:
         """
         try:
             # 尝试找到页面上的“登录”按钮或链接
-            tab.git('https://www.zxxk.com')
+            tab.get('https://www.zxxk.com')
             login_element = tab.ele('text:登录', timeout=5)
             if login_element:
                 return False
@@ -381,20 +381,19 @@ class XKW:
         参数:
         - tab: 浏览器标签页。
         """
-        try:
+        tab.get('https://www.zxxk.com')
+        if not self.is_logged_in(tab):
+            logging.info('当前未登录，无需执行退出操作。')
+            return
             # 等待 '我的' 元素出现并将鼠标移动到其上方
-            tab.git('https://www.zxxk.com')
-            my_element = tab.ele('text:我的', timeout=10)
-            my_element.hover()
-            time.sleep(1)  # 等待下拉菜单显示
+        my_element = tab.ele('text:我的', timeout=10)
+        my_element.hover()
+        time.sleep(1)  # 等待下拉菜单显示
 
-            # 等待 '退出' 元素出现并点击
-            logout_element = tab.ele('text:退出', timeout=10)
-            logout_element.click()
-            logging.info('退出成功。')
-
-        except Exception as e:
-            logging.error(f'退出过程中出现错误：{e}', exc_info=True)
+        # 等待 '退出' 元素出现并点击
+        logout_element = tab.ele('text:退出', timeout=10)
+        logout_element.click()
+        logging.info('退出成功。')
 
     def switch_account(self):
         """
@@ -739,15 +738,19 @@ class AutoDownloadManager:
 
         # 为每个实例提供不同的账号列表
         accounts_xkw1 = [
-            {'username': 'user1_instance1', 'password': 'pass1_instance1'},
-            {'username': 'user2_instance1', 'password': 'pass2_instance1'},
-            # 添加更多账号
+            {'username': '19061531853', 'password': '428199Li@'},
+            {'username': '19568101843', 'password': '428199Li@'},
+            {'username': '13343297668', 'password': '428199Li@'},
+            {'username': '15512733826', 'password': '428199Li@'},
+            {'username': '19536946597', 'password': '428199Li@'},
+            {'username': '19563630322', 'password': '428199Li@'}
         ]
 
         accounts_xkw2 = [
-            {'username': 'user1_instance2', 'password': 'pass1_instance2'},
-            {'username': 'user2_instance2', 'password': 'pass2_instance2'},
-            # 添加更多账号
+            {'username': '19358191853', 'password': '428199Li@'},
+            {'username': '13143019361', 'password': '428199Li@'},
+            {'username': '19316031853', 'password': '428199Li@'},
+            {'username': '18589186420', 'password': '428199Li@'}
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
