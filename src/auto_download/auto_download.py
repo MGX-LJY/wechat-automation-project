@@ -430,7 +430,7 @@ class XKW:
 
     def run_download(self, url):
         """
-        尝试执行下载操作，包含登录、退出和账号切换的逻辑。
+        尝试执行下载操作。
 
         参数:
         - url: 要下载的文件的 URL。
@@ -443,15 +443,6 @@ class XKW:
             tab = self.tabs.get(timeout=30)  # 获取一个标签页，设置超时避免阻塞
             logging.info(f"获取到一个标签页用于下载: {tab}")
 
-            # 检查是否已登录
-            if not self.is_logged_in(tab):
-                logging.info('未登录，开始登录。')
-                if not self.login(tab):
-                    logging.error('登录失败，无法下载。')
-                    self.tabs.put(tab)
-                    return False
-
-            # 执行下载操作
             self.download(url, tab)
             self.tabs.put(tab)
             return True
@@ -464,16 +455,6 @@ class XKW:
             return False
 
     def listener(self, tab, download, url, title, soft_id):
-        """
-        监听下载过程，处理下载逻辑和异常情况。
-
-        参数:
-        - tab: 浏览器标签页。
-        - download: 下载按钮元素。
-        - url: 下载页面的 URL。
-        - title: 文件标题。
-        - soft_id: 文件的 soft_id。
-        """
         success = False
         try:
             logging.info(f"开始下载 {url}")
@@ -516,8 +497,6 @@ class XKW:
                         return  # 下载成功，退出方法
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
-                        # 不进行重试，直接处理为失败
-                        logging.warning(f"下载失败: {url}")
                         break
                 else:
                     # 未捕获到下载链接，处理特殊情况
