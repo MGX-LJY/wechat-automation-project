@@ -356,48 +356,27 @@ class XKW:
                 login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
                 login_switch_button.click()
                 logging.info('点击“账户密码/验证码登录”按钮成功。')
-                time.sleep(random.uniform(0.5, 1))  # 等待登录表单切换完成
+                time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
 
                 # 获取用户名和密码输入框
                 username_field = tab.ele('#username', timeout=10)
                 password_field = tab.ele('#password', timeout=10)
 
-                # 获取输入框中的现有内容长度
-                existing_username = username_field.get_attribute('value') or ''
-                existing_password = password_field.get_attribute('value') or ''
+                # 清空输入框，确保没有残留内容
+                username_field.clear()
+                password_field.clear()
+                logging.info('清空用户名和密码输入框成功。')
+                time.sleep(random.uniform(1, 2))  # 等待输入框清空
 
-                # 模拟按退格键删除用户名
-                username_field.click()
-                for _ in range(len(existing_username)):
-                    username_field.input('\b')
-                    time.sleep(random.uniform(0.05, 0.15))  # 模拟退格键按下的间隔
-
-                # 模拟按退格键删除密码
-                password_field.click()
-                for _ in range(len(existing_password)):
-                    password_field.input('\b')
-                    time.sleep(random.uniform(0.05, 0.15))
-
-                logging.info('模拟退格键清空用户名和密码输入框成功。')
-                time.sleep(random.uniform(0.2, 0.5))  # 等待输入框清空
-
-                # 输入用户名，逐个字符输入
-                username_field.click()
-                for char in username:
-                    username_field.input(char)
-                    time.sleep(random.uniform(0.1, 0.3))  # 模拟人类输入间隔
+                # 输入用户名
+                username_field.input(username)
                 logging.info('输入用户名成功。')
+                time.sleep(random.uniform(1, 2))  # 增加延迟
 
-                time.sleep(random.uniform(0.2, 0.5))
-
-                # 输入密码，逐个字符输入
-                password_field.click()
-                for char in password:
-                    password_field.input(char)
-                    time.sleep(random.uniform(0.1, 0.3))
+                # 输入密码
+                password_field.input(password)
                 logging.info('输入密码成功。')
-
-                time.sleep(random.uniform(0.2, 0.5))
+                time.sleep(random.uniform(1, 2))  # 增加延迟
 
                 # 点击登录按钮
                 login_button = tab.ele('#accountLoginBtn', timeout=10)
