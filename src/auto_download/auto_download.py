@@ -349,19 +349,39 @@ class XKW:
                 # 访问登录页面
                 tab.get('https://sso.zxxk.com/login')
                 logging.info('访问登录页面成功。')
+                time.sleep(1)  # 增加延迟，等待页面完全加载
 
                 # 点击“账户密码/验证码登录”按钮
-                tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10).click()
+                login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
+                login_switch_button.click()
                 logging.info('点击“账户密码/验证码登录”按钮成功。')
+                time.sleep(0.5)  # 等待登录表单切换完成
 
-                # 输入用户名和密码
-                tab.ele('#username', timeout=10).input(username)
-                tab.ele('#password', timeout=10).input(password)
-                logging.info('输入用户名和密码成功。')
+                # 获取用户名和密码输入框
+                username_field = tab.ele('#username', timeout=10)
+                password_field = tab.ele('#password', timeout=10)
+
+                # 清空输入框，确保没有残留内容
+                username_field.clear()
+                password_field.clear()
+                logging.info('清空用户名和密码输入框成功。')
+                time.sleep(0.2)  # 等待输入框清空
+
+                # 输入用户名
+                username_field.input(username)
+                logging.info('输入用户名成功。')
+                time.sleep(0.2)  # 增加延迟，模拟人类输入速度
+
+                # 输入密码
+                password_field.input(password)
+                logging.info('输入密码成功。')
+                time.sleep(0.2)  # 增加延迟
 
                 # 点击登录按钮
-                tab.ele('#accountLoginBtn', timeout=10).click()
+                login_button = tab.ele('#accountLoginBtn', timeout=10)
+                login_button.click()
                 logging.info('点击登录按钮成功。')
+                time.sleep(1)  # 等待登录结果
 
                 # 检查是否登录成功
                 if self.is_logged_in(tab):
