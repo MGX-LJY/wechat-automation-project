@@ -621,6 +621,14 @@ class XKW:
             self.failed_tasks.append(failed_task)
         logging.info(f"记录失败的任务: {failed_task}")
 
+        # 将失败的链接记录到文件
+        try:
+            with open('failed_task.txt', 'a', encoding='utf-8') as f:
+                f.write(
+                    f"{failed_task['timestamp']}\t{failed_task['url']}\t{failed_task['title']}\t{failed_task['soft_id']}\t{failed_task['reason']}\n")
+        except Exception as e:
+            logging.error(f"写入 failed_task.txt 时发生错误: {e}", exc_info=True)
+
     def is_file_available(self, file_path: str) -> bool:
         """检查文件是否可用（未被其他进程占用）。"""
         try:
