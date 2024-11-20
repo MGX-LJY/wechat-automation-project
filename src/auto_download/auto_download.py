@@ -345,9 +345,17 @@ class XKW:
         - tab: 浏览器标签页。
 
         返回:
-        - True: 登录成功。
+        - True: 登录成功或已登录。
         - False: 登录失败。
         """
+        try:
+            if self.is_logged_in(tab):
+                logging.info('当前账号已经登录，无需再次登录。')
+                return True
+        except Exception as e:
+            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            # 如果检查登录状态时出错，继续尝试登录
+
         max_retries = 3
         retries = 0
         while retries < max_retries:
@@ -370,6 +378,7 @@ class XKW:
                     else:
                         logging.error("无法找到登录按钮且未检测到登录状态。")
                         retries += 1
+                        self.switch_account()
                         continue
                 login_switch_button.click()
                 logging.info('点击“账户密码/验证码登录”按钮成功。')
@@ -408,15 +417,21 @@ class XKW:
                 else:
                     logging.warning(f'账号 {username} 登录失败。')
                     retries += 1
+                    self.switch_account()
+                logging.error(f'登录过程中出现错误：{e}')
                 # 检查是否已登录
                 if self.is_logged_in(tab):
                     logging.info('检测到已经登录，跳过登录步骤。')
                     return True
                 retries += 1
+                self.switch_account()
             except Exception as e:
                 logging.error(f'登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
+                self.switch_account()
         # 如果重试次数用尽，发送通知并返回 False
+        account = self.accounts[self.current_account_index]
+        username = account['username']
         error_message = f"所有登录尝试失败，账号 {username} 无法登录。请检查账号状态或登录流程。"
         logging.error(error_message)
         if self.notifier:
