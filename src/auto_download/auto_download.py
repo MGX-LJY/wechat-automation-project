@@ -333,6 +333,7 @@ class XKW:
         - False: 未登录。
         """
         try:
+            # 尝试找到页面上的“登录”按钮或链接
             tab.get('https://www.zxxk.com')
             time.sleep(10)  # 确保页面加载完成
             # 尝试找到“我的”元素或其他登录后特有的元素
@@ -521,25 +522,6 @@ class XKW:
                         # 将文件路径和 soft_id 传递给上传模块
                         if self.uploader:
                             try:
-                                # 等待文件可用
-                                max_wait = 600
-                                wait_interval = 1
-                                elapsed = 0
-                                while elapsed < max_wait:
-                                    if self.is_file_available(file_path):
-                                        break
-                                    time.sleep(wait_interval)
-                                    elapsed += wait_interval
-                                    logging.info(f"等待文件可用: {file_path} ({elapsed}/{max_wait} 秒)")
-                                else:
-                                    logging.error(f"文件在 {max_wait} 秒内不可用: {file_path}")
-                                    if self.notifier:
-                                        self.notifier.notify(f"文件在 {max_wait} 秒内不可用，无法上传: {file_path}",
-                                                             is_error=True)
-                                    # 记录失败的任务
-                                    self.record_failed_task(url, title, soft_id, reason="文件在规定时间内不可用")
-                                    return
-
                                 self.uploader.add_upload_task(file_path, soft_id)
                                 logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
@@ -698,13 +680,14 @@ class XKW:
                         break
 
                     # 控制下载启动间隔，确保至少2秒
-                    current_time = time.time()
-                    elapsed = current_time - self.last_download_time
-                    if elapsed < 2:
-                        wait_time = 2 - elapsed
-                        logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
-                        time.sleep(wait_time)
-                    self.last_download_time = time.time()
+                    with self.download_lock:
+                        current_time = time.time()
+                        elapsed = current_time - self.last_download_time
+                        if elapsed < 2:
+                            wait_time = 2 - elapsed
+                            logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
+                            time.sleep(wait_time)
+                        self.last_download_time = time.time()
 
                     # 提交下载任务到线程池
                     future = executor.submit(self._download_task, url)
@@ -770,7 +753,8 @@ class XKW:
         参数:
         - url: 要下载的文件的 URL。
         """
-        self.task.put(url)
+        with self.lock:
+            self.task.put(url)
         logging.info(f"任务已添加到队列: {url}")
 
     def start(self):
@@ -880,9 +864,25 @@ class AutoDownloadManager:
 
                     # 当实例被禁用时，尝试使用其他账号重新登录并下载
                     if not self.active_xkw_instances:
-                        logging.warning("所有浏览器实例均不可用，向管理员发送报告。")
-                        if self.notifier:
-                            self.notifier.notify("所有浏览器实例均不可用，请检查账号状态或网络连接。", is_error=True)
+                        logging.warning("所有浏览器实例均不可用，尝试切换账号重新登录。")
+                        # 创建新的实例并尝试重新登录和下载
+                        new_instance = XKW(thread=xkw_instance.thread, work=True,
+                                           download_dir=xkw_instance.co.download_path,
+                                           uploader=self.uploader, notifier=self.notifier, co=xkw_instance.co,
+                                           manager=self, id=xkw_instance.id + '_retry', accounts=xkw_instance.accounts)
+
+                        # 将新实例添加到实例列表
+                        self.xkw_instances.append(new_instance)
+                        self.active_xkw_instances.append(new_instance)
+
+                        # 尝试重新登录
+                        if new_instance.login(new_instance.page):
+                            logging.info(f"实例 {new_instance.id} 使用新账号登录成功。")
+
+                        else:
+                            logging.error("所有账号均无法登录，向管理员发送报告。")
+                            if self.notifier:
+                                self.notifier.notify("所有账号均无法登录，请检查账号状态。", is_error=True)
         except AttributeError as e:
             logging.error(f"禁用实例时发生 AttributeError: {e}", exc_info=True)
             if self.notifier:
