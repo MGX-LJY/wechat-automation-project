@@ -767,9 +767,7 @@ class AutoDownloadManager:
         # 为每个实例提供不同的账号列表
         accounts_xkw1 = [
             {'username': '19061531853', 'password': '428199Li@'},
-            {'username': '19568101843', 'password': '428199Li@'},
             {'username': '13343297668', 'password': '428199Li@'},
-            {'username': '15512733826', 'password': '428199Li@'},
             {'username': '19536946597', 'password': '428199Li@'},
             {'username': '19563630322', 'password': '428199Li@'}
         ]
@@ -778,7 +776,6 @@ class AutoDownloadManager:
             {'username': '19358191853', 'password': '428199Li@'},
             {'username': '13143019361', 'password': '428199Li@'},
             {'username': '19316031853', 'password': '428199Li@'},
-            {'username': '18589186420', 'password': '428199Li@'}
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
