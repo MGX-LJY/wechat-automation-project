@@ -167,7 +167,7 @@ class XKW:
             download_dir = self.co.download_path
             logging.debug(f"下载目录: {download_dir}")
 
-            max_wait_time = 3600  # 最大等待时间（秒），即一个小时
+            max_wait_time = 1800  # 最大等待时间（秒）
             initial_wait = 60  # 初始等待时间（秒）
             initial_interval = 0.5  # 前60秒的重试间隔（秒）
             subsequent_interval = 5  # 后续的重试间隔（秒）
