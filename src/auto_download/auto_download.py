@@ -4,12 +4,12 @@ import queue
 import random
 import re
 import threading
-import ctypes
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Tuple
 
+import DrissionPage
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 
@@ -318,17 +318,19 @@ class XKW:
         - False: 未登录。
         """
         try:
-            # 尝试找到页面上的“登录”按钮或链接
             tab.get('https://www.zxxk.com')
-            time.sleep(20)
-            login_element = tab.ele('text:登录', timeout=5)
-            if login_element:
-                return False
-            else:
+            time.sleep(10)  # 确保页面加载完成
+            # 尝试找到“我的”元素或其他登录后特有的元素
+            my_element = tab.ele('text:我的', timeout=5)
+            if my_element:
                 return True
-        except:
-            # 如果发生异常，默认认为已登录
-            return True
+            else:
+                # 如果找不到“我的”元素，尝试查找登录按钮
+                login_element = tab.ele('text:登录', timeout=5)
+                return not bool(login_element)
+        except Exception as e:
+            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            return False
 
     def login(self, tab):
         """
@@ -338,9 +340,17 @@ class XKW:
         - tab: 浏览器标签页。
 
         返回:
-        - True: 登录成功。
+        - True: 登录成功或已登录。
         - False: 登录失败。
         """
+        try:
+            if self.is_logged_in(tab):
+                logging.info('当前账号已经登录，无需再次登录。')
+                return True
+        except Exception as e:
+            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            # 如果检查登录状态时出错，继续尝试登录
+
         max_retries = 3
         retries = 0
         while retries < max_retries:
@@ -355,6 +365,16 @@ class XKW:
 
                 # 点击“账户密码/验证码登录”按钮
                 login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
+                if not login_switch_button:
+                    logging.warning("没有找到“账户密码/验证码登录”按钮，可能已经登录。")
+                    if self.is_logged_in(tab):
+                        logging.info('登录状态已确认。')
+                        return True
+                    else:
+                        logging.error("无法找到登录按钮且未检测到登录状态。")
+                        retries += 1
+                        self.switch_account()
+                        continue
                 login_switch_button.click()
                 logging.info('点击“账户密码/验证码登录”按钮成功。')
                 time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
@@ -393,11 +413,25 @@ class XKW:
                     logging.warning(f'账号 {username} 登录失败。')
                     retries += 1
                     self.switch_account()
+            except DrissionPage.errors.ElementNotFoundError as e:
+                logging.error(f'登录过程中出现错误：{e}')
+                # 检查是否已登录
+                if self.is_logged_in(tab):
+                    logging.info('检测到已经登录，跳过登录步骤。')
+                    return True
+                retries += 1
+                self.switch_account()
             except Exception as e:
                 logging.error(f'登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
                 self.switch_account()
-        # 如果重试次数用尽，返回 False
+        # 如果重试次数用尽，发送通知并返回 False
+        account = self.accounts[self.current_account_index]
+        username = account['username']
+        error_message = f"所有登录尝试失败，账号 {username} 无法登录。请检查账号状态或登录流程。"
+        logging.error(error_message)
+        if self.notifier:
+            self.notifier.notify(error_message, is_error=True)
         return False
 
     def logout(self, tab):
@@ -456,6 +490,16 @@ class XKW:
             return False
 
     def listener(self, tab, download, url, title, soft_id):
+        """
+        监听下载过程，处理下载逻辑和异常情况。
+
+        参数:
+        - tab: 浏览器标签页。
+        - download: 下载按钮元素。
+        - url: 下载页面的 URL。
+        - title: 文件标题。
+        - soft_id: 文件的 soft_id。
+        """
         success = False
         try:
             logging.info(f"开始下载 {url}")
@@ -484,26 +528,12 @@ class XKW:
                         if self.uploader:
                             try:
                                 # 等待文件可用
-                                max_wait = 600  # 最长等待时间（秒）
-                                wait_interval = 1  # 每次等待的间隔（秒）
+                                max_wait = 600
+                                wait_interval = 1
                                 elapsed = 0
                                 while elapsed < max_wait:
-                                    try:
-                                        # 尝试以独占模式打开文件
-                                        handle = ctypes.windll.kernel32.CreateFileW(
-                                            file_path,
-                                            0,  # 只打开，不读写
-                                            0,  # 不共享
-                                            None,
-                                            3,  # 打开现有文件
-                                            0,
-                                            None
-                                        )
-                                        if handle != -1:
-                                            ctypes.windll.kernel32.CloseHandle(handle)
-                                            break  # 文件可用
-                                    except Exception:
-                                        pass
+                                    if self.is_file_available(file_path):
+                                        break
                                     time.sleep(wait_interval)
                                     elapsed += wait_interval
                                     logging.info(f"等待文件可用: {file_path} ({elapsed}/{max_wait} 秒)")
@@ -512,9 +542,8 @@ class XKW:
                                     if self.notifier:
                                         self.notifier.notify(f"文件在 {max_wait} 秒内不可用，无法上传: {file_path}",
                                                              is_error=True)
-                                    return  # 放弃上传
+                                    return
 
-                                # 文件可用，继续添加上传任务
                                 self.uploader.add_upload_task(file_path, soft_id)
                                 logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
@@ -530,6 +559,8 @@ class XKW:
                         return  # 下载成功，退出方法
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
+                        # 不进行重试，直接处理为失败
+                        logging.warning(f"下载失败: {url}")
                         break
                 else:
                     # 未捕获到下载链接，处理特殊情况
@@ -561,6 +592,14 @@ class XKW:
                     logging.error(f"没有可用的浏览器实例来重试下载：{url}")
                     if self.notifier:
                         self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
+
+    def is_file_available(self, file_path: str) -> bool:
+        """检查文件是否可用（未被其他进程占用）。"""
+        try:
+            with open(file_path, 'rb'):
+                return True
+        except OSError:
+            return False
 
     def handle_login_status(self, tab):
         """
