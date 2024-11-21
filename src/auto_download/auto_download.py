@@ -306,19 +306,39 @@ class XKW:
         - False: 未登录。
         """
         try:
-            # 尝试找到页面上的“登录”按钮或链接
+            results = []
+            for _ in range(2):
+                result = self._check_login_status(tab)
+                results.append(result)
+                time.sleep(1)  # 可选：增加一点延迟
+            if results[0] == results[1]:
+                return results[0]
+            else:
+                # 如果前两次结果不一致，进行第三次检查
+                result = self._check_login_status(tab)
+                results.append(result)
+                # 返回出现次数最多的结果
+                return max(set(results), key=results.count)
+        except Exception as e:
+            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            return False
+
+    def _check_login_status(self, tab):
+        """实际执行一次登录状态检查"""
+        try:
+            # 访问主页以检查登录状态
             tab.get('https://www.zxxk.com')
             time.sleep(10)  # 确保页面加载完成
-            # 尝试找到“我的”元素或其他登录后特有的元素
+            # 尝试找到“我的”元素，登录后该元素应存在
             my_element = tab.ele('text:我的', timeout=5)
             if my_element:
                 return True
             else:
-                # 如果找不到“我的”元素，尝试查找登录按钮
+                # 如果找不到“我的”元素，尝试查找“登录”按钮，未登录时应存在
                 login_element = tab.ele('text:登录', timeout=5)
                 return not bool(login_element)
         except Exception as e:
-            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            logging.error(f"执行登录状态检查时出错: {e}", exc_info=True)
             return False
 
     def login(self, tab):
@@ -326,14 +346,6 @@ class XKW:
         执行登录操作，使用当前账号索引的账号。
         如果所有账号均无法登录，返回 False。
         """
-        try:
-            if self.is_logged_in(tab):
-                logging.info('当前账号已经登录，无需再次登录。')
-                return True
-        except Exception as e:
-            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
-            # 如果检查登录状态时出错，继续尝试登录
-
         max_retries = len(self.accounts)  # 确保尝试所有账号
         retries = 0
         while retries < max_retries:
@@ -348,19 +360,10 @@ class XKW:
 
                 # 点击“账户密码/验证码登录”按钮
                 login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
-                if not login_switch_button:
-                    logging.warning("没有找到“账户密码/验证码登录”按钮，可能已经登录。")
-                    if self.is_logged_in(tab):
-                        logging.info('登录状态已确认。')
-                        return True
-                    else:
-                        logging.error("无法找到登录按钮且未检测到登录状态。")
-                        retries += 1
-                        self.switch_account()
-                        continue
-                login_switch_button.click()
-                logging.info('点击“账户密码/验证码登录”按钮成功。')
-                time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
+                if login_switch_button:
+                    login_switch_button.click()
+                    logging.info('点击“账户密码/验证码登录”按钮成功。')
+                    time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
 
                 # 获取用户名和密码输入框
                 username_field = tab.ele('#username', timeout=10)
@@ -388,53 +391,19 @@ class XKW:
                 logging.info('点击登录按钮成功。')
                 time.sleep(random.uniform(1, 2))  # 等待登录结果
 
-                # 检查是否登录成功
-                if self.is_logged_in(tab):
-                    logging.info(f'账号 {username} 登录成功。')
-                    return True
-                else:
-                    logging.warning(f'账号 {username} 登录失败。')
-                    retries += 1
-                    self.switch_account()
+                # 在登录成功后，不切换账号，直接返回
+                logging.info(f'账号 {username} 登录成功。')
+                return True
             except Exception as e:
                 logging.error(f'登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
-                self.switch_account()
+                self.handle_login_status(tab)
 
         # 如果重试次数用尽，发送通知并返回 False
         logging.error("所有登录尝试失败，无法登录。")
         if self.notifier:
             self.notifier.notify("所有登录尝试失败，无法登录。请检查账号状态或登录流程。", is_error=True)
         return False
-
-    def logout(self, tab):
-        """
-        执行退出操作。
-
-        参数:
-        - tab: 浏览器标签页。
-        """
-        tab.get('https://www.zxxk.com')
-        if not self.is_logged_in(tab):
-            logging.info('当前未登录，无需执行退出操作。')
-            return
-            # 等待 '我的' 元素出现并将鼠标移动到其上方
-        my_element = tab.ele('text:我的', timeout=10)
-        my_element.hover()
-        time.sleep(1)  # 等待下拉菜单显示
-
-        # 等待 '退出' 元素出现并点击
-        logout_element = tab.ele('text:退出', timeout=10)
-        logout_element.click()
-        logging.info('退出成功。')
-
-    def switch_account(self):
-        """
-        切换到下一个账号。
-        """
-        self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-        account = self.accounts[self.current_account_index]
-        logging.info(f'切换到账号：{account["username"]}')
 
     def listener(self, tab, download, url, title, soft_id):
         success = False
@@ -524,27 +493,69 @@ class XKW:
 
     def handle_login_status(self, tab):
         """
-        检查登录状态并根据情况进行登录或退出切换账号。
+        检查登录状态并根据情况进行登录或切换账号。
         如果所有账号都无法登录，则禁用实例并通知管理员。
         """
-        if not self.is_logged_in(tab):
-            logging.info('未登录，开始登录。')
-            if not self.login(tab):
-                logging.error('登录失败，所有账号均无法登录。需要管理员介入。')
-                if self.manager:
-                    self.manager.disable_xkw_instance(self)
-                if self.notifier:
-                    self.notifier.notify("所有账号均无法登录，请管理员检查账号状态或登录流程。", is_error=True)
-        else:
-            logging.info('已登录，执行退出并切换账号。')
-            self.logout(tab)
-            self.switch_account()
-            if not self.login(tab):
-                logging.error('切换账号后登录失败，所有账号均无法登录。需要管理员介入。')
-                if self.manager:
-                    self.manager.disable_xkw_instance(self)
-                if self.notifier:
-                    self.notifier.notify("切换账号后所有账号均无法登录，请管理员检查账号状态或登录流程。", is_error=True)
+        try:
+            if self.is_logged_in(tab):
+                logging.info('已登录，执行退出并切换账号。')
+                # 执行退出操作
+                tab.get('https://www.zxxk.com')
+                time.sleep(2)  # 等待页面加载完成
+
+                # 尝试找到“我的”元素并悬停
+                my_element = tab.ele('text:我的', timeout=10)
+                if my_element:
+                    my_element.hover()
+                    time.sleep(1)  # 等待下拉菜单显示
+
+                    # 尝试找到“退出”按钮并点击
+                    logout_element = tab.ele('text:退出', timeout=10)
+                    if logout_element:
+                        logout_element.click()
+                        logging.info('退出成功。')
+                        time.sleep(2)  # 等待退出操作完成
+                    else:
+                        logging.warning('未找到“退出”按钮，可能已被登出。')
+                else:
+                    logging.warning('未找到“我的”元素，可能已被登出。')
+
+                # 切换到下一个账号
+                self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
+                account = self.accounts[self.current_account_index]
+                logging.info(f'切换到账号：{account["username"]}')
+            else:
+                logging.info('未登录，开始尝试登录。')
+
+            # 尝试使用新账号登录
+            max_retries = len(self.accounts)
+            retries = 0
+            while retries < max_retries:
+                account = self.accounts[self.current_account_index]
+                username = account['username']
+                password = account['password']
+                if self.login(tab):
+                    logging.info(f'账号 {username} 登录成功。')
+                    return
+                else:
+                    logging.warning(f'账号 {username} 登录失败，尝试下一个账号。')
+                    retries += 1
+                    # 切换到下一个账号
+                    self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
+                    account = self.accounts[self.current_account_index]
+                    logging.info(f'切换到账号：{account["username"]}')
+            # 如果所有账号均无法登录
+            logging.error('所有账号均无法登录，禁用实例并通知管理员。')
+            if self.manager:
+                self.manager.disable_xkw_instance(self)
+            if self.notifier:
+                self.notifier.notify("所有账号均无法登录，请管理员检查账号状态或登录流程。", is_error=True)
+        except Exception as e:
+            logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
+            if self.manager:
+                self.manager.disable_xkw_instance(self)
+            if self.notifier:
+                self.notifier.notify(f"处理登录状态时发生错误：{e}", is_error=True)
 
     def switch_browser_and_retry(self, url):
         """
