@@ -239,6 +239,13 @@ class XKW:
         try:
             # 尝试加载页面
             tab.get(url)
+
+            # 等待页面进入加载状态
+            tab.wait.load_start(timeout=10)
+
+            # 等待页面文档加载完成
+            tab.wait.doc_loaded(timeout=30)
+
             # 停止页面加载以加快速度
             tab.stop_loading()
 
@@ -602,6 +609,10 @@ class XKW:
             time.sleep(pre_download_delay)
 
             tab.get(url)
+
+            # 等待页面加载完成
+            tab.wait.load_start(timeout=10)
+            tab.wait.doc_loaded(timeout=30)
 
             soft_id, title = self.extract_id_and_title(tab, url)
             if not soft_id or not title:
