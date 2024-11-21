@@ -658,7 +658,7 @@ class XKW:
                         self.last_download_time = time.time()
 
                     try:
-                        tab = self.tabs.get(timeout=30)  # 获取一个标签页，设置超时避免阻塞
+                        tab = self.tabs.get(timeout=180)  # 获取一个标签页，设置超时避免阻塞
                         logging.info(f"获取到一个标签页用于下载: {tab}")
                     except queue.Empty:
                         logging.error("获取标签页超时，无法执行下载任务。")
