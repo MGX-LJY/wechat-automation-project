@@ -71,7 +71,6 @@ class XKW:
         self.last_download_time = 0  # 记录上一次下载任务启动的时间
         self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
         self.manager = manager  # 保存 AutoDownloadManager 实例
-        self.consecutive_failures = 0  # 记录连续失败次数
         self.is_active = True  # 标记实例是否可用
         self.lock = threading.Lock()  # 线程锁
 
@@ -295,21 +294,6 @@ class XKW:
                 self.notifier.notify(f"提取 ID 和标题时出错: {e}", is_error=True)
             return None, None
 
-    def increment_failure_count(self):
-        """
-        增加连续失败计数器，如果达到上限则禁用实例。
-        """
-        with self.lock:
-            self.consecutive_failures += 1
-            logging.warning(f"实例 {self.id} 的连续失败次数增加到 {self.consecutive_failures}。")
-            if self.consecutive_failures >= 3:
-                self.is_active = False
-                logging.error(f"实例 {self.id} 已达到最大连续失败次数，标记为不可用。")
-                if self.manager:
-                    self.manager.disable_xkw_instance(self)
-                if self.notifier:
-                    self.notifier.notify(f"实例 {self.id} 已被禁用，因连续三次下载失败。", is_error=True)
-
     def is_logged_in(self, tab):
         """
         检查当前是否已登录。
@@ -340,13 +324,7 @@ class XKW:
     def login(self, tab):
         """
         执行登录操作，使用当前账号索引的账号。
-
-        参数:
-        - tab: 浏览器标签页。
-
-        返回:
-        - True: 登录成功或已登录。
-        - False: 登录失败。
+        如果所有账号均无法登录，返回 False。
         """
         try:
             if self.is_logged_in(tab):
@@ -356,7 +334,7 @@ class XKW:
             logging.error(f"检查登录状态时出错: {e}", exc_info=True)
             # 如果检查登录状态时出错，继续尝试登录
 
-        max_retries = 3
+        max_retries = len(self.accounts)  # 确保尝试所有账号
         retries = 0
         while retries < max_retries:
             account = self.accounts[self.current_account_index]
@@ -418,24 +396,15 @@ class XKW:
                     logging.warning(f'账号 {username} 登录失败。')
                     retries += 1
                     self.switch_account()
-                logging.error(f'登录过程中出现错误：{e}')
-                # 检查是否已登录
-                if self.is_logged_in(tab):
-                    logging.info('检测到已经登录，跳过登录步骤。')
-                    return True
-                retries += 1
-                self.switch_account()
             except Exception as e:
                 logging.error(f'登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
                 self.switch_account()
+
         # 如果重试次数用尽，发送通知并返回 False
-        account = self.accounts[self.current_account_index]
-        username = account['username']
-        error_message = f"所有登录尝试失败，账号 {username} 无法登录。请检查账号状态或登录流程。"
-        logging.error(error_message)
+        logging.error("所有登录尝试失败，无法登录。")
         if self.notifier:
-            self.notifier.notify(error_message, is_error=True)
+            self.notifier.notify("所有登录尝试失败，无法登录。请检查账号状态或登录流程。", is_error=True)
         return False
 
     def logout(self, tab):
@@ -467,47 +436,20 @@ class XKW:
         account = self.accounts[self.current_account_index]
         logging.info(f'切换到账号：{account["username"]}')
 
-    def run_download(self, url):
-        """
-        尝试执行下载操作。
-
-        参数:
-        - url: 要下载的文件的 URL。
-
-        返回:
-        - True: 下载成功。
-        - False: 下载失败。
-        """
-        try:
-            tab = self.tabs.get(timeout=30)  # 获取一个标签页，设置超时避免阻塞
-            logging.info(f"获取到一个标签页用于下载: {tab}")
-
-            self.download(url, tab)
-            self.tabs.put(tab)
-            return True
-        except Exception as e:
-            logging.error(f"运行下载过程中出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"运行下载过程中出错: {e}", is_error=True)
-            if 'tab' in locals():
-                self.tabs.put(tab)
-            return False
-
     def listener(self, tab, download, url, title, soft_id):
         success = False
         try:
             logging.info(f"开始下载 {url}")
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
+
             # 监听下载链接
             while True:
                 for item in tab.listen.steps(timeout=10):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
-                        # 捕获到下载链接
                         tab.listen.stop()
                         tab.stop_loading()
                         logging.info(f"下载链接获取成功: {item.url}")
-                        self.consecutive_failures = 0  # 重置失败计数
                         logging.info(f"下载成功，开始处理上传任务: {url}")
 
                         # 匹配下载的文件
@@ -518,7 +460,7 @@ class XKW:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
                             return
 
-                        # 将文件路径和 soft_id 传递给上传模块
+                        # 处理上传任务
                         if self.uploader:
                             try:
                                 self.uploader.add_upload_task(file_path, soft_id)
@@ -534,11 +476,13 @@ class XKW:
                         self.reset_tab(tab)
                         success = True
                         return  # 下载成功，退出方法
+
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
-                        break
+                        break  # 跳出内部循环，继续监听
+
                 else:
-                    # 未捕获到下载链接，处理特殊情况
+                    # 如果没有捕获到下载链接，处理特殊情况
                     time.sleep(0.5)
                     iframe = tab.get_frame('#layui-layer-iframe100002')
                     if iframe:
@@ -546,45 +490,61 @@ class XKW:
                         if a:
                             a.click()
                             logging.info("点击确认按钮成功。")
-                            continue
+                            continue  # 继续监听
                     logging.warning(f"下载失败: {url}")
                     break  # 退出监听循环
-            # 如果执行到这里，说明下载失败
+
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+
         finally:
             if not success:
-                # 增加失败计数并尝试在其他浏览器实例中下载
-                self.increment_failure_count()
-                # 检查登录状态并处理
-                self.handle_login_status(tab)
+                # 1. 禁用当前的 XKW 实例
+                self.manager.disable_xkw_instance(self)
+
+                # 2. 分别执行切换实例重试下载和处理登录状态
+                # 使用独立的线程以避免阻塞当前线程
+                retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
+                handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
+
+                retry_thread.start()
+                handle_login_thread.start()
+
+                # 不等待线程完成，确保主线程可以继续处理其他任务
+
+                # 3. 重置标签页并将其放回队列
                 self.reset_tab(tab)
-                self.tabs.put(tab)  # 释放当前标签页
-                switched = self.switch_browser_and_retry(url)
-                if not switched:
-                    logging.error(f"没有可用的浏览器实例来重试下载：{url}")
-                    if self.notifier:
-                        self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
+                self.tabs.put(tab)
+
+                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例或处理登录状态。URL: {url}")
+                if self.notifier:
+                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例或处理登录状态。URL: {url}", is_error=True)
 
     def handle_login_status(self, tab):
         """
         检查登录状态并根据情况进行登录或退出切换账号。
-
-        参数:
-        - tab: 浏览器标签页。
+        如果所有账号都无法登录，则禁用实例并通知管理员。
         """
         if not self.is_logged_in(tab):
             logging.info('未登录，开始登录。')
             if not self.login(tab):
-                logging.error('登录失败，无法继续。')
+                logging.error('登录失败，所有账号均无法登录。需要管理员介入。')
+                if self.manager:
+                    self.manager.disable_xkw_instance(self)
+                if self.notifier:
+                    self.notifier.notify("所有账号均无法登录，请管理员检查账号状态或登录流程。", is_error=True)
         else:
             logging.info('已登录，执行退出并切换账号。')
             self.logout(tab)
             self.switch_account()
             if not self.login(tab):
-                logging.error('切换账号后登录失败。')
+                logging.error('切换账号后登录失败，所有账号均无法登录。需要管理员介入。')
+                if self.manager:
+                    self.manager.disable_xkw_instance(self)
+                if self.notifier:
+                    self.notifier.notify("切换账号后所有账号均无法登录，请管理员检查账号状态或登录流程。", is_error=True)
 
     def switch_browser_and_retry(self, url):
         """
@@ -658,6 +618,10 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
             self.reset_tab(tab)
+        finally:
+            # 无论成功与否，都重置标签页并放回队列
+            self.reset_tab(tab)
+            self.tabs.put(tab)
 
     def run(self):
         """
@@ -682,8 +646,17 @@ class XKW:
                             time.sleep(wait_time)
                         self.last_download_time = time.time()
 
+                    try:
+                        tab = self.tabs.get(timeout=30)  # 获取一个标签页，设置超时避免阻塞
+                        logging.info(f"获取到一个标签页用于下载: {tab}")
+                    except queue.Empty:
+                        logging.error("获取标签页超时，无法执行下载任务。")
+                        if self.notifier:
+                            self.notifier.notify("获取标签页超时，无法执行下载任务。", is_error=True)
+                        continue
+
                     # 提交下载任务到线程池
-                    future = executor.submit(self.run_download, url)
+                    future = executor.submit(self.download, url, tab)
                     futures.append(future)
                     logging.info(f"已提交下载任务到线程池: {url}")
 
@@ -723,7 +696,6 @@ class XKW:
         with self.lock:
             if not self.work:
                 self.work = True
-                self.consecutive_failures = 0  # 重置失败计数
                 self.manager_thread = threading.Thread(target=self.run, daemon=True)
                 self.manager_thread.start()
                 logging.info(f"XKW manager 线程已重新启动，实例 ID: {self.id}")
@@ -820,28 +792,6 @@ class AutoDownloadManager:
                     logging.info(f"实例 {xkw_instance.id} 已从活跃列表中移除。")
                     if self.notifier:
                         self.notifier.notify(f"实例 {xkw_instance.id} 已被禁用。", is_error=True)
-
-                    # 当实例被禁用时，尝试使用其他账号重新登录并下载
-                    if not self.active_xkw_instances:
-                        logging.warning("所有浏览器实例均不可用，尝试切换账号重新登录。")
-                        # 创建新的实例并尝试重新登录和下载
-                        new_instance = XKW(thread=xkw_instance.thread, work=True,
-                                           download_dir=xkw_instance.co.download_path,
-                                           uploader=self.uploader, notifier=self.notifier, co=xkw_instance.co,
-                                           manager=self, id=xkw_instance.id + '_retry', accounts=xkw_instance.accounts)
-
-                        # 将新实例添加到实例列表
-                        self.xkw_instances.append(new_instance)
-                        self.active_xkw_instances.append(new_instance)
-
-                        # 尝试重新登录
-                        if new_instance.login(new_instance.page):
-                            logging.info(f"实例 {new_instance.id} 使用新账号登录成功。")
-
-                        else:
-                            logging.error("所有账号均无法登录，向管理员发送报告。")
-                            if self.notifier:
-                                self.notifier.notify("所有账号均无法登录，请检查账号状态。", is_error=True)
         except AttributeError as e:
             logging.error(f"禁用实例时发生 AttributeError: {e}", exc_info=True)
             if self.notifier:
