@@ -659,7 +659,7 @@ class XKW:
                 else:
                     logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
                 self.reset_tab(tab)
-                return
+                return  # 明确返回，确保不调用 listener
 
             download_button = tab("#btnSoftDownload")  # 获取下载按钮
             if not download_button:

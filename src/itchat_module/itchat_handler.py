@@ -422,7 +422,7 @@ class MessageHandler:
         return valid_urls
 
     def clean_url(self, url: str) -> str:
-        """清理URL，移除锚点和不必要的字符"""
+        """清理URL，移除锚点和不必要的字符和文字"""
         parsed = urlparse(url)
         # 移除 fragment（#后面的部分）
         clean = parsed._replace(fragment='')
