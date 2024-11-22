@@ -13,8 +13,6 @@ from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
 
 from src.notification.notifier import Notifier
-from collections import namedtuple
-DownloadTask = namedtuple('DownloadTask', ['url', 'retry_count'])
 
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
@@ -415,84 +413,64 @@ class XKW:
             self.notifier.notify("所有登录尝试失败，无法登录。请检查账号状态或登录流程。", is_error=True)
         return False
 
-    def listener(self, tab, download, url, title, soft_id, retry_count):
-        """
-        监听下载过程，处理下载链接并进行上传任务。
-        增加重试机制，防止因请求频繁导致的下载失败。
-        """
-        MAX_RETRIES = self.manager.MAX_RETRIES  # 使用管理器定义的最大重试次数
-        RETRY_DELAY_BASE = 2  # 重试基数延迟（秒）
+    def listener(self, tab, download, url, title, soft_id):
         success = False
-
         try:
             logging.info(f"开始下载 {url}")
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
+            # 监听下载链接
             while True:
-                try:
-                    for item in tab.listen.steps(timeout=10):
-                        if item.url.startswith("https://files.zxxk.com/?mkey="):
-                            tab.listen.stop()
-                            tab.stop_loading()
-                            logging.info(f"下载链接获取成功: {item.url}")
-                            logging.info(f"下载成功，开始处理上传任务: {url}")
+                for item in tab.listen.steps(timeout=10):
+                    if item.url.startswith("https://files.zxxk.com/?mkey="):
+                        tab.listen.stop()
+                        tab.stop_loading()
+                        logging.info(f"下载链接获取成功: {item.url}")
+                        logging.info(f"下载成功，开始处理上传任务: {url}")
 
-                            # 匹配下载的文件
-                            file_path = self.match_downloaded_file(title)
-                            if not file_path:
-                                logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
+                        # 匹配下载的文件
+                        file_path = self.match_downloaded_file(title)
+                        if not file_path:
+                            logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
+                            if self.notifier:
+                                self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
+                            return True  # 返回 True，表示任务处理完毕
+
+                        # 处理上传任务
+                        if self.uploader:
+                            try:
+                                self.uploader.add_upload_task(file_path, soft_id)
+                                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                            except Exception as e:
+                                logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
                                 if self.notifier:
-                                    self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                                return True  # 任务已处理，尽管未成功
+                                    self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+                        else:
+                            logging.warning("Uploader 未设置，无法传递上传任务。")
 
-                            # 处理上传任务
-                            if self.uploader:
-                                try:
-                                    self.uploader.add_upload_task(file_path, soft_id)
-                                    logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                                except Exception as e:
-                                    logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
-                                    if self.notifier:
-                                        self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
-                            else:
-                                logging.warning("Uploader 未设置，无法传递上传任务。")
+                        # 重置标签页
+                        self.reset_tab(tab)
+                        success = True
+                        return True  # 下载成功，返回 True
 
-                            # 重置标签页
-                            self.reset_tab(tab)
-                            success = True
-                            return True  # 下载成功，返回 True
+                    elif "20600001" in item.url:
+                        logging.warning("请求过于频繁，直接跳过该链接。")
+                        # 直接跳过链接，不报错，也不发送通知
+                        return True  # 返回 False，表示下载失败或跳过
 
-                        elif "20600001" in item.url:
-                            logging.warning("请求过于频繁，准备进行重试。")
-                            raise FrequencyError("请求过于频繁")
-
-                    else:
-                        # 如果没有捕获到下载链接，处理特殊情况
-                        time.sleep(0.5)
-                        iframe = tab.get_frame('#layui-layer-iframe100002')
-                        if iframe:
-                            a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                            if a:
-                                a.click()
-                                logging.info("点击确认按钮成功。")
-                                continue  # 继续监听
-                        logging.warning(f"下载失败: {url}")
-                        break  # 退出监听循环
-
-                except FrequencyError as fe:
-                    if retry_count >= MAX_RETRIES:
-                        logging.error(f"达到最大重试次数 ({MAX_RETRIES})，停止下载并处理失败。URL: {url}")
-                        break  # 跳出重试循环，进入失败处理
-
-                    retry_count += 1
-                    delay = RETRY_DELAY_BASE ** retry_count  # 指数退避
-                    logging.warning(f"请求过于频繁，等待 {delay} 秒后重试。重试次数: {retry_count}/{MAX_RETRIES}")
-                    if self.notifier:
-                        self.notifier.notify(
-                            f"请求过于频繁，等待 {delay} 秒后重试。重试次数: {retry_count}/{MAX_RETRIES}", is_error=True)
-                    time.sleep(delay)
-                    download.click(by_js=True)  # 再次点击下载按钮
+                else:
+                    # 如果没有捕获到下载链接，处理特殊情况
+                    time.sleep(0.5)
+                    iframe = tab.get_frame('#layui-layer-iframe100002')
+                    if iframe:
+                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                        if a:
+                            a.click()
+                            logging.info("点击确认按钮成功。")
+                            continue  # 继续监听
+                    logging.warning(f"下载失败: {url}")
+                    break  # 退出监听循环
 
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
@@ -501,35 +479,29 @@ class XKW:
 
         finally:
             if not success:
-                if retry_count < MAX_RETRIES:
-                    # 将任务重新加入队列以进行重试
-                    logging.info(f"将任务重新加入队列以进行重试: {url} (重试次数: {retry_count})")
-                    self.manager.add_task(url, retry_count)
-                else:
-                    # 达到最大重试次数，禁用实例并处理失败
-                    logging.error("达到最大重试次数，禁用实例并处理失败。")
-                    self.manager.disable_xkw_instance(self)
+                # 1. 禁用当前的 XKW 实例
+                self.manager.disable_xkw_instance(self)
 
-                    # 检查是否有其他可用的实例
-                    available_xkw_instances = self.manager.get_available_xkw_instances(self)
-                    if not available_xkw_instances:
-                        logging.error("没有可用的 XKW 实例进行重试。")
-                        if self.notifier:
-                            self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
-                        # 直接将任务添加到 pending_tasks 队列，并暂停任务分配
-                        self.manager.add_task(url, retry_count)
-                        return False
+                # 2. 检查是否有其他可用的实例
+                available_xkw_instances = self.manager.get_available_xkw_instances(self)
+                if not available_xkw_instances:
+                    logging.error("没有可用的 XKW 实例进行重试。")
+                    if self.notifier:
+                        self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
+                    # 直接将任务添加到 pending_tasks 队列，并暂停任务分配
+                    self.manager.add_task(url)
+                    # 不再继续后续处理，直接返回
+                    return False
 
-                    # 确保 handle_login_status 只被调用一次
-                    if not self.is_handling_login:
-                        self.is_handling_login = True
-                        # 分别执行切换实例重试下载和处理登录状态
-                        retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,),
-                                                               daemon=True)
+                # 3. 确保 handle_login_status 只被调用一次
+                if not self.is_handling_login:
+                    self.is_handling_login = True
+                    # 分别执行切换实例重试下载和处理登录状态
+                    retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
+                    handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
 
-                        retry_thread.start()
-                        handle_login_thread.start()
+                    retry_thread.start()
+                    handle_login_thread.start()
 
                 # 重置标签页并将其放回队列
                 self.reset_tab(tab)
@@ -539,8 +511,8 @@ class XKW:
                 if self.notifier:
                     self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}",
                                          is_error=True)
-            # 返回下载结果
-            return success
+        # 返回下载结果
+        return success
 
     def handle_login_status(self, tab):
         """
@@ -639,20 +611,23 @@ class XKW:
                 )
             self.is_handling_login = False  # 重置标志位
 
-    def switch_browser_and_retry(self, url, retry_count):
+    def switch_browser_and_retry(self, url):
         """
         切换到另一个浏览器实例重新尝试下载。
 
         参数:
         - url: 需要重新下载的 URL。
-        - retry_count: 当前的重试次数。
+
+        返回:
+        - True: 如果成功切换并重新添加任务。
+        - False: 如果没有可用的实例。
         """
         try:
             available_xkw_instances = self.manager.get_available_xkw_instances(self)
             if available_xkw_instances:
                 xkw_instance = random.choice(available_xkw_instances)
                 logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance.id}")
-                xkw_instance.add_task(url, retry_count)
+                xkw_instance.add_task(url)
                 return True
             else:
                 logging.error("没有可用的 XKW 实例进行重试。")
@@ -665,9 +640,9 @@ class XKW:
                 self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
             return False
 
-    def download(self, url, tab, retry_count):
+    def download(self, url, tab):
         try:
-            logging.info(f"准备下载 URL: {url} (重试次数: {retry_count})")
+            logging.info(f"准备下载 URL: {url}")
             # 增加随机延迟，模拟人类等待页面加载
             pre_download_delay = random.uniform(0.5, 1)
             logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
@@ -699,7 +674,7 @@ class XKW:
             click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
             logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
             time.sleep(click_delay)
-            self.listener(tab, download_button, url, title, soft_id, retry_count)
+            self.listener(tab, download_button, url, title, soft_id)
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
@@ -718,8 +693,8 @@ class XKW:
             futures = []
             while self.work:
                 try:
-                    task = self.task.get(timeout=5)  # 获取新任务
-                    if task is None:
+                    url = self.task.get(timeout=5)  # 获取新任务
+                    if url is None:
                         logging.info("接收到退出信号，停止下载管理。")
                         break
 
@@ -743,9 +718,9 @@ class XKW:
                         continue
 
                     # 提交下载任务到线程池
-                    future = executor.submit(self.download, task.url, tab, task.retry_count)
+                    future = executor.submit(self.download, url, tab)
                     futures.append(future)
-                    logging.info(f"已提交下载任务到线程池: {task.url} (重试次数: {task.retry_count})")
+                    logging.info(f"已提交下载任务到线程池: {url}")
 
                     # 增加随机间隔，模拟任务分发的不规则性
                     task_dispatch_delay = random.uniform(0.1, 0.5)
@@ -767,17 +742,16 @@ class XKW:
                     if self.notifier:
                         self.notifier.notify(f"下载任务中出现未捕获的异常: {e}", is_error=True)
 
-    def add_task(self, url: str, retry_count: int = 0):
+    def add_task(self, url: str):
         """
-        向任务队列添加一个下载任务，包含 URL 和当前重试次数。
+        向任务队列添加一个下载任务。
 
         参数:
         - url: 要下载的文件的 URL。
-        - retry_count: 当前的重试次数。
         """
         with self.lock:
-            self.task.put((url, retry_count))
-        logging.info(f"任务已添加到队列: {url} (重试次数: {retry_count})")
+            self.task.put(url)
+        logging.info(f"任务已添加到队列: {url}")
 
     def start(self):
         """启动或重新启动 XKW 实例的运行线程。"""
@@ -808,7 +782,6 @@ class AutoDownloadManager:
     """
     自动下载管理器，管理多个 XKW 实例，协调下载任务的分配和实例的状态。
     """
-    MAX_RETRIES = 3  # 设置最大重试次数
 
     def __init__(self, uploader=None, notifier_config=None):
         """
@@ -907,30 +880,29 @@ class AutoDownloadManager:
         """
         return [xkw for xkw in self.active_xkw_instances if xkw != current_instance]
 
-    def add_task(self, url: str, retry_count: int = 0):
+    def add_task(self, url: str):
         """
-        添加一个下载任务到队列，包含 URL 和当前重试次数。
+        添加单个 URL 到下载任务队列。
 
         参数:
         - url: 要下载的文件的 URL。
-        - retry_count: 当前的重试次数。
         """
         try:
-            logging.info(f"准备添加 URL 到下载任务队列: {url} (重试次数: {retry_count})")
+            logging.info(f"准备添加 URL 到下载任务队列: {url}")
             with self.xkw_lock:
                 if self.paused or not self.active_xkw_instances:
                     # 如果任务分配已暂停或没有活跃实例，将任务添加到 pending_tasks 队列
-                    self.pending_tasks.put(DownloadTask(url, retry_count))
+                    self.pending_tasks.put(url)
                     logging.info(f"任务分配已暂停或无活跃实例，任务已添加到 pending_tasks 队列：{url}")
                     if self.notifier:
-                        self.notifier.notify(f"任务已添加到 pending_tasks 队列，并暂停任务分配。URL: {url}",
+                        self.notifier.notify(f"任务分配已暂停或无活跃实例，任务已添加到 pending_tasks 队列：{url}",
                                              is_error=True)
                     return
                 # 从可用实例中选择一个
                 xkw = self.active_xkw_instances[self.next_xkw_index % len(self.active_xkw_instances)]
                 self.next_xkw_index += 1
-            xkw.add_task(url, retry_count)
-            logging.info(f"已将 URL 添加到 XKW 实例 {xkw.id} 的任务队列: {url} (重试次数: {retry_count})")
+            xkw.add_task(url)
+            logging.info(f"已将 URL 添加到 XKW 实例 {xkw.id} 的任务队列: {url}")
 
             delay_seconds = random.uniform(1, 2)
             logging.info(f"分配任务后暂停 {delay_seconds:.1f} 秒")
@@ -1019,8 +991,8 @@ class AutoDownloadManager:
             self.paused = False
 
             while not self.pending_tasks.empty():
-                task = self.pending_tasks.get()
-                self.add_task(task.url, task.retry_count)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
+                url = self.pending_tasks.get()
+                self.add_task(url)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
 
             logging.info("已重新分配所有 pending_tasks，恢复任务分配。")
             if self.notifier:
@@ -1038,8 +1010,3 @@ class AutoDownloadManager:
             logging.error(f"停止过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"停止过程中出错: {e}", is_error=True)
-
-
-class FrequencyError(Exception):
-    """自定义异常，用于表示请求过于频繁的错误。"""
-    pass
