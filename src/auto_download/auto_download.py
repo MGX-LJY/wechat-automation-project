@@ -494,14 +494,14 @@ class XKW:
                 self.reset_tab(tab)
                 self.tabs.put(tab)
 
-                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例或处理登录状态。URL: {url}")
+                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}")
                 if self.notifier:
-                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例或处理登录状态。URL: {url}", is_error=True)
+                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}", is_error=True)
 
     def handle_login_status(self, tab):
         """
         检查登录状态并根据情况进行登录或切换账号。
-        如果所有账号都无法登录，则禁用实例并通知管理员。
+        如果登录成功/登录失败/所有账号都无法登录，则禁用实例并通知管理员。
         """
         try:
             if self.is_logged_in(tab):
@@ -537,15 +537,23 @@ class XKW:
             # 尝试使用新账号登录
             max_retries = len(self.accounts)
             retries = 0
+            failed_accounts = []
             while retries < max_retries:
                 account = self.accounts[self.current_account_index]
                 username = account['username']
                 password = account['password']
                 if self.login(tab):
                     logging.info(f'账号 {username} 登录成功。')
+                    # 通知管理员登录成功
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {username} 登录成功。")
                     return
                 else:
                     logging.warning(f'账号 {username} 登录失败，尝试下一个账号。')
+                    # 通知管理员登录失败
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {username} 登录失败。", is_error=True)
+                    failed_accounts.append(username)
                     retries += 1
                     # 切换到下一个账号
                     self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
@@ -556,13 +564,22 @@ class XKW:
             if self.manager:
                 self.manager.disable_xkw_instance(self)
             if self.notifier:
-                self.notifier.notify("所有账号均无法登录，请管理员检查账号状态或登录流程。", is_error=True)
+                failed_accounts_str = ', '.join(failed_accounts)
+                self.notifier.notify(
+                    f"所有账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
+                    is_error=True
+                )
         except Exception as e:
             logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
             if self.manager:
                 self.manager.disable_xkw_instance(self)
             if self.notifier:
-                self.notifier.notify(f"处理登录状态时发生错误：{e}", is_error=True)
+                import traceback
+                error_trace = traceback.format_exc()
+                self.notifier.notify(
+                    f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
+                    is_error=True
+                )
 
     def switch_browser_and_retry(self, url):
         """
@@ -786,6 +803,8 @@ class AutoDownloadManager:
             {'username': '19358191853', 'password': '428199Li@'},
             {'username': '13143019361', 'password': '428199Li@'},
             {'username': '19316031853', 'password': '428199Li@'},
+            {'username': '15512733826', 'password': '428199Li@'},
+            {'username': '18589186420', 'password': '428199Li@'}
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
