@@ -73,6 +73,7 @@ class XKW:
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
         self.lock = threading.Lock()  # 线程锁
+        self.is_handling_login = False  # 新增标志位，防止重复调用 handle_login_status
 
         # 添加账号列表和当前账号索引
         if accounts is not None:
@@ -434,7 +435,7 @@ class XKW:
                             logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
                             if self.notifier:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                            return
+                            return True  # 返回 False，表示下载失败
 
                         # 处理上传任务
                         if self.uploader:
@@ -451,7 +452,7 @@ class XKW:
                         # 重置标签页
                         self.reset_tab(tab)
                         success = True
-                        return  # 下载成功，退出方法
+                        return True  # 下载成功，返回 True
 
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，暂停后重试。")
@@ -480,23 +481,36 @@ class XKW:
                 # 1. 禁用当前的 XKW 实例
                 self.manager.disable_xkw_instance(self)
 
-                # 2. 分别执行切换实例重试下载和处理登录状态
-                # 使用独立的线程以避免阻塞当前线程
-                retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
+                # 2. 检查是否有其他可用的实例
+                available_xkw_instances = self.manager.get_available_xkw_instances(self)
+                if not available_xkw_instances:
+                    logging.error("没有可用的 XKW 实例进行重试。")
+                    if self.notifier:
+                        self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
+                    # 直接将任务添加到 pending_tasks 队列，并暂停任务分配
+                    self.manager.add_task(url)
+                    # 不再继续后续处理，直接返回
+                    return False
 
-                retry_thread.start()
-                handle_login_thread.start()
+                # 3. 确保 handle_login_status 只被调用一次
+                if not self.is_handling_login:
+                    self.is_handling_login = True
+                    # 分别执行切换实例重试下载和处理登录状态
+                    retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
+                    handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
 
-                # 不等待线程完成，确保主线程可以继续处理其他任务
+                    retry_thread.start()
+                    handle_login_thread.start()
 
-                # 3. 重置标签页并将其放回队列
+                # 重置标签页并将其放回队列
                 self.reset_tab(tab)
                 self.tabs.put(tab)
 
                 logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}")
                 if self.notifier:
                     self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}", is_error=True)
+        # 返回下载结果
+        return success
 
     def handle_login_status(self, tab):
         """
@@ -508,20 +522,28 @@ class XKW:
                 logging.info('已登录，执行退出并切换账号。')
                 # 执行退出操作
                 tab.get('https://www.zxxk.com')
-                time.sleep(2)  # 等待页面加载完成
+                time.sleep(random.uniform(1, 2))  # 随机延迟，等待页面加载
+
+                # 等待页面加载完成
+                tab.wait.load_start(timeout=10)
+                time.sleep(random.uniform(0.5, 1.5))  # 随机延迟，确保加载开始
+                tab.wait.doc_loaded(timeout=30)
+                time.sleep(random.uniform(0.5, 1.5))  # 随机延迟，确保文档加载完成
 
                 # 尝试找到“我的”元素并悬停
                 my_element = tab.ele('text:我的', timeout=10)
                 if my_element:
+                    time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，确保元素可交互
                     my_element.hover()
-                    time.sleep(1)  # 等待下拉菜单显示
+                    time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，等待下拉菜单显示
 
                     # 尝试找到“退出”按钮并点击
                     logout_element = tab.ele('text:退出', timeout=10)
                     if logout_element:
+                        time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，确保按钮可点击
                         logout_element.click()
                         logging.info('退出成功。')
-                        time.sleep(2)  # 等待退出操作完成
+                        time.sleep(random.uniform(1, 2))  # 随机延迟，等待退出操作完成
                     else:
                         logging.warning('未找到“退出”按钮，可能已被登出。')
                 else:
@@ -547,6 +569,9 @@ class XKW:
                     # 通知管理员登录成功
                     if self.notifier:
                         self.notifier.notify(f"账号 {username} 登录成功。")
+                    # **调用 enable_xkw_instance 以确保实例被启用**
+                    self.manager.enable_xkw_instance(self.id)
+                    self.is_handling_login = False  # 重置标志位
                     return
                 else:
                     logging.warning(f'账号 {username} 登录失败，尝试下一个账号。')
@@ -569,6 +594,8 @@ class XKW:
                     f"所有账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
                     is_error=True
                 )
+            self.is_handling_login = False  # 重置标志位
+
         except Exception as e:
             logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
             if self.manager:
@@ -580,6 +607,7 @@ class XKW:
                     f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
                     is_error=True
                 )
+            self.is_handling_login = False  # 重置标志位
 
     def switch_browser_and_retry(self, url):
         """
@@ -611,13 +639,6 @@ class XKW:
             return False
 
     def download(self, url, tab):
-        """
-        执行下载任务。
-
-        参数:
-        - url: 要下载的文件的 URL。
-        - tab: 浏览器标签页。
-        """
         try:
             logging.info(f"准备下载 URL: {url}")
             # 增加随机延迟，模拟人类等待页面加载
@@ -818,6 +839,9 @@ class AutoDownloadManager:
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
         self.xkw_lock = threading.Lock()  # 线程锁
 
+        self.pending_tasks = queue.Queue()  # 用于保存挂起的下载任务
+        self.paused = False  # 标志是否暂停任务分配
+
     def disable_xkw_instance(self, xkw_instance):
         """
         禁用指定的 XKW 实例。
@@ -864,10 +888,13 @@ class AutoDownloadManager:
         try:
             logging.info(f"准备添加 URL 到下载任务队列: {url}")
             with self.xkw_lock:
-                if not self.active_xkw_instances:
-                    logging.error("没有可用的 XKW 实例来处理任务。向管理员发送报告。")
+                if self.paused or not self.active_xkw_instances:
+                    # 如果任务分配已暂停或没有活跃实例，将任务添加到 pending_tasks 队列
+                    self.pending_tasks.put(url)
+                    logging.info(f"任务分配已暂停或无活跃实例，任务已添加到 pending_tasks 队列：{url}")
                     if self.notifier:
-                        self.notifier.notify("没有可用的 XKW 实例来处理下载任务。", is_error=True)
+                        self.notifier.notify(f"任务分配已暂停或无活跃实例，任务已添加到 pending_tasks 队列：{url}",
+                                             is_error=True)
                     return
                 # 从可用实例中选择一个
                 xkw = self.active_xkw_instances[self.next_xkw_index % len(self.active_xkw_instances)]
@@ -922,17 +949,52 @@ class AutoDownloadManager:
             for xkw in self.xkw_instances:
                 if not xkw.is_active:
                     xkw.is_active = True
-                    xkw.start()  # 重新启动实例的运行线程
                     self.active_xkw_instances.append(xkw)
+                    xkw.start()  # 重新启动实例的运行线程
                     restored.append(xkw.id)
             if restored:
                 logging.info(f"实例 {', '.join(restored)} 已全部恢复。")
                 if self.notifier:
                     self.notifier.notify(f"实例 {', '.join(restored)} 已全部恢复。")
+                # 重新分配 pending_tasks 队列中的任务
+                self.redistribute_pending_tasks()
                 return f"实例 {', '.join(restored)} 已全部恢复。"
             else:
                 logging.info("所有实例已经是活跃状态。")
                 return "所有实例已经是活跃状态。"
+
+    def enqueue_pending_task(self, url: str):
+        """
+        将任务添加到 pending_tasks 队列，并暂停任务分配。
+        """
+        with self.xkw_lock:
+            self.pending_tasks.put(url)
+            self.paused = True
+            logging.info(f"任务已添加到 pending_tasks 队列，并暂停任务分配。URL: {url}")
+            if self.notifier:
+                self.notifier.notify(f"任务已添加到 pending_tasks 队列，并暂停任务分配。URL: {url}", is_error=True)
+
+    def redistribute_pending_tasks(self):
+        """
+        重新分配 pending_tasks 队列中的任务到活跃的 XKW 实例中。
+        """
+        with self.xkw_lock:
+            if not self.active_xkw_instances:
+                logging.error("没有可用的 XKW 实例来重新分配 pending_tasks。")
+                if self.notifier:
+                    self.notifier.notify("没有可用的 XKW 实例来重新分配 pending_tasks。", is_error=True)
+                return
+
+            # 先恢复 paused 状态，以便 add_task 能够正常分配任务
+            self.paused = False
+
+            while not self.pending_tasks.empty():
+                url = self.pending_tasks.get()
+                self.add_task(url)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
+
+            logging.info("已重新分配所有 pending_tasks，恢复任务分配。")
+            if self.notifier:
+                self.notifier.notify("已重新分配所有 pending_tasks，恢复任务分配。")
 
     def stop(self):
         """
