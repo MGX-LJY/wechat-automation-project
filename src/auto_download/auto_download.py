@@ -7,6 +7,9 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+import json
+import csv
 from typing import Tuple
 
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
@@ -81,6 +84,26 @@ class XKW:
         else:
             self.accounts = []  # 默认空列表
         self.current_account_index = 0  # 当前账号索引
+
+        # 初始化下载计数器和锁
+        self.download_counts_lock = threading.Lock()
+        self.download_counts = {}
+        self.download_counts_file = 'download_counts.json'
+        self.download_log_file = 'download_log.csv'
+
+        # 如果存在下载计数文件，加载数据
+        if os.path.exists(self.download_counts_file):
+            with open(self.download_counts_file, 'r', encoding='utf-8') as f:
+                try:
+                    self.download_counts = json.load(f)
+                except json.JSONDecodeError:
+                    logging.error(f"下载计数文件 '{self.download_counts_file}' 格式错误，初始化为空。")
+                    self.download_counts = {}
+        else:
+            # 如果文件不存在，创建一个空的下载日志文件
+            with open(self.download_log_file, 'w', encoding='utf-8', newline='') as csvfile:
+                log_writer = csv.writer(csvfile)
+                log_writer.writerow(['时间', '账号', '下载次数'])
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
@@ -449,6 +472,9 @@ class XKW:
                         else:
                             logging.warning("Uploader 未设置，无法传递上传任务。")
 
+                        # 记录账号下载次数
+                        self.account_count(url, tab)
+
                         # 重置标签页
                         self.reset_tab(tab)
                         success = True
@@ -457,7 +483,7 @@ class XKW:
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，直接跳过该链接。")
                         # 直接跳过链接，不报错，也不发送通知
-                        return True  # 返回 False，表示下载失败或跳过
+                        return True  # 返回 True，表示任务处理完毕
 
                 else:
                     # 如果没有捕获到下载链接，处理特殊情况
@@ -513,6 +539,72 @@ class XKW:
                                          is_error=True)
         # 返回下载结果
         return success
+
+    def account_count(self, url, tab):
+        """
+        记录账号的下载次数，并在达到50次时切换账号。
+
+        参数:
+        - url: 下载的URL。
+        - tab: 当前浏览器标签页。
+        """
+        try:
+            # 获取当前日期和时间
+            date_str = datetime.today().strftime('%Y-%m-%d')
+            time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # 获取当前账号用户名
+            current_account_username = ''
+            if self.accounts and 0 <= self.current_account_index < len(self.accounts):
+                current_account = self.accounts[self.current_account_index]
+                current_account_username = current_account.get('username', '')
+            else:
+                # 当前账号未知
+                logging.info("当前账号未知，切换到下一个账号。")
+                # 记录到文件，账号留空
+                with self.download_counts_lock:
+                    with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                        log_writer = csv.writer(csvfile)
+                        log_writer.writerow([time_str, '', ''])
+                # 切换到下一个账号
+                self.handle_login_status(tab)
+                return
+
+            # 更新下载计数
+            with self.download_counts_lock:
+                # 初始化或重置计数器
+                if (current_account_username not in self.download_counts) or \
+                        (self.download_counts[current_account_username]['date'] != date_str):
+                    self.download_counts[current_account_username] = {'date': date_str, 'count': 0}
+
+                # 增加计数
+                self.download_counts[current_account_username]['count'] += 1
+
+                # 保存计数到文件
+                with open(self.download_counts_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.download_counts, f, ensure_ascii=False, indent=4)
+
+                # 记录日志
+                with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                    log_writer = csv.writer(csvfile)
+                    log_writer.writerow([time_str, current_account_username,
+                                         self.download_counts[current_account_username]['count']])
+
+                # 检查是否达到50次
+                if self.download_counts[current_account_username]['count'] >= 50:
+                    logging.info(f"账号 {current_account_username} 下载数量已达50，切换账号。")
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {current_account_username} 下载数量已达50，切换账号。")
+                    # 禁用当前实例
+                    self.manager.disable_xkw_instance(self)
+                    # 将当前链接发送到其他实例
+                    self.switch_browser_and_retry(url)
+                    # 切换账号
+                    self.handle_login_status(tab)
+        except Exception as e:
+            logging.error(f"记录账号下载次数时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"记录账号下载次数时出错: {e}", is_error=True)
 
     def handle_login_status(self, tab):
         """
