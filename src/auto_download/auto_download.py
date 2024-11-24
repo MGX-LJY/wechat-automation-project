@@ -112,6 +112,15 @@ class XKW:
             self.manager_thread.start()
             logging.info("XKW manager 线程已启动。")
 
+        # 添加登录锁和冷却时间
+        self.handle_login_lock = threading.Lock()  # 新增锁
+        self.last_login_attempt = 0
+        self.login_cooldown = 60  # 冷却时间，单位秒
+
+        # 记录失败次数
+        self.failure_count = 0
+        self.failure_threshold = 3  # 失败阈值
+
     def __repr__(self):
         """返回实例的字符串表示。"""
         return f"XKW(id={self.id})"
@@ -422,11 +431,18 @@ class XKW:
                 logging.info(f'账号 {nickname} ({username}) 点击登录按钮成功。')
                 time.sleep(random.uniform(1, 2))  # 等待登录结果
 
-                # 在登录成功后，不切换账号，直接返回
-                logging.info(f'账号 {nickname} ({username}) 登录成功。')
-                if self.notifier:
-                    self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
-                return True
+                # 检查是否登录成功
+                if self.is_logged_in(tab):
+                    logging.info(f'账号 {nickname} ({username}) 登录成功。')
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
+                    return True
+                else:
+                    logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
+                    retries += 1
+                    self.switch_account()
             except Exception as e:
                 logging.error(f'账号 {nickname} ({username}) 登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
@@ -437,6 +453,10 @@ class XKW:
         if self.notifier:
             self.notifier.notify("所有登录尝试失败，无法登录。请检查账号状态或登录流程。", is_error=True)
         return False
+
+    def switch_account(self):
+        """切换到下一个账号"""
+        self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
 
     def get_nickname(self, tab) -> str:
         """
@@ -462,14 +482,14 @@ class XKW:
             time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，等待下拉菜单显示
 
             # 提取昵称
-            # 假设昵称位于 <a class="username">全能1X</a> 或类似格式
+            # 假设昵称位于 <a class="username">全能数字X</a> 或类似格式
             nickname_element = tab.ele('tag:a@@class=username', timeout=5)
             if nickname_element:
                 nickname_text = nickname_element.text.strip()
                 logging.debug(f"提取到的昵称文本: {nickname_text}")
 
                 # 使用正则表达式匹配“全能”后跟一个数字和“X”
-                match = re.match(r'^全能\dX$', nickname_text)
+                match = re.match(r'^全能\d+X$', nickname_text)
                 if match:
                     nickname = match.group()
                     logging.info(f"提取到符合格式的昵称: {nickname}")
@@ -574,14 +594,15 @@ class XKW:
                     return False
 
                 # 3. 确保 handle_login_status 只被调用一次
-                if not self.is_handling_login:
-                    self.is_handling_login = True
-                    # 分别执行切换实例重试下载和处理登录状态
-                    retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                    handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
+                with self.handle_login_lock:
+                    if not self.is_handling_login:
+                        self.is_handling_login = True
+                        # 分别执行切换实例重试下载和处理登录状态
+                        retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
+                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
 
-                    retry_thread.start()
-                    handle_login_thread.start()
+                        retry_thread.start()
+                        handle_login_thread.start()
 
                 # 重置标签页并将其放回队列
                 self.reset_tab(tab)
@@ -768,6 +789,7 @@ class XKW:
         如果登录成功/登录失败/所有账号都无法登录，则禁用实例并通知管理员。
         """
         try:
+            # 检查是否已登录
             if self.is_logged_in(tab):
                 logging.info('已登录，执行退出并切换账号。')
                 # 执行退出操作
@@ -798,7 +820,6 @@ class XKW:
                         logging.warning('未找到“退出”按钮，可能已被登出。')
                 else:
                     logging.warning('未找到“我的”元素，可能已被登出。')
-
             else:
                 logging.info('未登录，开始尝试登录。')
 
@@ -812,10 +833,10 @@ class XKW:
                 next_index = self.get_next_available_account_index()
                 if next_index == -1:
                     # 所有账号均达到下载次数限制
-                    logging.error('所有账号均已达到50次下载限制，无法切换账号。')
+                    logging.error('所有账号均已达到下载次数限制，无法切换账号。')
                     if self.notifier:
                         self.notifier.notify(
-                            "所有账号均已达到50次下载限制，无法切换账号。请管理员检查或重置下载计数。",
+                            "所有账号均已达到下载次数限制，无法切换账号。请管理员检查或重置下载计数。",
                             is_error=True
                         )
                     # 可选：暂停任务分配或采取其他措施
