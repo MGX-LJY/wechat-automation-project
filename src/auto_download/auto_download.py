@@ -537,7 +537,7 @@ class XKW:
                         # 处理上传任务
                         if self.uploader:
                             try:
-                                self.uploader.add_upload_task(file_path, soft_id, nickname=nickname)
+                                self.uploader.add_upload_task(file_path, soft_id)
                                 logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
                                 logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
