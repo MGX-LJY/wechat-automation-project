@@ -881,7 +881,7 @@ class XKW:
                 else:
                     logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
                 self.reset_tab(tab)
-                return  # 明确返回，确保不调用 listener
+                return
 
             download_button = tab("#btnSoftDownload")  # 获取下载按钮
             if not download_button:
@@ -1209,23 +1209,16 @@ class AutoDownloadManager:
         """
         重新分配 pending_tasks 队列中的任务到活跃的 XKW 实例中。
         """
-        with self.xkw_lock:
-            if not self.active_xkw_instances:
-                logging.error("没有可用的 XKW 实例来重新分配 pending_tasks。")
-                if self.notifier:
-                    self.notifier.notify("没有可用的 XKW 实例来重新分配 pending_tasks。", is_error=True)
-                return
+        # 先恢复 paused 状态，以便 add_task 能够正常分配任务
+        self.paused = False
 
-            # 先恢复 paused 状态，以便 add_task 能够正常分配任务
-            self.paused = False
+        while not self.pending_tasks.empty():
+            url = self.pending_tasks.get()
+            self.add_task(url)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
 
-            while not self.pending_tasks.empty():
-                url = self.pending_tasks.get()
-                self.add_task(url)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
-
-            logging.info("已重新分配所有 pending_tasks，恢复任务分配。")
-            if self.notifier:
-                self.notifier.notify("已重新分配所有 pending_tasks，恢复任务分配。")
+        logging.info("已重新分配所有 pending_tasks，恢复任务分配。")
+        if self.notifier:
+            self.notifier.notify("已重新分配所有 pending_tasks，恢复任务分配。")
 
     def stop(self):
         """
