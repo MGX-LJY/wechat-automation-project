@@ -691,6 +691,39 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"记录账号下载次数时出错: {e}", is_error=True)
 
+    def get_next_available_account_index(self) -> int:
+        """
+        获取下一个下载次数未达标的账号索引（下载次数 < 50）。
+        如果所有账号均达到下载次数限制，则返回 -1。
+
+        返回:
+        - 下一个可用账号的索引，或 -1 表示无可用账号。
+        """
+        # 获取当前日期
+        date_str = datetime.today().strftime('%Y-%m-%d')
+
+        # 从当前账号开始，循环遍历所有账号
+        for i in range(len(self.accounts)):
+            # 计算下一个账号的索引
+            next_index = (self.current_account_index + 1 + i) % len(self.accounts)
+            account = self.accounts[next_index]
+            nickname = account.get('nickname', account.get('username', ''))
+
+            # 获取该账号的下载计数
+            count_info = self.download_counts.get(nickname, {})
+            count = count_info.get('count', 0)
+            count_date = count_info.get('date', '')
+
+            # 如果日期不是今天，重置计数
+            if count_date != date_str:
+                count = 0
+
+            if count < 50:
+                return next_index
+
+        # 如果所有账号都达到下载次数限制
+        return -1
+
     def handle_login_status(self, tab):
         """
         检查登录状态并根据情况进行登录或切换账号。
@@ -728,11 +761,6 @@ class XKW:
                 else:
                     logging.warning('未找到“我的”元素，可能已被登出。')
 
-                # 切换到下一个账号
-                self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-                account = self.accounts[self.current_account_index]
-                nickname = account.get('nickname', account['username'])
-                logging.info(f'切换到账号：{nickname} ({account["username"]})')
             else:
                 logging.info('未登录，开始尝试登录。')
 
@@ -740,40 +768,52 @@ class XKW:
             max_retries = len(self.accounts)
             retries = 0
             failed_accounts = []
+
             while retries < max_retries:
+                # 获取下一个可用账号的索引
+                next_index = self.get_next_available_account_index()
+                if next_index == -1:
+                    # 所有账号均达到下载次数限制
+                    logging.error('所有账号均已达到50次下载限制，无法切换账号。')
+                    if self.notifier:
+                        self.notifier.notify(
+                            "所有账号均已达到50次下载限制，无法切换账号。请管理员检查或重置下载计数。",
+                            is_error=True
+                        )
+                    # 可选：暂停任务分配或采取其他措施
+                    self.manager.pause_task_distribution()
+                    return
+
+                # 设置为下一个可用账号
+                self.current_account_index = next_index
                 account = self.accounts[self.current_account_index]
                 username = account['username']
                 password = account['password']
                 nickname = account.get('nickname', username)
+                logging.info(f'尝试登录账号：{nickname} ({username})')
+
                 if self.login(tab):
                     logging.info(f'账号 {nickname} ({username}) 登录成功。')
-                    # 通知管理员登录成功
                     if self.notifier:
                         self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
-                    # **调用 enable_xkw_instance 以确保实例被启用**
+                    # 确保实例被启用
                     self.manager.enable_xkw_instance(self.id)
                     self.is_handling_login = False  # 重置标志位
                     return
                 else:
                     logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
-                    # 通知管理员登录失败
                     if self.notifier:
                         self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
                     failed_accounts.append(nickname)
                     retries += 1
-                    # 切换到下一个账号
-                    self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-                    account = self.accounts[self.current_account_index]
-                    nickname = account.get('nickname', account['username'])
-                    logging.info(f'切换到账号：{nickname} ({account["username"]})')
-            # 如果所有账号均无法登录
-            logging.error('所有账号均无法登录，禁用实例并通知管理员。')
-            if self.manager:
-                self.manager.disable_xkw_instance(self)
+
+            # 如果所有尝试均失败
+            logging.error('所有可用账号均无法登录，禁用实例并通知管理员。')
+            self.manager.disable_xkw_instance(self)
             if self.notifier:
                 failed_accounts_str = ', '.join(failed_accounts)
                 self.notifier.notify(
-                    f"所有账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
+                    f"所有可用账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
                     is_error=True
                 )
             self.is_handling_login = False  # 重置标志位
@@ -1154,6 +1194,16 @@ class AutoDownloadManager:
             logging.info(f"任务已添加到 pending_tasks 队列，并暂停任务分配。URL: {url}")
             if self.notifier:
                 self.notifier.notify(f"任务已添加到 pending_tasks 队列，并暂停任务分配。URL: {url}", is_error=True)
+
+    def pause_task_distribution(self):
+        """
+        暂停任务分配。
+        """
+        with self.xkw_lock:
+            self.paused = True
+            logging.info("任务分配已暂停。")
+            if self.notifier:
+                self.notifier.notify("任务分配已暂停，因为所有账号均达到下载次数限制。", is_error=True)
 
     def redistribute_pending_tasks(self):
         """
