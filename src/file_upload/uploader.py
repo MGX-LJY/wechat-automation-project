@@ -234,6 +234,17 @@ class Uploader:
                         )
                         # 将文件路径添加到删除队列
                         self.add_file_to_delete(file_path)
+
+                        # 记录下载事件
+                        link = f"file://{os.path.abspath(file_path)}"  # 根据实际情况生成链接
+                        recipient_type = 'whole_group' if task['group_type'] == 'whole' else 'non_whole_group' if task[
+                                                                                                                      'group_type'] == 'non-whole' else 'individual'
+                        self.point_manager.log_download(
+                            recipient_type=recipient_type,
+                            recipient_name=recipient_name,
+                            link=link
+                        )
+
                     break  # 上传成功，退出循环
                 except Exception as e:
                     if attempt < max_total_retries:
