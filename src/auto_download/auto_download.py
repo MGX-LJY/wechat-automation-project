@@ -383,17 +383,18 @@ class XKW:
             account = self.accounts[self.current_account_index]
             username = account['username']
             password = account['password']
+            nickname = account.get('nickname', username)  # 获取昵称，如果没有则使用用户名
             try:
                 # 访问登录页面
                 tab.get('https://sso.zxxk.com/login')
-                logging.info('访问登录页面成功。')
+                logging.info(f'账号 {nickname} ({username}) 正在访问登录页面。')
                 time.sleep(random.uniform(1, 2))  # 增加随机延迟，等待页面完全加载
 
                 # 点击“账户密码/验证码登录”按钮
                 login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
                 if login_switch_button:
                     login_switch_button.click()
-                    logging.info('点击“账户密码/验证码登录”按钮成功。')
+                    logging.info(f'账号 {nickname} ({username}) 点击“账户密码/验证码登录”按钮成功。')
                     time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
 
                 # 获取用户名和密码输入框
@@ -403,30 +404,32 @@ class XKW:
                 # 清空输入框，确保没有残留内容
                 username_field.clear()
                 password_field.clear()
-                logging.info('清空用户名和密码输入框成功。')
+                logging.info(f'账号 {nickname} ({username}) 清空用户名和密码输入框成功。')
                 time.sleep(random.uniform(1, 2))  # 等待输入框清空
 
                 # 输入用户名
                 username_field.input(username)
-                logging.info('输入用户名成功。')
+                logging.info(f'账号 {nickname} ({username}) 输入用户名成功。')
                 time.sleep(random.uniform(1, 2))  # 增加延迟
 
                 # 输入密码
                 password_field.input(password)
-                logging.info('输入密码成功。')
+                logging.info(f'账号 {nickname} ({username}) 输入密码成功。')
                 time.sleep(random.uniform(1, 2))  # 增加延迟
 
                 # 点击登录按钮
                 login_button = tab.ele('#accountLoginBtn', timeout=10)
                 login_button.click()
-                logging.info('点击登录按钮成功。')
+                logging.info(f'账号 {nickname} ({username}) 点击登录按钮成功。')
                 time.sleep(random.uniform(1, 2))  # 等待登录结果
 
                 # 在登录成功后，不切换账号，直接返回
-                logging.info(f'账号 {username} 登录成功。')
+                logging.info(f'账号 {nickname} ({username}) 登录成功。')
+                if self.notifier:
+                    self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
                 return True
             except Exception as e:
-                logging.error(f'登录过程中出现错误：{e}', exc_info=True)
+                logging.error(f'账号 {nickname} ({username}) 登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
                 self.handle_login_status(tab)
 
@@ -435,6 +438,54 @@ class XKW:
         if self.notifier:
             self.notifier.notify("所有登录尝试失败，无法登录。请检查账号状态或登录流程。", is_error=True)
         return False
+
+    def get_nickname(self, tab) -> str:
+        """
+        悬停在“我的”元素上，并从下拉菜单中提取当前账号的昵称。
+        直接进行文字匹配，昵称格式为“全能数字X”，例如“全能1X”。
+
+        参数:
+        - tab: 当前浏览器标签页。
+
+        返回:
+        - nickname: 当前账号的昵称。如果无法提取或不符合格式，则返回空字符串。
+        """
+        try:
+            # 找到“我的”元素
+            my_element = tab.ele('text:我的', timeout=10)
+            if not my_element:
+                logging.error("未找到“我的”元素，无法提取昵称。")
+                return ""
+
+            # 悬停在“我的”元素上
+            time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，确保元素可交互
+            my_element.hover()
+            time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，等待下拉菜单显示
+
+            # 提取昵称
+            # 假设昵称位于 <a class="username">全能1X</a> 或类似格式
+            nickname_element = tab.ele('tag:a@@class=username', timeout=5)
+            if nickname_element:
+                nickname_text = nickname_element.text.strip()
+                logging.debug(f"提取到的昵称文本: {nickname_text}")
+
+                # 使用正则表达式匹配“全能”后跟一个数字和“X”
+                match = re.match(r'^全能\dX$', nickname_text)
+                if match:
+                    nickname = match.group()
+                    logging.info(f"提取到符合格式的昵称: {nickname}")
+                    return nickname
+                else:
+                    logging.error(f"提取到的昵称不符合格式要求（全能数字X）：{nickname_text}")
+                    return ""
+            else:
+                logging.error("未找到昵称元素，无法提取昵称。")
+                return ""
+        except Exception as e:
+            logging.error(f"提取昵称时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"提取昵称时出错: {e}", is_error=True)
+            return ""
 
     def listener(self, tab, download, url, title, soft_id):
         success = False
@@ -460,10 +511,14 @@ class XKW:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
                             return True  # 返回 True，表示任务处理完毕
 
+                        # 获取当前账号的昵称
+                        current_account = self.accounts[self.current_account_index]
+                        nickname = current_account.get('nickname', current_account['username'])
+
                         # 处理上传任务
                         if self.uploader:
                             try:
-                                self.uploader.add_upload_task(file_path, soft_id)
+                                self.uploader.add_upload_task(file_path, soft_id, nickname=nickname)
                                 logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
                                 logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
@@ -533,9 +588,13 @@ class XKW:
                 self.reset_tab(tab)
                 self.tabs.put(tab)
 
-                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}")
+                # 获取当前账号的昵称
+                current_account = self.accounts[self.current_account_index]
+                nickname = current_account.get('nickname', current_account['username'])
+
+                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
                 if self.notifier:
-                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。URL: {url}",
+                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
                                          is_error=True)
         # 返回下载结果
         return success
@@ -553,32 +612,58 @@ class XKW:
             date_str = datetime.today().strftime('%Y-%m-%d')
             time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # 获取当前账号用户名
+            # 获取当前账号的昵称和用户名
+            current_account_nickname = ''
             current_account_username = ''
             if self.accounts and 0 <= self.current_account_index < len(self.accounts):
                 current_account = self.accounts[self.current_account_index]
                 current_account_username = current_account.get('username', '')
+                current_account_nickname = current_account.get('nickname', current_account_username)
             else:
-                # 当前账号未知
-                logging.info("当前账号未知，切换到下一个账号。")
-                # 记录到文件，账号留空
-                with self.download_counts_lock:
-                    with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
-                        log_writer = csv.writer(csvfile)
-                        log_writer.writerow([time_str, '', ''])
-                # 切换到下一个账号
-                self.handle_login_status(tab)
-                return
+                # 当前账号未知，尝试通过 get_nickname 获取昵称并匹配账号库
+                logging.info("当前账号未知，尝试通过 get_nickname 获取账号昵称并匹配账号库。")
+                current_account_nickname = self.get_nickname(tab)
+                if current_account_nickname:
+                    # 在账号列表中查找匹配的昵称
+                    matched = False
+                    for index, account in enumerate(self.accounts):
+                        if account.get('nickname') == current_account_nickname:
+                            self.current_account_index = index
+                            current_account = account
+                            current_account_username = account.get('username', '')
+                            matched = True
+                            logging.info(f"匹配到账号：{current_account_nickname} ({current_account_username})")
+                            break
+                    if not matched:
+                        logging.warning(f"未在账号列表中找到匹配的昵称：{current_account_nickname}")
+                        # 记录到文件，账号留空
+                        with self.download_counts_lock:
+                            with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                                log_writer = csv.writer(csvfile)
+                                log_writer.writerow([time_str, current_account_nickname, '未知账号'])
+                        # 将任务重新添加到 pending_tasks 队列，并暂停任务分配
+                        self.manager.enqueue_pending_task(url)  # 修正这里的调用
+                        return
+                else:
+                    logging.info("无法获取当前账号昵称，切换到下一个账号。")
+                    # 记录到文件，账号留空
+                    with self.download_counts_lock:
+                        with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                            log_writer = csv.writer(csvfile)
+                            log_writer.writerow([time_str, '', ''])
+                    # 切换到下一个账号
+                    self.handle_login_status(tab)
+                    return
 
             # 更新下载计数
             with self.download_counts_lock:
                 # 初始化或重置计数器
-                if (current_account_username not in self.download_counts) or \
-                        (self.download_counts[current_account_username]['date'] != date_str):
-                    self.download_counts[current_account_username] = {'date': date_str, 'count': 0}
+                if (current_account_nickname not in self.download_counts) or \
+                        (self.download_counts[current_account_nickname]['date'] != date_str):
+                    self.download_counts[current_account_nickname] = {'date': date_str, 'count': 0}
 
                 # 增加计数
-                self.download_counts[current_account_username]['count'] += 1
+                self.download_counts[current_account_nickname]['count'] += 1
 
                 # 保存计数到文件
                 with open(self.download_counts_file, 'w', encoding='utf-8') as f:
@@ -587,14 +672,14 @@ class XKW:
                 # 记录日志
                 with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                     log_writer = csv.writer(csvfile)
-                    log_writer.writerow([time_str, current_account_username,
-                                         self.download_counts[current_account_username]['count']])
+                    log_writer.writerow([time_str, current_account_nickname,
+                                         self.download_counts[current_account_nickname]['count']])
 
                 # 检查是否达到50次
-                if self.download_counts[current_account_username]['count'] >= 50:
-                    logging.info(f"账号 {current_account_username} 下载数量已达50，切换账号。")
+                if self.download_counts[current_account_nickname]['count'] >= 50:
+                    logging.info(f"账号 {current_account_nickname} 下载数量已达50，切换账号。")
                     if self.notifier:
-                        self.notifier.notify(f"账号 {current_account_username} 下载数量已达50，切换账号。")
+                        self.notifier.notify(f"账号 {current_account_nickname} 下载数量已达50，切换账号。")
                     # 禁用当前实例
                     self.manager.disable_xkw_instance(self)
                     # 将当前链接发送到其他实例
@@ -646,7 +731,8 @@ class XKW:
                 # 切换到下一个账号
                 self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
                 account = self.accounts[self.current_account_index]
-                logging.info(f'切换到账号：{account["username"]}')
+                nickname = account.get('nickname', account['username'])
+                logging.info(f'切换到账号：{nickname} ({account["username"]})')
             else:
                 logging.info('未登录，开始尝试登录。')
 
@@ -658,26 +744,28 @@ class XKW:
                 account = self.accounts[self.current_account_index]
                 username = account['username']
                 password = account['password']
+                nickname = account.get('nickname', username)
                 if self.login(tab):
-                    logging.info(f'账号 {username} 登录成功。')
+                    logging.info(f'账号 {nickname} ({username}) 登录成功。')
                     # 通知管理员登录成功
                     if self.notifier:
-                        self.notifier.notify(f"账号 {username} 登录成功。")
+                        self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
                     # **调用 enable_xkw_instance 以确保实例被启用**
                     self.manager.enable_xkw_instance(self.id)
                     self.is_handling_login = False  # 重置标志位
                     return
                 else:
-                    logging.warning(f'账号 {username} 登录失败，尝试下一个账号。')
+                    logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
                     # 通知管理员登录失败
                     if self.notifier:
-                        self.notifier.notify(f"账号 {username} 登录失败。", is_error=True)
-                    failed_accounts.append(username)
+                        self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
+                    failed_accounts.append(nickname)
                     retries += 1
                     # 切换到下一个账号
                     self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
                     account = self.accounts[self.current_account_index]
-                    logging.info(f'切换到账号：{account["username"]}')
+                    nickname = account.get('nickname', account['username'])
+                    logging.info(f'切换到账号：{nickname} ({account["username"]})')
             # 如果所有账号均无法登录
             logging.error('所有账号均无法登录，禁用实例并通知管理员。')
             if self.manager:
@@ -907,19 +995,18 @@ class AutoDownloadManager:
 
         # 为每个实例提供不同的账号列表
         accounts_xkw1 = [
-            {'username': '19061531853', 'password': '428199Li@'},
-            {'username': '19568101843', 'password': '428199Li@'},
-            {'username': '13343297668', 'password': '428199Li@'},
-            {'username': '19536946597', 'password': '428199Li@'},
-            {'username': '19563630322', 'password': '428199Li@'}
+            {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02X'},
+            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
+            {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
+            {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
+            {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能01X'}
         ]
 
         accounts_xkw2 = [
-            {'username': '19358191853', 'password': '428199Li@'},
-            {'username': '13143019361', 'password': '428199Li@'},
-            {'username': '19316031853', 'password': '428199Li@'},
-            {'username': '15512733826', 'password': '428199Li@'},
-            {'username': '18589186420', 'password': '428199Li@'}
+            {'username': '13143019361', 'password': '428199Li@', 'nickname': '全能14X'},
+            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
+            {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
+            # 如果有更多账号，可以继续添加
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
