@@ -75,7 +75,6 @@ class XKW:
         self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
-        self.lock = threading.Lock()  # 线程锁
         self.is_handling_login = False  # 新增标志位，防止重复调用 handle_login_status
 
         # 添加账号列表和当前账号索引
@@ -601,7 +600,7 @@ class XKW:
 
     def account_count(self, url, tab):
         """
-        记录账号的下载次数，并在达到50次时切换账号。
+        记录账号的下载次数，并在达到每日或每周上限时切换账号。
 
         参数:
         - url: 下载的URL。
@@ -609,7 +608,10 @@ class XKW:
         """
         try:
             # 获取当前日期和时间
-            date_str = datetime.today().strftime('%Y-%m-%d')
+            today = datetime.today()
+            date_str = today.strftime('%Y-%m-%d')
+            week_number = today.strftime('%Y-%U')  # 年份和周数组合
+
             time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             # 获取当前账号的昵称和用户名
@@ -642,7 +644,7 @@ class XKW:
                                 log_writer = csv.writer(csvfile)
                                 log_writer.writerow([time_str, current_account_nickname, '未知账号'])
                         # 将任务重新添加到 pending_tasks 队列，并暂停任务分配
-                        self.manager.enqueue_pending_task(url)  # 修正这里的调用
+                        self.manager.enqueue_pending_task(url)
                         return
                 else:
                     logging.info("无法获取当前账号昵称，切换到下一个账号。")
@@ -658,12 +660,26 @@ class XKW:
             # 更新下载计数
             with self.download_counts_lock:
                 # 初始化或重置计数器
-                if (current_account_nickname not in self.download_counts) or \
-                        (self.download_counts[current_account_nickname]['date'] != date_str):
-                    self.download_counts[current_account_nickname] = {'date': date_str, 'count': 0}
+                account_counts = self.download_counts.get(current_account_nickname, {})
+                daily_count_info = account_counts.get('daily', {})
+                weekly_count_info = account_counts.get('weekly', {})
+
+                # 检查并重置每日计数
+                if daily_count_info.get('date') != date_str:
+                    daily_count_info = {'date': date_str, 'count': 0}
+
+                # 检查并重置每周计数
+                if weekly_count_info.get('week') != week_number:
+                    weekly_count_info = {'week': week_number, 'count': 0}
 
                 # 增加计数
-                self.download_counts[current_account_nickname]['count'] += 1
+                daily_count_info['count'] += 1
+                weekly_count_info['count'] += 1
+
+                # 更新计数信息
+                account_counts['daily'] = daily_count_info
+                account_counts['weekly'] = weekly_count_info
+                self.download_counts[current_account_nickname] = account_counts
 
                 # 保存计数到文件
                 with open(self.download_counts_file, 'w', encoding='utf-8') as f:
@@ -672,14 +688,25 @@ class XKW:
                 # 记录日志
                 with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                     log_writer = csv.writer(csvfile)
-                    log_writer.writerow([time_str, current_account_nickname,
-                                         self.download_counts[current_account_nickname]['count']])
+                    log_writer.writerow([
+                        time_str,
+                        current_account_nickname,
+                        f"每日计数: {daily_count_info['count']}, 每周计数: {weekly_count_info['count']}"
+                    ])
 
-                # 检查是否达到50次
-                if self.download_counts[current_account_nickname]['count'] >= 50:
-                    logging.info(f"账号 {current_account_nickname} 下载数量已达50，切换账号。")
+                # 检查是否达到每日或每周上限
+                if daily_count_info['count'] >= 87 or weekly_count_info['count'] >= 350:
+                    if daily_count_info['count'] >= 87:
+                        limit_type = "每日"
+                        limit_value = 87
+                    else:
+                        limit_type = "每周"
+                        limit_value = 350
+
+                    logging.info(f"账号 {current_account_nickname} {limit_type}下载数量已达{limit_value}，切换账号。")
                     if self.notifier:
-                        self.notifier.notify(f"账号 {current_account_nickname} 下载数量已达50，切换账号。")
+                        self.notifier.notify(
+                            f"账号 {current_account_nickname} {limit_type}下载数量已达{limit_value}，切换账号。")
                     # 禁用当前实例
                     self.manager.disable_xkw_instance(self)
                     # 将当前链接发送到其他实例
@@ -693,14 +720,16 @@ class XKW:
 
     def get_next_available_account_index(self) -> int:
         """
-        获取下一个下载次数未达标的账号索引（下载次数 < 50）。
+        获取下一个下载次数未达标的账号索引（每日计数 < 87 且 每周计数 < 350）。
         如果所有账号均达到下载次数限制，则返回 -1。
 
         返回:
         - 下一个可用账号的索引，或 -1 表示无可用账号。
         """
-        # 获取当前日期
-        date_str = datetime.today().strftime('%Y-%m-%d')
+        # 获取当前日期和周数
+        today = datetime.today()
+        date_str = today.strftime('%Y-%m-%d')
+        week_number = today.strftime('%Y-%U')
 
         # 从当前账号开始，循环遍历所有账号
         for i in range(len(self.accounts)):
@@ -710,15 +739,24 @@ class XKW:
             nickname = account.get('nickname', account.get('username', ''))
 
             # 获取该账号的下载计数
-            count_info = self.download_counts.get(nickname, {})
-            count = count_info.get('count', 0)
-            count_date = count_info.get('date', '')
+            account_counts = self.download_counts.get(nickname, {})
+            daily_count_info = account_counts.get('daily', {})
+            weekly_count_info = account_counts.get('weekly', {})
 
-            # 如果日期不是今天，重置计数
-            if count_date != date_str:
-                count = 0
+            # 检查并重置每日计数
+            if daily_count_info.get('date') != date_str:
+                daily_count = 0
+            else:
+                daily_count = daily_count_info.get('count', 0)
 
-            if count < 50:
+            # 检查并重置每周计数
+            if weekly_count_info.get('week') != week_number:
+                weekly_count = 0
+            else:
+                weekly_count = weekly_count_info.get('count', 0)
+
+            # 检查每日和每周计数是否未达上限
+            if daily_count < 87 and weekly_count < 350:
                 return next_index
 
         # 如果所有账号都达到下载次数限制
@@ -919,14 +957,13 @@ class XKW:
                         break
 
                     # 控制下载启动间隔，确保至少2秒
-                    with self.download_lock:
-                        current_time = time.time()
-                        elapsed = current_time - self.last_download_time
-                        if elapsed < 2:
-                            wait_time = 2 - elapsed
-                            logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
-                            time.sleep(wait_time)
-                        self.last_download_time = time.time()
+                    current_time = time.time()
+                    elapsed = current_time - self.last_download_time
+                    if elapsed < 2:
+                        wait_time = 2 - elapsed
+                        logging.debug(f"等待 {wait_time:.1f} 秒以确保下载间隔至少2秒。")
+                        time.sleep(wait_time)
+                    self.last_download_time = time.time()
 
                     try:
                         tab = self.tabs.get(timeout=180)  # 获取一个标签页，设置超时避免阻塞
@@ -969,18 +1006,16 @@ class XKW:
         参数:
         - url: 要下载的文件的 URL。
         """
-        with self.lock:
-            self.task.put(url)
+        self.task.put(url)
         logging.info(f"任务已添加到队列: {url}")
 
     def start(self):
         """启动或重新启动 XKW 实例的运行线程。"""
-        with self.lock:
-            if not self.work:
-                self.work = True
-                self.manager_thread = threading.Thread(target=self.run, daemon=True)
-                self.manager_thread.start()
-                logging.info(f"XKW manager 线程已重新启动，实例 ID: {self.id}")
+        if not self.work:
+            self.work = True
+            self.manager_thread = threading.Thread(target=self.run, daemon=True)
+            self.manager_thread.start()
+            logging.info(f"XKW manager 线程已重新启动，实例 ID: {self.id}")
 
     def stop(self):
         """
@@ -1184,6 +1219,30 @@ class AutoDownloadManager:
                 logging.info("所有实例已经是活跃状态。")
                 return "所有实例已经是活跃状态。"
 
+    def disable_all_instances(self) -> str:
+        """
+        禁用所有的 XKW 实例。
+
+        返回:
+        - 操作结果的字符串描述。
+        """
+        with self.xkw_lock:
+            disabled = []
+            for xkw in self.active_xkw_instances[:]:  # 遍历活跃实例的副本
+                xkw.is_active = False
+                xkw.stop()  # 停止实例的运行线程
+                disabled.append(xkw.id)
+            # 清空活跃实例列表
+            self.active_xkw_instances.clear()
+            if disabled:
+                logging.info(f"实例 {', '.join(disabled)} 已全部禁用。")
+                if self.notifier:
+                    self.notifier.notify(f"实例 {', '.join(disabled)} 已全部禁用。")
+                return f"实例 {', '.join(disabled)} 已全部禁用。"
+            else:
+                logging.info("所有实例已经是禁用状态。")
+                return "所有实例已经是禁用状态。"
+
     def enqueue_pending_task(self, url: str):
         """
         将任务添加到 pending_tasks 队列，并暂停任务分配。
@@ -1210,11 +1269,12 @@ class AutoDownloadManager:
         重新分配 pending_tasks 队列中的任务到活跃的 XKW 实例中。
         """
         # 先恢复 paused 状态，以便 add_task 能够正常分配任务
-        self.paused = False
+        with self.xkw_lock:
+            self.paused = False
 
-        while not self.pending_tasks.empty():
-            url = self.pending_tasks.get()
-            self.add_task(url)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
+            while not self.pending_tasks.empty():
+                url = self.pending_tasks.get()
+                self.add_task(url)  # 通过 AutoDownloadManager 的 add_task 进行任务分配
 
         logging.info("已重新分配所有 pending_tasks，恢复任务分配。")
         if self.notifier:

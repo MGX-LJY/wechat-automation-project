@@ -32,8 +32,9 @@ class AdminCommandsHandler:
             '15': "帮助",
             '16': "恢复指定实例 <实例ID>",
             '17': "全部恢复",
-            '18': "查询群组下载份数 <群组名称> <时间段>",
-            '19': "查询个人下载份数 <个人名称> <时间段>",
+            '18': "禁用全部实例",
+            '19': "查询群组下载份数 <群组名称> <时间段>",
+            '20': "查询个人下载份数 <个人名称> <时间段>",
         }
 
         self.commands = {
@@ -62,6 +63,7 @@ class AdminCommandsHandler:
             'query_logs': r'^查询日志$|^query logs$',
             'restore_specific_instance': r'^恢复实例\s+(\S+)$',
             'restore_all_instances': r'^全部恢复$',
+            'disable_all_instances': r'^禁用全部实例$|^disable all instances$',
 
             # 新增下载份数查询命令
             'query_group_today_downloads': r'^查询群组\s+(\S+)\s+今天\s+下载份数$',
@@ -154,6 +156,10 @@ class AdminCommandsHandler:
 
                     elif cmd == 'restore_all_instances':
                         response = self.browser_controller.enable_all_instances()
+                        return response
+
+                    elif cmd == 'disable_all_instances':  # 新增的禁用全部实例命令处理
+                        response = self.browser_controller.disable_all_instances()
                         return response
 
                     # 新增下载份数查询命令处理逻辑
