@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import logging
 from typing import List, Optional, Dict
+from datetime import datetime, timedelta
 
 class PointManager:
     def __init__(self, db_path='points.db'):
@@ -16,10 +17,10 @@ class PointManager:
 
     def initialize_database(self):
         """
-        创建 groups、users 和 recipients 表
+        创建 groups、users、recipients、download_logs、daily_download_summary 和 download_links 表
         """
         try:
-            # 创建 groups 表，增加 is_whole 字段
+            # 现有的表创建逻辑
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS groups (
                     name TEXT PRIMARY KEY,
@@ -28,7 +29,6 @@ class PointManager:
                 )
             ''')
 
-            # 创建 users 表
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     group_name TEXT,
@@ -39,11 +39,41 @@ class PointManager:
                 )
             ''')
 
-            # 创建 recipients 表
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS recipients (
                     name TEXT PRIMARY KEY,
                     remaining_points INTEGER DEFAULT 100
+                )
+            ''')
+
+            # 新增表的创建
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS download_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    recipient_type TEXT NOT NULL,
+                    recipient_name TEXT NOT NULL,
+                    link TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS daily_download_summary (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date DATE NOT NULL,
+                    recipient_type TEXT NOT NULL,
+                    recipient_name TEXT NOT NULL,
+                    download_count INTEGER DEFAULT 0,
+                    UNIQUE(date, recipient_type, recipient_name)
+                )
+            ''')
+
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS download_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    download_log_id INTEGER,
+                    link TEXT NOT NULL,
+                    FOREIGN KEY (download_log_id) REFERENCES download_logs(id) ON DELETE CASCADE
                 )
             ''')
 
@@ -541,6 +571,164 @@ class PointManager:
                 return result[0]
             else:
                 return None
+
+    def log_download(self, recipient_type: str, recipient_name: str, link: str):
+        """
+        记录一次下载事件，并更新每日汇总。
+        """
+        with self.lock:
+            try:
+                # 插入 download_logs 表
+                self.cursor.execute('''
+                    INSERT INTO download_logs (recipient_type, recipient_name, link)
+                    VALUES (?, ?, ?)
+                ''', (recipient_type, recipient_name, link))
+                download_log_id = self.cursor.lastrowid
+
+                # 插入 download_links 表
+                self.cursor.execute('''
+                    INSERT INTO download_links (download_log_id, link)
+                    VALUES (?, ?)
+                ''', (download_log_id, link))
+
+                # 获取当前日期
+                current_date = datetime.now().date()
+
+                # 更新 daily_download_summary 表
+                self.cursor.execute('''
+                    INSERT INTO daily_download_summary (date, recipient_type, recipient_name, download_count)
+                    VALUES (?, ?, ?, 1)
+                    ON CONFLICT(date, recipient_type, recipient_name)
+                    DO UPDATE SET download_count = download_count + 1
+                ''', (current_date, recipient_type, recipient_name))
+
+                self.conn.commit()
+                logging.debug(f"已记录下载事件：{recipient_type}, {recipient_name}, {link}")
+            except Exception as e:
+                logging.error(f"记录下载事件时出错：{e}", exc_info=True)
+
+    def get_daily_download_summary(self, date: datetime.date) -> List[Dict]:
+        """
+        获取指定日期的下载汇总信息。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    SELECT recipient_type, recipient_name, download_count
+                    FROM daily_download_summary
+                    WHERE date = ?
+                ''', (date,))
+                rows = self.cursor.fetchall()
+                return [
+                    {
+                        'recipient_type': row[0],
+                        'recipient_name': row[1],
+                        'download_count': row[2]
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logging.error(f"获取 {date} 的下载汇总信息时出错：{e}", exc_info=True)
+            return []
+
+    def get_download_logs(self, recipient_type: Optional[str] = None, recipient_name: Optional[str] = None) -> List[Dict]:
+        """
+        获取下载日志，可以根据接收者类型和名称进行过滤。
+        """
+        try:
+            with self.lock:
+                query = 'SELECT recipient_type, recipient_name, link, timestamp FROM download_logs WHERE 1=1'
+                params = []
+                if recipient_type:
+                    query += ' AND recipient_type = ?'
+                    params.append(recipient_type)
+                if recipient_name:
+                    query += ' AND recipient_name = ?'
+                    params.append(recipient_name)
+                self.cursor.execute(query, tuple(params))
+                rows = self.cursor.fetchall()
+                return [
+                    {
+                        'recipient_type': row[0],
+                        'recipient_name': row[1],
+                        'link': row[2],
+                        'timestamp': row[3]
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logging.error(f"获取下载日志时出错：{e}", exc_info=True)
+            return []
+
+    def get_download_count(self, recipient_type: str, recipient_name: str, start_date: datetime.date,
+                           end_date: datetime.date) -> int:
+        """
+        获取指定接收者在指定日期范围内的下载次数。
+
+        :param recipient_type: 接收者类型（'whole_group', 'non_whole_group', 'individual'）
+        :param recipient_name: 接收者名称
+        :param start_date: 查询开始日期
+        :param end_date: 查询结束日期
+        :return: 下载次数
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    SELECT SUM(download_count) FROM daily_download_summary
+                    WHERE recipient_type = ?
+                      AND recipient_name = ?
+                      AND date BETWEEN ? AND ?
+                ''', (recipient_type, recipient_name, start_date, end_date))
+                result = self.cursor.fetchone()
+                return result[0] if result and result[0] is not None else 0
+        except Exception as e:
+            logging.error(f"获取下载次数时出错：{e}", exc_info=True)
+            return 0
+
+    def get_today_download_count(self, recipient_type: str, recipient_name: str) -> int:
+        """获取指定接收者今天的下载次数。"""
+        today = datetime.now().date()
+        return self.get_download_count(recipient_type, recipient_name, today, today)
+
+    def get_week_download_count(self, recipient_type: str, recipient_name: str) -> int:
+        """
+        获取指定接收者本周的下载次数。
+        本周从周一开始到今天，如果本周未结束。
+        """
+        today = datetime.now().date()
+        start_of_week = today - timedelta(days=today.weekday())  # 周一
+        return self.get_download_count(recipient_type, recipient_name, start_of_week, today)
+
+    def get_last_week_download_count(self, recipient_type: str, recipient_name: str) -> int:
+        """
+        获取指定接收者上周的下载次数。
+        上周从上上周一到上周日。
+        """
+        today = datetime.now().date()
+        start_of_current_week = today - timedelta(days=today.weekday())
+        end_of_last_week = start_of_current_week - timedelta(days=1)
+        start_of_last_week = end_of_last_week - timedelta(days=6)
+        return self.get_download_count(recipient_type, recipient_name, start_of_last_week, end_of_last_week)
+
+    def get_month_download_count(self, recipient_type: str, recipient_name: str) -> int:
+        """
+        获取指定接收者本月的下载次数。
+        本月从1号开始到今天，如果本月未结束。
+        """
+        today = datetime.now().date()
+        start_of_month = today.replace(day=1)
+        return self.get_download_count(recipient_type, recipient_name, start_of_month, today)
+
+    def get_last_month_download_count(self, recipient_type: str, recipient_name: str) -> int:
+        """
+        获取指定接收者上月的下载次数。
+        上月从上个月1号到上个月最后一天。
+        """
+        today = datetime.now().date()
+        first_day_current_month = today.replace(day=1)
+        last_day_last_month = first_day_current_month - timedelta(days=1)
+        start_of_last_month = last_day_last_month.replace(day=1)
+        return self.get_download_count(recipient_type, recipient_name, start_of_last_month, last_day_last_month)
 
     # 关闭数据库连接
     def close(self):

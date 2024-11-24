@@ -6,6 +6,9 @@
 
 # 日志目录
 /logs/
+failed_task.txt
+download_log.csv
+download_counts.json
 
 # 数据库文件
 points.db

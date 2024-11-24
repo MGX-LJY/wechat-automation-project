@@ -32,6 +32,9 @@ class AdminCommandsHandler:
             '15': "帮助",
             '16': "恢复指定实例 <实例ID>",
             '17': "全部恢复",
+            '18': "禁用全部实例",
+            '19': "查询群组下载份数 <群组名称> <时间段>",
+            '20': "查询个人下载份数 <个人名称> <时间段>",
         }
 
         self.commands = {
@@ -60,6 +63,21 @@ class AdminCommandsHandler:
             'query_logs': r'^查询日志$|^query logs$',
             'restore_specific_instance': r'^恢复实例\s+(\S+)$',
             'restore_all_instances': r'^全部恢复$',
+            'disable_all_instances': r'^禁用全部实例$|^disable all instances$',
+
+            # 新增下载份数查询命令
+            'query_group_today_downloads': r'^查询群组\s+(\S+)\s+今天\s+下载份数$',
+            'query_group_this_week_downloads': r'^查询群组\s+(\S+)\s+这周\s+下载份数$',
+            'query_group_last_week_downloads': r'^查询群组\s+(\S+)\s+上周\s+下载份数$',
+            'query_group_this_month_downloads': r'^查询群组\s+(\S+)\s+这个月\s+下载份数$',
+            'query_group_last_month_downloads': r'^查询群组\s+(\S+)\s+上个月\s+下载份数$',
+
+            'query_individual_today_downloads': r'^查询个人\s+(\S+)\s+今天\s+下载份数$',
+            'query_individual_this_week_downloads': r'^查询个人\s+(\S+)\s+这周\s+下载份数$',
+            'query_individual_last_week_downloads': r'^查询个人\s+(\S+)\s+上周\s+下载份数$',
+            'query_individual_this_month_downloads': r'^查询个人\s+(\S+)\s+这个月\s+下载份数$',
+            'query_individual_last_month_downloads': r'^查询个人\s+(\S+)\s+上个月\s+下载份数$',
+
         }
 
     def handle_command(self, message: str) -> Optional[str]:
@@ -139,6 +157,52 @@ class AdminCommandsHandler:
                     elif cmd == 'restore_all_instances':
                         response = self.browser_controller.enable_all_instances()
                         return response
+
+                    elif cmd == 'disable_all_instances':  # 新增的禁用全部实例命令处理
+                        response = self.browser_controller.disable_all_instances()
+                        return response
+
+                    # 新增下载份数查询命令处理逻辑
+                    if cmd.startswith('query_group') and cmd.endswith('_downloads'):
+                        group_name = match.group(1)
+                        recipient_type = 'whole_group'  # 假设群组都是整体性群组
+                        # 根据命令类型调用不同的方法
+                        if cmd == 'query_group_today_downloads':
+                            count = self.point_manager.get_today_download_count(recipient_type, group_name)
+                            return f"群组 '{group_name}' 今天的下载份数为 {count}。"
+                        elif cmd == 'query_group_this_week_downloads':
+                            count = self.point_manager.get_week_download_count(recipient_type, group_name)
+                            return f"群组 '{group_name}' 这周的下载份数为 {count}。"
+                        elif cmd == 'query_group_last_week_downloads':
+                            count = self.point_manager.get_last_week_download_count(recipient_type, group_name)
+                            return f"群组 '{group_name}' 上周的下载份数为 {count}。"
+                        elif cmd == 'query_group_this_month_downloads':
+                            count = self.point_manager.get_month_download_count(recipient_type, group_name)
+                            return f"群组 '{group_name}' 这个月的下载份数为 {count}。"
+                        elif cmd == 'query_group_last_month_downloads':
+                            count = self.point_manager.get_last_month_download_count(recipient_type, group_name)
+                            return f"群组 '{group_name}' 上个月的下载份数为 {count}。"
+
+                    elif cmd.startswith('query_individual') and cmd.endswith('_downloads'):
+                        individual_name = match.group(1)
+                        recipient_type = 'individual'
+                        # 根据命令类型调用不同的方法
+                        if cmd == 'query_individual_today_downloads':
+                            count = self.point_manager.get_today_download_count(recipient_type, individual_name)
+                            return f"个人 '{individual_name}' 今天的下载份数为 {count}。"
+                        elif cmd == 'query_individual_this_week_downloads':
+                            count = self.point_manager.get_week_download_count(recipient_type, individual_name)
+                            return f"个人 '{individual_name}' 这周的下载份数为 {count}。"
+                        elif cmd == 'query_individual_last_week_downloads':
+                            count = self.point_manager.get_last_week_download_count(recipient_type, individual_name)
+                            return f"个人 '{individual_name}' 上周的下载份数为 {count}。"
+                        elif cmd == 'query_individual_this_month_downloads':
+                            count = self.point_manager.get_month_download_count(recipient_type, individual_name)
+                            return f"个人 '{individual_name}' 这个月的下载份数为 {count}。"
+                        elif cmd == 'query_individual_last_month_downloads':
+                            count = self.point_manager.get_last_month_download_count(recipient_type, individual_name)
+                            return f"个人 '{individual_name}' 上个月的下载份数为 {count}。"
+
 
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
@@ -360,6 +424,21 @@ class AdminCommandsHandler:
             "    示例：恢复实例 xkw1\n\n"
             "17. 全部恢复\n"
             "    示例：全部恢复\n\n"
+            "【下载份数查询命令】\n"
+            "18. 查询群组下载份数 <群组名称> <时间段>\n"
+            "    示例：查询群组 群组A 今天 下载份数\n"
+            "    示例：查询群组 群组A 这周 下载份数\n"
+            "    示例：查询群组 群组A 上周 下载份数\n"
+            "    示例：查询群组 群组A 这个月 下载份数\n"
+            "    示例：查询群组 群组A 上个月 下载份数\n\n"
+            
+            "19. 查询个人下载份数 <个人名称> <时间段>\n"
+            "    示例：查询个人 用户1 今天 下载份数\n"
+            "    示例：查询个人 用户1 这周 下载份数\n"
+            "    示例：查询个人 用户1 上周 下载份数\n"
+            "    示例：查询个人 用户1 这个月 下载份数\n"
+            "    示例：查询个人 用户1 上个月 下载份数\n\n"
+
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"
             "例如，发送 '1' 获取命令模板。"
