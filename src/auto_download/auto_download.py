@@ -161,23 +161,6 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"初始化标签页时出错: {e}", is_error=True)
 
-    def reset_tab(self, tab):
-        """
-        重置标签页，将其导航到空白页以清除状态。
-
-        参数:
-        - tab: 需要重置的标签页。
-        """
-        try:
-            logging.info("等待0.1秒后重置标签页到空白页。")
-            time.sleep(0.1)
-            tab.get('about:blank')
-            logging.info("标签页已重置为 about:blank。")
-        except Exception as e:
-            logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"导航标签页到空白页时出错: {e}", is_error=True)
-
     def match_downloaded_file(self, title):
         """
         匹配下载的文件，基于给定的标题在下载目录中寻找匹配的文件。
@@ -523,7 +506,6 @@ class XKW:
                         logging.info(f"下载成功，开始处理上传任务: {url}")
 
                         # 立即释放标签页
-                        self.reset_tab(tab)
                         self.tabs.put(tab)
                         logging.debug("标签页已重置并释放。")
 
@@ -607,9 +589,6 @@ class XKW:
 
                         retry_thread.start()
                         handle_login_thread.start()
-
-                # **确保标签页已被释放**
-                self.reset_tab(tab)
                 self.tabs.put(tab)
 
                 # 获取当前账号的昵称
@@ -945,7 +924,6 @@ class XKW:
                     logging.info(f"任务被跳过: {url}")
                 else:
                     logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                self.reset_tab(tab)
                 return
 
             download_button = tab("#btnSoftDownload")  # 获取下载按钮
@@ -953,7 +931,6 @@ class XKW:
                 logging.error(f"无法找到下载按钮，跳过URL: {url}")
                 if self.notifier:
                     self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
-                self.reset_tab(tab)
                 return
             logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
             click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
@@ -964,10 +941,7 @@ class XKW:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-            self.reset_tab(tab)
         finally:
-            # 无论成功与否，都重置标签页并放回队列
-            self.reset_tab(tab)
             self.tabs.put(tab)
 
     def run(self):
