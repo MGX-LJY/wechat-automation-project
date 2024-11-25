@@ -516,7 +516,7 @@ class XKW:
             # 监听下载链接
             while True:
                 for item in tab.listen.steps(timeout=10):
-                    if item.url.startswith("https://files.zxxk.com/?mkey="):
+                    if item.url.startswith("https://www.zxxk.com/soft/softdownload?softid="):
                         tab.listen.stop()
                         tab.stop_loading()
                         logging.info(f"下载链接获取成功: {item.url}")
