@@ -540,9 +540,28 @@ class XKW:
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
-            # 监听下载链接
-            while True:
-                for item in tab.listen.steps(timeout=10):
+            max_wait_time = 180  # 最大等待时间（秒）
+            per_iteration_wait_time = 5  # 每次循环的等待时间（秒）
+            total_elapsed_time = 0  # 总共已经等待的时间
+
+            while total_elapsed_time < max_wait_time:
+                start_time = time.time()
+
+                # 尝试点击确认按钮
+                try:
+                    iframe = tab.get_frame('#layui-layer-iframe100002')
+                    if iframe:
+                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                        if a:
+                            a.click()
+                            logging.info("点击确认按钮成功。")
+                    else:
+                        logging.debug("未找到确认按钮的 iframe。")
+                except Exception as e:
+                    logging.error(f"尝试点击确认按钮时发生错误: {e}", exc_info=True)
+
+                # 监听网络请求
+                for item in tab.listen.steps(timeout=per_iteration_wait_time):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
                         tab.stop_loading()
@@ -586,18 +605,13 @@ class XKW:
                         # 直接跳过链接，不报错，也不发送通知
                         return True  # 返回 True，表示任务处理完毕
 
-                else:
-                    # 如果没有捕获到下载链接，处理特殊情况
-                    time.sleep(0.5)
-                    iframe = tab.get_frame('#layui-layer-iframe100002')
-                    if iframe:
-                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                        if a:
-                            a.click()
-                            logging.info("点击确认按钮成功。")
-                            continue  # 继续监听
-                    logging.warning(f"下载失败: {url}")
-                    break  # 退出监听循环
+                # 如果没有捕获到下载链接，更新已等待的时间
+                elapsed_time = time.time() - start_time
+                total_elapsed_time += elapsed_time
+                logging.info(f"未捕获到下载链接，已等待 {total_elapsed_time:.1f} 秒。")
+
+            # 超过最大等待时间，下载失败
+            logging.warning(f"在 {max_wait_time} 秒内未能捕获到下载链接，下载失败: {url}")
 
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
