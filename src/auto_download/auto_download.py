@@ -174,6 +174,23 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"初始化标签页时出错: {e}", is_error=True)
 
+    def reset_tab(self, tab):
+        """
+        重置标签页，将其导航到空白页以清除状态。
+
+        参数:
+        - tab: 需要重置的标签页。
+        """
+        try:
+            logging.info("等待0.1秒后重置标签页到空白页。")
+            time.sleep(0.1)
+            tab.get('about:blank')
+            logging.info("标签页已重置为 about:blank。")
+        except Exception as e:
+            logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"导航标签页到空白页时出错: {e}", is_error=True)
+
     def match_downloaded_file(self, title):
         """
         匹配下载的文件，基于给定的标题在下载目录中寻找匹配的文件。
@@ -502,26 +519,6 @@ class XKW:
                 self.notifier.notify(f"提取昵称时出错: {e}", is_error=True)
             return ""
 
-    def click_confirm_button(self, tab):
-        try:
-            while True:
-                # 等待页面加载完成
-                tab.wait.load_start(timeout=10)
-                tab.wait.doc_loaded(timeout=30)
-
-                iframe = tab.get_frame('#layui-layer-iframe100002')
-                if iframe:
-                    a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                    if a:
-                        a.click()
-                        logging.info("点击确认按钮成功。")
-                        break
-                time.sleep(0.5)  # 等待0.5秒后再次检查
-        except Exception as e:
-            logging.error(f"点击确认按钮时出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"点击确认按钮时出错: {e}", is_error=True)
-
     def listener(self, tab, download, url, title, soft_id):
         """
         监听下载过程，处理下载链接的获取和确认按钮的点击。
@@ -540,75 +537,73 @@ class XKW:
         success = False
         try:
             logging.info(f"开始下载 {url}")
-            start_time = time.time()
-
-            # 开始监听网络请求
-            tab.listen.start(True, method="GET")
+            tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
-            logging.info(f"点击下载按钮时间: {datetime.now()}")
-
-            # 启动线程来点击确认按钮
-            time.sleep(random.uniform(2, 3))  # 随机延迟，等待页面加载
-            confirm_thread = threading.Thread(target=self.click_confirm_button, args=(tab,), daemon=True)
-            confirm_thread.start()
 
             # 监听下载链接
-            for item in tab.listen.steps(timeout=180):  # 缩短超时时间
-                if item.url.startswith("https://files.zxxk.com/?mkey="):
-                    # 捕获下载链接
-                    elapsed = time.time() - start_time
-                    logging.info(f"捕获下载链接时间: {datetime.now()}, 耗时: {elapsed:.2f} 秒, 链接: {item.url}")
+            while True:
+                for item in tab.listen.steps(timeout=10):
+                    if item.url.startswith("https://files.zxxk.com/?mkey="):
+                        tab.listen.stop()
+                        tab.stop_loading()
+                        logging.info(f"下载链接获取成功: {item.url}")
+                        logging.info(f"下载成功，开始处理上传任务: {url}")
 
-                    tab.listen.stop()
-                    tab.stop_loading()
-                    logging.info(f"下载链接获取成功: {item.url}")
-                    logging.info(f"下载成功，开始处理上传任务: {url}")
+                        # 匹配下载的文件
+                        file_path = self.match_downloaded_file(title)
+                        if not file_path:
+                            logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
+                            if self.notifier:
+                                self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
+                            return True  # 返回 True，表示任务处理完毕
 
-                    # 立即释放标签页
-                    self.tabs.put(tab)
-                    logging.debug("标签页已重置并释放。")
+                        # 获取当前账号的昵称
+                        current_account = self.accounts[self.current_account_index]
+                        nickname = current_account.get('nickname', current_account['username'])
 
-                    # 匹配下载的文件
-                    file_path = self.match_downloaded_file(title)
-                    if not file_path:
-                        logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
-                        if self.notifier:
-                            self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
+                        # 处理上传任务
+                        if self.uploader:
+                            try:
+                                self.uploader.add_upload_task(file_path, soft_id)
+                                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                            except Exception as e:
+                                logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
+                                if self.notifier:
+                                    self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+                        else:
+                            logging.warning("Uploader 未设置，无法传递上传任务。")
+
+                        # 记录账号下载次数
+                        self.account_count(url, tab)
+
+                        # 重置标签页
+                        self.reset_tab(tab)
+                        success = True
+                        return True  # 下载成功，返回 True
+
+                    elif "20600001" in item.url:
+                        logging.warning("请求过于频繁，直接跳过该链接。")
+                        # 直接跳过链接，不报错，也不发送通知
                         return True  # 返回 True，表示任务处理完毕
 
-                    # 获取当前账号的昵称
-                    current_account = self.accounts[self.current_account_index]
-                    nickname = current_account.get('nickname', current_account['username'])
+                else:
+                    # 如果没有捕获到下载链接，处理特殊情况
+                    time.sleep(0.5)
+                    iframe = tab.get_frame('#layui-layer-iframe100002')
+                    if iframe:
+                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                        if a:
+                            a.click()
+                            logging.info("点击确认按钮成功。")
+                            continue  # 继续监听
+                    logging.warning(f"下载失败: {url}")
+                    break  # 退出监听循环
 
-                    # 处理上传任务
-                    if self.uploader:
-                        try:
-                            self.uploader.add_upload_task(file_path, soft_id)
-                            logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                        except Exception as e:
-                            logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
-                            if self.notifier:
-                                self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
-                    else:
-                        logging.warning("Uploader 未设置，无法传递上传任务。")
-
-                    # 记录账号下载次数
-                    self.account_count(url, tab)
-
-                    success = True
-                    return True  # 下载成功，返回 True
-
-                elif "20600001" in item.url:
-                    logging.warning("请求过于频繁，直接跳过该链接。")
-                    # 直接跳过链接，不报错，也不发送通知
-                    return True  # 返回 True，表示任务处理完毕
-
-            # 如果没有捕获到下载链接，下载失败
-            logging.warning(f"下载失败: {url}")
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+
         finally:
             if not success:
                 # 1. 禁用当前的 XKW 实例
@@ -631,23 +626,23 @@ class XKW:
                         self.is_handling_login = True
                         # 分别执行切换实例重试下载和处理登录状态
                         retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,),
-                                                               daemon=True)
+                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
 
                         retry_thread.start()
                         handle_login_thread.start()
+
+                # 重置标签页并将其放回队列
+                self.reset_tab(tab)
                 self.tabs.put(tab)
 
                 # 获取当前账号的昵称
                 current_account = self.accounts[self.current_account_index]
                 nickname = current_account.get('nickname', current_account['username'])
 
-                logging.error(
-                    f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
+                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
                 if self.notifier:
-                    self.notifier.notify(
-                        f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
-                        is_error=True)
+                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
+                                         is_error=True)
         # 返回下载结果
         return success
 
@@ -951,73 +946,50 @@ class XKW:
                 self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
             return False
 
-    def download(self, url, tab, max_retries=3, retry_delay=5):
-        """
-        下载指定的 URL，支持重试机制。
+    def download(self, url, tab):
+        try:
+            logging.info(f"准备下载 URL: {url}")
+            # 增加随机延迟，模拟人类等待页面加载
+            pre_download_delay = random.uniform(0.5, 1)
+            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
+            time.sleep(pre_download_delay)
 
-        :param url: 要下载的 URL
-        :param tab: 浏览器标签页对象
-        :param max_retries: 最大重试次数
-        :param retry_delay: 重试之间的延迟（秒）
-        """
-        attempt = 0
-        while attempt <= max_retries:
-            try:
-                logging.info(f"准备下载 URL: {url} (尝试 {attempt + 1}/{max_retries + 1})")
+            tab.get(url)
 
-                # 增加随机延迟，模拟人类等待页面加载
-                pre_download_delay = random.uniform(0.5, 1)
-                logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
-                time.sleep(pre_download_delay)
+            # 等待页面加载完成
+            tab.wait.load_start(timeout=10)
+            tab.wait.doc_loaded(timeout=30)
 
-                tab.get(url)
-
-                # 等待页面加载完成
-                tab.wait.load_start(timeout=10)
-                tab.wait.doc_loaded(timeout=30)
-
-                soft_id, title = self.extract_id_and_title(tab, url)
-                if not soft_id or not title:
-                    if soft_id is None and title is None:
-                        logging.info(f"任务被跳过: {url}")
-                    else:
-                        logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                    return
-
-                download_button = tab("#btnSoftDownload")  # 获取下载按钮
-                if not download_button:
-                    logging.error(f"无法找到下载按钮，跳过URL: {url}")
-                    if self.notifier:
-                        self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
-                    return
-
-                logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
-                click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
-                logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
-                time.sleep(click_delay)
-
-                self.listener(tab, download_button, url, title, soft_id)
-
-                # 如果下载成功，跳出重试循环
-                logging.info(f"下载成功: {url}")
-                break
-
-            except Exception as e:
-                logging.error(f"下载过程中出错: {e}", exc_info=True)
-                if self.notifier:
-                    self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-
-                attempt += 1
-                if attempt > max_retries:
-                    logging.error(f"超过最大重试次数 ({max_retries})，下载失败: {url}")
-                    if self.notifier:
-                        self.notifier.notify(f"超过最大重试次数 ({max_retries})，下载失败: {url}", is_error=True)
+            soft_id, title = self.extract_id_and_title(tab, url)
+            if not soft_id or not title:
+                if soft_id is None and title is None:
+                    logging.info(f"任务被跳过: {url}")
                 else:
-                    logging.info(f"等待 {retry_delay} 秒后重试下载: {url}")
-                    time.sleep(retry_delay)
+                    logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                self.reset_tab(tab)
+                return
 
-            finally:
-                self.tabs.put(tab)
+            download_button = tab("#btnSoftDownload")  # 获取下载按钮
+            if not download_button:
+                logging.error(f"无法找到下载按钮，跳过URL: {url}")
+                if self.notifier:
+                    self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
+                self.reset_tab(tab)
+                return
+            logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
+            click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
+            logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
+            time.sleep(click_delay)
+            self.listener(tab, download_button, url, title, soft_id)
+        except Exception as e:
+            logging.error(f"下载过程中出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+            self.reset_tab(tab)
+        finally:
+            # 无论成功与否，都重置标签页并放回队列
+            self.reset_tab(tab)
+            self.tabs.put(tab)
 
     def run(self):
         """
