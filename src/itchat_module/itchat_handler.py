@@ -4,7 +4,7 @@ import re
 import threading
 from collections import deque
 from io import BytesIO
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 from urllib.parse import urlparse, urlunparse
 
 from PIL import Image
@@ -398,41 +398,33 @@ class MessageHandler:
         urls = self.regex.findall(content)
         return urls
 
-    def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
+    def process_urls(self, urls: List[str]) -> list[tuple[bytes, str | None | Any]]:
         """清理、验证并处理URL，返回有效的 (url, soft_id) 列表"""
         valid_urls = []
         for url in urls:
-            # 清理URL
-            clean_url = self.clean_url(url)
-
-            if self.validation and not self.validate_url(clean_url):
-                logging.warning(f"URL 验证失败: {clean_url}")
+            # 清理URL并验证
+            # 使用 urlparse 解析URL
+            parsed = urlparse(url)
+            # 移除 fragment（#后面的部分）
+            clean = parsed._replace(fragment='')
+            # 重新构建 URL，并移除结尾的特殊字符
+            cleaned_url = urlunparse(clean).rstrip('」””"\'')
+            # 验证URL（检查是否以 http:// 或 https:// 开头）
+            if self.validation and not cleaned_url.startswith(('http://', 'https://')):
+                logging.warning(f"URL 验证失败: {cleaned_url}")
                 continue
 
             # 从URL中提取 soft_id
-            soft_id_match = re.search(r'/soft/(\d+)\.html', clean_url)
+            soft_id_match = re.search(r'/soft/(\d+)\.html', cleaned_url)
             if soft_id_match:
                 soft_id = soft_id_match.group(1)
             else:
-                logging.warning(f"无法从 URL 中提取 soft_id: {clean_url}")
+                logging.warning(f"无法从 URL 中提取 soft_id: {cleaned_url}")
                 soft_id = None
 
-            valid_urls.append((clean_url, soft_id))
+            valid_urls.append((cleaned_url, soft_id))
 
         return valid_urls
-
-    def clean_url(self, url: str) -> str:
-        """清理URL，移除锚点和不必要的字符和文字"""
-        parsed = urlparse(url)
-        # 移除 fragment（#后面的部分）
-        clean = parsed._replace(fragment='')
-        # 重新构建 URL，并移除结尾的特殊字符
-        cleaned_url = urlunparse(clean).rstrip('」””"\'')
-        return cleaned_url
-
-    def validate_url(self, url: str) -> bool:
-        """验证URL是否以http://或https://开头"""
-        return url.startswith(('http://', 'https://'))
 
     def get_last_n_logs(self, n: int) -> Optional[str]:
         """获取日志目录下最新日志文件的最后 n 行内容"""
