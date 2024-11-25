@@ -544,7 +544,7 @@ class XKW:
             logging.info(f"点击下载按钮时间: {datetime.now()}")
 
             # 启动线程来点击确认按钮
-            time.sleep(3)
+            time.sleep(random.uniform(2, 3))  # 随机延迟，等待页面加载
             confirm_thread = threading.Thread(target=self.click_confirm_button, args=(tab,), daemon=True)
             confirm_thread.start()
 
