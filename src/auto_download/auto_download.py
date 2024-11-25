@@ -538,8 +538,16 @@ class XKW:
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
-            # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
             time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
+
+            # 检查是否出现下载上限的提示
+            if self.check_limit_message(tab):
+                logging.warning("账户下载上限，直接跳过该链接。")
+                success = False
+                failure_reason = 'limit'
+                return False
+
+            # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
             self.click_confirm_button(tab)
 
             # 设置总的等待时间和间隔
@@ -594,11 +602,12 @@ class XKW:
                         success = True
                         return True  # 返回 True，表示任务处理完毕
 
-                    elif "上限" in item.url:
-                        logging.warning("账户下载上限，直接跳过该链接。")
-                        success = True
-                        failure_reason = 'limit'
-                        return False
+                # 在每次循环结束后检查是否出现下载上限提示
+                if self.check_limit_message(tab):
+                    logging.warning("账户下载上限，直接跳过该链接。")
+                    success = False
+                    failure_reason = 'limit'
+                    return False
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
@@ -631,6 +640,84 @@ class XKW:
 
             # 返回下载结果
             return success
+
+    def check_limit_message(self, tab):
+        """
+        检查页面是否出现下载上限的提示信息。
+        """
+        limit_detected = False
+
+        # 方法1：检查特定的提示文本
+        try:
+            logging.info("方法1：检查特定的提示文本")
+            limit_message = tab.find_element('//*[contains(text(), "您的学校已达到每日下载量上限")]', timeout=2)
+            if limit_message:
+                logging.info("方法1：检测到下载上限提示")
+                limit_detected = True
+            else:
+                logging.info("方法1：未检测到下载上限提示")
+        except Exception as e:
+            logging.info(f"方法1：出现异常 - {e}")
+
+        # 方法2：检查特定的 iframe 元素
+        try:
+            logging.info("方法2：检查特定的 iframe 元素")
+            iframe_element = tab.find_element('//iframe[contains(@src, "risk-control-dialog")]', timeout=2)
+            if iframe_element:
+                logging.info("方法2：检测到特定的 iframe 元素")
+                # 切换到 iframe 内部
+                tab.switch_to_frame(iframe_element)
+                try:
+                    # 在 iframe 内检查特定的提示文本
+                    inner_limit_message = tab.find_element('//*[contains(text(), "您的学校已达到每日下载量上限")]',
+                                                           timeout=1)
+                    if inner_limit_message:
+                        logging.info("方法2：在 iframe 内部检测到下载上限提示")
+                        limit_detected = True
+                    else:
+                        logging.info("方法2：在 iframe 内部未检测到下载上限提示")
+                except Exception as e:
+                    logging.info(f"方法2：在 iframe 内部出现异常 - {e}")
+                finally:
+                    tab.switch_to_default_content()  # 确保切回主内容
+            else:
+                logging.info("方法2：未检测到特定的 iframe 元素")
+        except Exception as e:
+            logging.info(f"方法2：出现异常 - {e}")
+
+        # 方法3：检查特定的弹窗元素
+        try:
+            logging.info("方法3：检查特定的弹窗元素")
+            popup_element = tab.find_element('//div[@class="risk-control-dialog"]', timeout=2)
+            if popup_element:
+                logging.info("方法3：检测到弹窗元素")
+                # 在弹窗内查找特定的提示文本
+                popup_message = popup_element.find_element('.//*[contains(text(), "您的学校已达到每日下载量上限")]',
+                                                           timeout=1)
+                if popup_message:
+                    logging.info("方法3：在弹窗内检测到下载上限提示")
+                    limit_detected = True
+                else:
+                    logging.info("方法3：在弹窗内未检测到下载上限提示")
+            else:
+                logging.info("方法3：未检测到弹窗元素")
+        except Exception as e:
+            logging.info(f"方法3：出现异常 - {e}")
+
+        # 方法4：检查整个页面的文本内容（备用方法）
+        try:
+            logging.info("方法4：检查整个页面的文本内容")
+            page_text = tab.execute_script("return document.body.innerText;")
+            if "您的学校已达到每日下载量上限" in page_text:
+                logging.info("方法4：在页面文本中检测到下载上限提示")
+                limit_detected = True
+            else:
+                logging.info("方法4：未在页面文本中检测到下载上限提示")
+        except Exception as e:
+            logging.info(f"方法4：出现异常 - {e}")
+
+        # 返回检测结果
+        return limit_detected
 
     def handle_limit_failure(self, url, tab):
         """
