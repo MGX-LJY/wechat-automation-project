@@ -502,79 +502,109 @@ class XKW:
                 self.notifier.notify(f"提取昵称时出错: {e}", is_error=True)
             return ""
 
+    def click_confirm_button(self, tab):
+        try:
+            while True:
+                iframe = tab.get_frame('#layui-layer-iframe100002')
+                if iframe:
+                    a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                    if a:
+                        a.click()
+                        logging.info("点击确认按钮成功。")
+                        break
+                time.sleep(0.5)  # 等待0.5秒后再次检查
+        except Exception as e:
+            logging.error(f"点击确认按钮时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"点击确认按钮时出错: {e}", is_error=True)
+
     def listener(self, tab, download, url, title, soft_id):
+        """
+        监听下载过程，处理下载链接的获取和确认按钮的点击。
+
+        参数:
+        - tab: 当前浏览器标签页。
+        - download: 下载按钮元素。
+        - url: 要下载的URL。
+        - title: 下载项的标题。
+        - soft_id: 下载项的软ID。
+
+        返回:
+        - True: 如果下载成功。
+        - False: 如果下载失败。
+        """
         success = False
         try:
             logging.info(f"开始下载 {url}")
-            tab.listen.start(True, method="GET")  # 开始监听网络请求
+            start_time = time.time()
+
+            # 开始监听网络请求
+            tab.listen.start(True, method="GET")
             download.click(by_js=True)  # 点击下载按钮
+            logging.info(f"点击下载按钮时间: {datetime.now()}")
+
+            # 启动线程来点击确认按钮
+            time.sleep(3)
+            confirm_thread = threading.Thread(target=self.click_confirm_button, args=(tab,), daemon=True)
+            confirm_thread.start()
 
             # 监听下载链接
-            while True:
-                for item in tab.listen.steps(timeout=180):
-                    if item.url.startswith("https://files.zxxk.com/?mkey="):
-                        tab.listen.stop()
-                        tab.stop_loading()
-                        logging.info(f"下载链接获取成功: {item.url}")
-                        logging.info(f"下载成功，开始处理上传任务: {url}")
+            for item in tab.listen.steps(timeout=180):  # 缩短超时时间
+                if item.url.startswith("https://files.zxxk.com/?mkey="):
+                    # 捕获下载链接
+                    elapsed = time.time() - start_time
+                    logging.info(f"捕获下载链接时间: {datetime.now()}, 耗时: {elapsed:.2f} 秒, 链接: {item.url}")
 
-                        # 立即释放标签页
-                        self.tabs.put(tab)
-                        logging.debug("标签页已重置并释放。")
+                    tab.listen.stop()
+                    tab.stop_loading()
+                    logging.info(f"下载链接获取成功: {item.url}")
+                    logging.info(f"下载成功，开始处理上传任务: {url}")
 
-                        # 匹配下载的文件
-                        file_path = self.match_downloaded_file(title)
-                        if not file_path:
-                            logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
-                            if self.notifier:
-                                self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                            return True  # 返回 True，表示任务处理完毕
+                    # 立即释放标签页
+                    self.tabs.put(tab)
+                    logging.debug("标签页已重置并释放。")
 
-                        # 获取当前账号的昵称
-                        current_account = self.accounts[self.current_account_index]
-                        nickname = current_account.get('nickname', current_account['username'])
-
-                        # 处理上传任务
-                        if self.uploader:
-                            try:
-                                self.uploader.add_upload_task(file_path, soft_id)
-                                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                            except Exception as e:
-                                logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
-                                if self.notifier:
-                                    self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
-                        else:
-                            logging.warning("Uploader 未设置，无法传递上传任务。")
-
-                        # 记录账号下载次数
-                        self.account_count(url, tab)
-
-                        success = True
-                        return True  # 下载成功，返回 True
-
-                    elif "20600001" in item.url:
-                        logging.warning("请求过于频繁，直接跳过该链接。")
-                        # 直接跳过链接，不报错，也不发送通知
+                    # 匹配下载的文件
+                    file_path = self.match_downloaded_file(title)
+                    if not file_path:
+                        logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
+                        if self.notifier:
+                            self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
                         return True  # 返回 True，表示任务处理完毕
 
-                else:
-                    # 如果没有捕获到下载链接，处理特殊情况
-                    time.sleep(0.5)
-                    iframe = tab.get_frame('#layui-layer-iframe100002')
-                    if iframe:
-                        a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                        if a:
-                            a.click()
-                            logging.info("点击确认按钮成功。")
-                            continue  # 继续监听
-                    logging.warning(f"下载失败: {url}")
-                    break  # 退出监听循环
+                    # 获取当前账号的昵称
+                    current_account = self.accounts[self.current_account_index]
+                    nickname = current_account.get('nickname', current_account['username'])
 
+                    # 处理上传任务
+                    if self.uploader:
+                        try:
+                            self.uploader.add_upload_task(file_path, soft_id)
+                            logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                        except Exception as e:
+                            logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
+                            if self.notifier:
+                                self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+                    else:
+                        logging.warning("Uploader 未设置，无法传递上传任务。")
+
+                    # 记录账号下载次数
+                    self.account_count(url, tab)
+
+                    success = True
+                    return True  # 下载成功，返回 True
+
+                elif "20600001" in item.url:
+                    logging.warning("请求过于频繁，直接跳过该链接。")
+                    # 直接跳过链接，不报错，也不发送通知
+                    return True  # 返回 True，表示任务处理完毕
+
+            # 如果没有捕获到下载链接，下载失败
+            logging.warning(f"下载失败: {url}")
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-
         finally:
             if not success:
                 # 1. 禁用当前的 XKW 实例
