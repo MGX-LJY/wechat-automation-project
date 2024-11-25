@@ -641,14 +641,18 @@ class XKW:
             # 返回下载结果
             return success
 
+    import logging
+    import re
+    from urllib.parse import urljoin
+
     def check_limit_message(self, tab):
         """
-        检查页面是否出现下载上限的提示信息。
+        检查页面是否出现“学科网提示您”的提示信息。
 
-        使用 DrissionPage 提供的功能，通过四种方法检测下载上限提示。
+        使用 DrissionPage 提供的功能，通过四种方法检测提示信息。
         """
         limit_detected = False
-        limit_text = "您的学校已达到每日下载量上限"
+        limit_text = "学科网提示您"
 
         # 方法1：检查特定的提示文本
         try:
@@ -659,7 +663,7 @@ class XKW:
             else:
                 logging.info("方法1：未检测到下载上限提示")
         except Exception as e:
-            logging.info(f"方法1：出现异常 - {e}")
+            logging.error(f"方法1：出现异常 - {e}")
 
         # 方法2：检查特定的 iframe 元素
         try:
@@ -671,30 +675,34 @@ class XKW:
                 logging.info(f"方法2：检测到 {len(iframes)} 个特定的 iframe 元素")
                 for iframe_src in iframes:
                     logging.info(f"方法2：获取 iframe 的 src: {iframe_src}")
-                    # 构建完整的 URL（假设 iframe 的 src 是绝对 URL）
-                    iframe_url = iframe_src
+                    # 构建完整的 URL（处理相对路径和绝对路径）
                     if not re.match(r'^https?://', iframe_src):
-                        # 如果 src 是相对路径，则拼接成完整 URL
-                        from urllib.parse import urljoin
                         iframe_url = urljoin(tab.url, iframe_src)
                         logging.info(f"方法2：构建完整的 iframe URL: {iframe_url}")
-                    # 请求 iframe 的内容
-                    iframe_response = tab.get(iframe_url)
-                    if iframe_response.ok:
-                        logging.info(f"方法2：成功获取 iframe 内容: {iframe_url}")
-                        # 检查提示文本是否在 iframe 的 HTML 中
-                        if limit_text in iframe_response.text:
-                            logging.info("方法2：在 iframe 内部检测到下载上限提示")
-                            limit_detected = True
-                            break  # 只需检测到一次即可
-                        else:
-                            logging.info("方法2：在 iframe 内部未检测到下载上限提示")
                     else:
-                        logging.info(f"方法2：无法获取 iframe 内容，状态码: {iframe_response.status_code}")
+                        iframe_url = iframe_src
+                        logging.info(f"方法2：使用绝对的 iframe URL: {iframe_url}")
+
+                    # 使用 DrissionPage 的 session 发送 GET 请求获取 iframe 内容
+                    try:
+                        success = tab.session.get(iframe_url)
+                        if success:
+                            # 假设 DrissionPage 在成功请求后将响应内容存储在 tab.session.last_response
+                            iframe_content = tab.session.last_response.text
+                            if limit_text in iframe_content:
+                                logging.info("方法2：在 iframe 内部检测到下载上限提示")
+                                limit_detected = True
+                                break  # 只需检测到一次即可
+                            else:
+                                logging.info("方法2：在 iframe 内部未检测到下载上限提示")
+                        else:
+                            logging.warning(f"方法2：无法获取 iframe 内容，URL: {iframe_url}")
+                    except Exception as e:
+                        logging.error(f"方法2：获取 iframe 内容时出现异常 - {e}")
             else:
                 logging.info("方法2：未检测到特定的 iframe 元素")
         except Exception as e:
-            logging.info(f"方法2：出现异常 - {e}")
+            logging.error(f"方法2：出现异常 - {e}")
 
         # 方法3：检查特定的弹窗元素
         try:
@@ -715,19 +723,21 @@ class XKW:
             else:
                 logging.info("方法3：未检测到弹窗元素")
         except Exception as e:
-            logging.info(f"方法3：出现异常 - {e}")
+            logging.error(f"方法3：出现异常 - {e}")
 
         # 方法4：检查整个页面的文本内容
         try:
             logging.info("方法4：检查整个页面的文本内容")
-            page_text = tab.text  # 获取页面的纯文本内容
+            # 使用 DrissionPage 的 xpath 获取所有文本节点
+            text_elements = tab.xpath('//body//text()')
+            page_text = ''.join([element.text for element in text_elements])
             if limit_text in page_text:
                 logging.info("方法4：在页面文本中检测到下载上限提示")
                 limit_detected = True
             else:
                 logging.info("方法4：未在页面文本中检测到下载上限提示")
         except Exception as e:
-            logging.info(f"方法4：出现异常 - {e}")
+            logging.error(f"方法4：出现异常 - {e}")
 
         # 返回检测结果
         return limit_detected
