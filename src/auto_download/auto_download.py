@@ -594,11 +594,11 @@ class XKW:
                         success = True
                         return True  # 返回 True，表示任务处理完毕
 
-                    elif any(code in item.url for code in ["上限", "1000", "350"]):
-                        logging.warning("下载次数已达上限，直接跳过该链接。")
-                        success = False
+                    elif "上限" in item.url:
+                        logging.warning("账户下载上限，直接跳过该链接。")
+                        success = True
                         failure_reason = 'limit'
-                        return False  # 返回 False，表示任务处理失败
+                        return False
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
