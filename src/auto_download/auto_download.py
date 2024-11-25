@@ -82,7 +82,7 @@ class XKW:
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
         self.is_handling_login = False  # 新增标志位，防止重复调用 handle_login_status
-
+        self.account_index_lock = threading.Lock()  # 新增锁，用于账号索引的同步
         # 添加账号列表和当前账号索引
         if accounts is not None:
             self.accounts = accounts  # 使用传入的账号列表
@@ -748,78 +748,64 @@ class XKW:
 
             time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # 获取当前账号的昵称和用户名
-            current_account_nickname = ''
-            current_account_username = ''
-            if self.accounts and 0 <= self.current_account_index < len(self.accounts):
-                current_account = self.accounts[self.current_account_index]
-                current_account_username = current_account.get('username', '')
-                current_account_nickname = current_account.get('nickname', current_account_username)
-            else:
-                # 当前账号未知，尝试通过 get_nickname 获取昵称并匹配账号库
-                logging.info("当前账号未知，尝试通过 get_nickname 获取账号昵称并匹配账号库。")
-                current_account_nickname = self.get_nickname(tab)
-                if current_account_nickname:
-                    # 在账号列表中查找匹配的昵称
-                    matched = False
-                    for index, account in enumerate(self.accounts):
-                        if account.get('nickname') == current_account_nickname:
-                            self.current_account_index = index
-                            current_account = account
-                            current_account_username = account.get('username', '')
-                            matched = True
-                            logging.info(f"匹配到账号：{current_account_nickname} ({current_account_username})")
-                            break
-                    if not matched:
-                        logging.warning(f"未在账号列表中找到匹配的昵称：{current_account_nickname}")
-                        # 记录到文件，账号留空
+            with self.account_index_lock:
+                if self.accounts and 0 <= self.current_account_index < len(self.accounts):
+                    current_account = self.accounts[self.current_account_index]
+                    current_account_username = current_account.get('username', '')
+                    current_account_nickname = current_account.get('nickname', current_account_username)
+                    logging.info(f"当前使用账号索引: {self.current_account_index}, 昵称: {current_account_nickname}")
+                else:
+                    # 当前账号未知，尝试通过 get_nickname 获取昵称并匹配账号库
+                    logging.info("当前账号未知，尝试通过 get_nickname 获取账号昵称并匹配账号库。")
+                    current_account_nickname = self.get_nickname(tab)
+                    if current_account_nickname:
+                        matched = False
+                        for index, account in enumerate(self.accounts):
+                            if account.get('nickname') == current_account_nickname:
+                                self.current_account_index = index
+                                current_account = account
+                                current_account_username = account.get('username', '')
+                                matched = True
+                                logging.info(f"匹配到账号：{current_account_nickname} ({current_account_username})")
+                                break
+                        if not matched:
+                            logging.warning(f"未在账号列表中找到匹配的昵称：{current_account_nickname}")
+                            with XKW.download_counts_lock:
+                                with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                                    log_writer = csv.writer(csvfile)
+                                    log_writer.writerow([time_str, current_account_nickname, '未知账号'])
+                            self.manager.enqueue_pending_task(url)
+                            return
+                    else:
+                        logging.info("无法获取当前账号昵称，切换到下一个账号。")
                         with XKW.download_counts_lock:
                             with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                                 log_writer = csv.writer(csvfile)
-                                log_writer.writerow([time_str, current_account_nickname, '未知账号'])
-                        # 将任务重新添加到 pending_tasks 队列，并暂停任务分配
-                        self.manager.enqueue_pending_task(url)
+                                log_writer.writerow([time_str, '', ''])
+                        self.handle_login_status(tab)
                         return
-                else:
-                    logging.info("无法获取当前账号昵称，切换到下一个账号。")
-                    # 记录到文件，账号留空
-                    with XKW.download_counts_lock:
-                        with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
-                            log_writer = csv.writer(csvfile)
-                            log_writer.writerow([time_str, '', ''])
-                    # 切换到下一个账号
-                    self.handle_login_status(tab)
-                    return
 
-            # 更新下载计数
             with XKW.download_counts_lock:
-                # 初始化或重置计数器
                 account_counts = XKW.download_counts.get(current_account_nickname, {})
                 daily_count_info = account_counts.get('daily', {})
                 weekly_count_info = account_counts.get('weekly', {})
 
-                # 检查并重置每日计数
                 if daily_count_info.get('date') != date_str:
                     daily_count_info = {'date': date_str, 'count': 0}
 
-                # 检查并重置每周计数
                 if weekly_count_info.get('week') != week_number:
                     weekly_count_info = {'week': week_number, 'count': 0}
 
-                # 增加计数
                 daily_count_info['count'] += 1
                 weekly_count_info['count'] += 1
 
-                # 更新计数信息
                 account_counts['daily'] = daily_count_info
                 account_counts['weekly'] = weekly_count_info
                 XKW.download_counts[current_account_nickname] = account_counts
 
-                # 保存计数到文件
                 with open(XKW.download_counts_file, 'w', encoding='utf-8') as f:
                     json.dump(XKW.download_counts, f, ensure_ascii=False, indent=4)
 
-                # 记录日志
                 with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                     log_writer = csv.writer(csvfile)
                     log_writer.writerow([
@@ -828,7 +814,8 @@ class XKW:
                         f"每日计数: {daily_count_info['count']}, 每周计数: {weekly_count_info['count']}"
                     ])
 
-                # 检查是否达到每日或每周上限
+                logging.info(f"账号 {current_account_nickname} 的下载计数: 每日 {daily_count_info['count']}, 每周 {weekly_count_info['count']}")
+
                 if daily_count_info['count'] >= 87 or weekly_count_info['count'] >= 350:
                     if daily_count_info['count'] >= 87:
                         limit_type = "每日"
@@ -841,11 +828,8 @@ class XKW:
                     if self.notifier:
                         self.notifier.notify(
                             f"账号 {current_account_nickname} {limit_type}下载数量已达{limit_value}，切换账号。")
-                    # 禁用当前实例
                     self.manager.disable_xkw_instance(self)
-                    # 将当前链接发送到其他实例
                     self.switch_browser_and_retry(url)
-                    # 切换账号
                     self.handle_login_status(tab)
         except Exception as e:
             logging.error(f"记录账号下载次数时出错: {e}", exc_info=True)
@@ -897,38 +881,29 @@ class XKW:
         return -1
 
     def handle_login_status(self, tab):
-        """
-        检查登录状态并根据情况进行登录或切换账号。
-        如果登录成功/登录失败/所有账号都无法登录，则禁用实例并通知管理员。
-        """
         try:
-            # 检查是否已登录
             if self.is_logged_in(tab):
                 logging.info('已登录，执行退出并切换账号。')
-                # 执行退出操作
                 tab.get('https://www.zxxk.com')
-                time.sleep(random.uniform(1, 2))  # 随机延迟，等待页面加载
+                time.sleep(random.uniform(1, 2))
 
-                # 等待页面加载完成
                 tab.wait.load_start(timeout=10)
-                time.sleep(random.uniform(0.5, 1.5))  # 随机延迟，确保加载开始
+                time.sleep(random.uniform(0.5, 1.5))
                 tab.wait.doc_loaded(timeout=30)
-                time.sleep(random.uniform(0.5, 1.5))  # 随机延迟，确保文档加载完成
+                time.sleep(random.uniform(0.5, 1.5))
 
-                # 尝试找到“我的”元素并悬停
                 my_element = tab.ele('text:我的', timeout=10)
                 if my_element:
-                    time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，确保元素可交互
+                    time.sleep(random.uniform(0.5, 1.0))
                     my_element.hover()
-                    time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，等待下拉菜单显示
+                    time.sleep(random.uniform(0.5, 1.0))
 
-                    # 尝试找到“退出”按钮并点击
                     logout_element = tab.ele('text:退出', timeout=10)
                     if logout_element:
-                        time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，确保按钮可点击
+                        time.sleep(random.uniform(0.5, 1.0))
                         logout_element.click()
                         logging.info('退出成功。')
-                        time.sleep(random.uniform(1, 2))  # 随机延迟，等待退出操作完成
+                        time.sleep(random.uniform(1, 2))
                     else:
                         logging.warning('未找到“退出”按钮，可能已被登出。')
                 else:
@@ -936,41 +911,36 @@ class XKW:
             else:
                 logging.info('未登录，开始尝试登录。')
 
-            # 尝试使用新账号登录
             max_retries = len(self.accounts)
             retries = 0
             failed_accounts = []
 
             while retries < max_retries:
-                # 获取下一个可用账号的索引
                 next_index = self.get_next_available_account_index()
                 if next_index == -1:
-                    # 所有账号均达到下载次数限制
                     logging.error('所有账号均已达到下载次数限制，无法切换账号。')
                     if self.notifier:
                         self.notifier.notify(
                             "所有账号均已达到下载次数限制，无法切换账号。请管理员检查或重置下载计数。",
                             is_error=True
                         )
-                    # 可选：暂停任务分配或采取其他措施
                     self.manager.pause_task_distribution()
                     return
 
-                # 设置为下一个可用账号
-                self.current_account_index = next_index
-                account = self.accounts[self.current_account_index]
-                username = account['username']
-                password = account['password']
-                nickname = account.get('nickname', username)
-                logging.info(f'尝试登录账号：{nickname} ({username})')
+                with self.account_index_lock:
+                    self.current_account_index = next_index
+                    account = self.accounts[self.current_account_index]
+                    username = account['username']
+                    password = account['password']
+                    nickname = account.get('nickname', username)
+                    logging.info(f'尝试登录账号：{nickname} ({username})')
 
                 if self.login(tab):
-                    logging.info(f'账号 {nickname} ({username}) 登录成功。')
+                    logging.info(f'账号 {nickname} ({username}) 登录成功。当前账号索引: {self.current_account_index}')
                     if self.notifier:
                         self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
-                    # 确保实例被启用
                     self.manager.enable_xkw_instance(self.id)
-                    self.is_handling_login = False  # 重置标志位
+                    self.is_handling_login = False
                     return
                 else:
                     logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
@@ -979,7 +949,6 @@ class XKW:
                     failed_accounts.append(nickname)
                     retries += 1
 
-            # 如果所有尝试均失败
             logging.error('所有可用账号均无法登录，禁用实例并通知管理员。')
             self.manager.disable_xkw_instance(self)
             if self.notifier:
@@ -988,7 +957,7 @@ class XKW:
                     f"所有可用账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
                     is_error=True
                 )
-            self.is_handling_login = False  # 重置标志位
+            self.is_handling_login = False
 
         except Exception as e:
             logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
@@ -1001,7 +970,7 @@ class XKW:
                     f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
                     is_error=True
                 )
-            self.is_handling_login = False  # 重置标志位
+            self.is_handling_login = False
 
     def switch_browser_and_retry(self, url):
         """
