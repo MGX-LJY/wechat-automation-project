@@ -55,6 +55,12 @@ class XKW:
     - id: 实例的唯一标识符。
     - accounts: 账号列表，每个实例独有。
     """
+    # 初始化下载计数器和锁
+    download_counts_lock = threading.Lock()
+    download_counts = {}
+    download_counts_file = 'download_counts.json'
+    download_log_file = 'download_log.csv'
+    download_counts_loaded = False  # 标记是否已加载
 
     def __init__(self, thread=1, work=False, download_dir=None, uploader=None, notifier=None, co=None, manager=None,
                  id=None, accounts=None):
@@ -84,25 +90,32 @@ class XKW:
             self.accounts = []  # 默认空列表
         self.current_account_index = 0  # 当前账号索引
 
-        # 初始化下载计数器和锁
-        self.download_counts_lock = threading.Lock()
-        self.download_counts = {}
-        self.download_counts_file = 'download_counts.json'
-        self.download_log_file = 'download_log.csv'
+        # 只在第一次初始化时加载下载计数
+        if not XKW.download_counts_loaded:
+            with XKW.download_counts_lock:
+                if not XKW.download_counts_loaded:
+                    if os.path.exists(XKW.download_counts_file):
+                        with open(XKW.download_counts_file, 'r', encoding='utf-8') as f:
+                            try:
+                                XKW.download_counts = json.load(f)
+                                logging.info(f"已加载下载计数数据: {XKW.download_counts}")
+                            except json.JSONDecodeError:
+                                logging.error(f"下载计数文件 '{XKW.download_counts_file}' 格式错误，初始化为空。")
+                                XKW.download_counts = {}
+                    else:
+                        # 如果文件不存在，创建一个空的下载日志文件
+                        with open(XKW.download_log_file, 'w', encoding='utf-8', newline='') as csvfile:
+                            log_writer = csv.writer(csvfile)
+                            log_writer.writerow(['时间', '账号', '下载次数'])
+                        logging.info(f"下载计数文件 '{XKW.download_counts_file}' 不存在，已创建新的下载日志文件。")
+                    XKW.download_counts_loaded = True
 
-        # 如果存在下载计数文件，加载数据
-        if os.path.exists(self.download_counts_file):
-            with open(self.download_counts_file, 'r', encoding='utf-8') as f:
-                try:
-                    self.download_counts = json.load(f)
-                except json.JSONDecodeError:
-                    logging.error(f"下载计数文件 '{self.download_counts_file}' 格式错误，初始化为空。")
-                    self.download_counts = {}
-        else:
-            # 如果文件不存在，创建一个空的下载日志文件
-            with open(self.download_log_file, 'w', encoding='utf-8', newline='') as csvfile:
+        # 如果存在下载日志文件不存在则创建
+        if not os.path.exists(XKW.download_log_file):
+            with open(XKW.download_log_file, 'w', encoding='utf-8', newline='') as csvfile:
                 log_writer = csv.writer(csvfile)
                 log_writer.writerow(['时间', '账号', '下载次数'])
+            logging.info(f"下载日志文件 '{XKW.download_log_file}' 已创建。")
 
         logging.info(f"ChromiumPage initialized with address: {self.page.address}")
         self.dls_url = "https://www.zxxk.com/soft/softdownload?softid={xid}"
@@ -645,8 +658,8 @@ class XKW:
                     if not matched:
                         logging.warning(f"未在账号列表中找到匹配的昵称：{current_account_nickname}")
                         # 记录到文件，账号留空
-                        with self.download_counts_lock:
-                            with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                        with XKW.download_counts_lock:
+                            with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                                 log_writer = csv.writer(csvfile)
                                 log_writer.writerow([time_str, current_account_nickname, '未知账号'])
                         # 将任务重新添加到 pending_tasks 队列，并暂停任务分配
@@ -655,8 +668,8 @@ class XKW:
                 else:
                     logging.info("无法获取当前账号昵称，切换到下一个账号。")
                     # 记录到文件，账号留空
-                    with self.download_counts_lock:
-                        with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                    with XKW.download_counts_lock:
+                        with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                             log_writer = csv.writer(csvfile)
                             log_writer.writerow([time_str, '', ''])
                     # 切换到下一个账号
@@ -664,9 +677,9 @@ class XKW:
                     return
 
             # 更新下载计数
-            with self.download_counts_lock:
+            with XKW.download_counts_lock:
                 # 初始化或重置计数器
-                account_counts = self.download_counts.get(current_account_nickname, {})
+                account_counts = XKW.download_counts.get(current_account_nickname, {})
                 daily_count_info = account_counts.get('daily', {})
                 weekly_count_info = account_counts.get('weekly', {})
 
@@ -685,14 +698,14 @@ class XKW:
                 # 更新计数信息
                 account_counts['daily'] = daily_count_info
                 account_counts['weekly'] = weekly_count_info
-                self.download_counts[current_account_nickname] = account_counts
+                XKW.download_counts[current_account_nickname] = account_counts
 
                 # 保存计数到文件
-                with open(self.download_counts_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.download_counts, f, ensure_ascii=False, indent=4)
+                with open(XKW.download_counts_file, 'w', encoding='utf-8') as f:
+                    json.dump(XKW.download_counts, f, ensure_ascii=False, indent=4)
 
                 # 记录日志
-                with open(self.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
                     log_writer = csv.writer(csvfile)
                     log_writer.writerow([
                         time_str,
