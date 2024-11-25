@@ -505,6 +505,10 @@ class XKW:
     def click_confirm_button(self, tab):
         try:
             while True:
+                # 等待页面加载完成
+                tab.wait.load_start(timeout=10)
+                tab.wait.doc_loaded(timeout=30)
+
                 iframe = tab.get_frame('#layui-layer-iframe100002')
                 if iframe:
                     a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
