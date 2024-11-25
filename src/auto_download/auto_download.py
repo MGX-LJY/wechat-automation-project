@@ -666,6 +666,7 @@ class XKW:
                 handle_login_thread.start()
 
         # 重置标签页并将其放回队列
+        self.switch_browser_and_retry(url)
         self.reset_tab(tab)
         self.tabs.put(tab)
 
