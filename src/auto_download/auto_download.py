@@ -644,14 +644,16 @@ class XKW:
     def check_limit_message(self, tab):
         """
         检查页面是否出现下载上限的提示信息。
+
+        使用 DrissionPage 提供的功能，通过四种方法检测下载上限提示。
         """
         limit_detected = False
+        limit_text = "您的学校已达到每日下载量上限"
 
         # 方法1：检查特定的提示文本
         try:
             logging.info("方法1：检查特定的提示文本")
-            limit_message = tab.find_element('//*[contains(text(), "您的学校已达到每日下载量上限")]', timeout=2)
-            if limit_message:
+            if limit_text in tab.html:
                 logging.info("方法1：检测到下载上限提示")
                 limit_detected = True
             else:
@@ -662,24 +664,33 @@ class XKW:
         # 方法2：检查特定的 iframe 元素
         try:
             logging.info("方法2：检查特定的 iframe 元素")
-            iframe_element = tab.find_element('//iframe[contains(@src, "risk-control-dialog")]', timeout=2)
-            if iframe_element:
-                logging.info("方法2：检测到特定的 iframe 元素")
-                # 切换到 iframe 内部
-                tab.switch_to_frame(iframe_element)
-                try:
-                    # 在 iframe 内检查特定的提示文本
-                    inner_limit_message = tab.find_element('//*[contains(text(), "您的学校已达到每日下载量上限")]',
-                                                           timeout=1)
-                    if inner_limit_message:
-                        logging.info("方法2：在 iframe 内部检测到下载上限提示")
-                        limit_detected = True
+            # 使用正则表达式查找包含 "risk-control-dialog" 的 iframe src
+            iframe_pattern = re.compile(r'<iframe[^>]+src=["\']([^"\']*risk-control-dialog[^"\']*)["\']', re.IGNORECASE)
+            iframes = iframe_pattern.findall(tab.html)
+            if iframes:
+                logging.info(f"方法2：检测到 {len(iframes)} 个特定的 iframe 元素")
+                for iframe_src in iframes:
+                    logging.info(f"方法2：获取 iframe 的 src: {iframe_src}")
+                    # 构建完整的 URL（假设 iframe 的 src 是绝对 URL）
+                    iframe_url = iframe_src
+                    if not re.match(r'^https?://', iframe_src):
+                        # 如果 src 是相对路径，则拼接成完整 URL
+                        from urllib.parse import urljoin
+                        iframe_url = urljoin(tab.url, iframe_src)
+                        logging.info(f"方法2：构建完整的 iframe URL: {iframe_url}")
+                    # 请求 iframe 的内容
+                    iframe_response = tab.get(iframe_url)
+                    if iframe_response.ok:
+                        logging.info(f"方法2：成功获取 iframe 内容: {iframe_url}")
+                        # 检查提示文本是否在 iframe 的 HTML 中
+                        if limit_text in iframe_response.text:
+                            logging.info("方法2：在 iframe 内部检测到下载上限提示")
+                            limit_detected = True
+                            break  # 只需检测到一次即可
+                        else:
+                            logging.info("方法2：在 iframe 内部未检测到下载上限提示")
                     else:
-                        logging.info("方法2：在 iframe 内部未检测到下载上限提示")
-                except Exception as e:
-                    logging.info(f"方法2：在 iframe 内部出现异常 - {e}")
-                finally:
-                    tab.switch_to_default_content()  # 确保切回主内容
+                        logging.info(f"方法2：无法获取 iframe 内容，状态码: {iframe_response.status_code}")
             else:
                 logging.info("方法2：未检测到特定的 iframe 元素")
         except Exception as e:
@@ -688,27 +699,29 @@ class XKW:
         # 方法3：检查特定的弹窗元素
         try:
             logging.info("方法3：检查特定的弹窗元素")
-            popup_element = tab.find_element('//div[@class="risk-control-dialog"]', timeout=2)
-            if popup_element:
-                logging.info("方法3：检测到弹窗元素")
-                # 在弹窗内查找特定的提示文本
-                popup_message = popup_element.find_element('.//*[contains(text(), "您的学校已达到每日下载量上限")]',
-                                                           timeout=1)
-                if popup_message:
-                    logging.info("方法3：在弹窗内检测到下载上限提示")
-                    limit_detected = True
-                else:
-                    logging.info("方法3：在弹窗内未检测到下载上限提示")
+            # 使用正则表达式查找具有 class="risk-control-dialog" 的 div
+            popup_pattern = re.compile(r'<div[^>]+class=["\']risk-control-dialog["\'][^>]*>(.*?)</div>',
+                                       re.IGNORECASE | re.DOTALL)
+            popups = popup_pattern.findall(tab.html)
+            if popups:
+                logging.info(f"方法3：检测到 {len(popups)} 个弹窗元素")
+                for popup_content in popups:
+                    if limit_text in popup_content:
+                        logging.info("方法3：在弹窗内检测到下载上限提示")
+                        limit_detected = True
+                        break  # 只需检测到一次即可
+                    else:
+                        logging.info("方法3：在弹窗内未检测到下载上限提示")
             else:
                 logging.info("方法3：未检测到弹窗元素")
         except Exception as e:
             logging.info(f"方法3：出现异常 - {e}")
 
-        # 方法4：检查整个页面的文本内容（备用方法）
+        # 方法4：检查整个页面的文本内容
         try:
             logging.info("方法4：检查整个页面的文本内容")
-            page_text = tab.execute_script("return document.body.innerText;")
-            if "您的学校已达到每日下载量上限" in page_text:
+            page_text = tab.text  # 获取页面的纯文本内容
+            if limit_text in page_text:
                 logging.info("方法4：在页面文本中检测到下载上限提示")
                 limit_detected = True
             else:
