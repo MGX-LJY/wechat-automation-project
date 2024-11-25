@@ -285,10 +285,7 @@ class XKW:
             # 尝试加载页面
             tab.get(url)
 
-            # 等待页面进入加载状态
             tab.wait.load_start(timeout=10)
-
-            # 等待页面文档加载完成
             tab.wait.doc_loaded(timeout=30)
 
             # 停止页面加载以加快速度
@@ -531,10 +528,11 @@ class XKW:
         - soft_id: 下载项的软ID。
 
         返回:
-        - True: 如果下载成功。
-        - False: 如果下载失败。
+        - True: 如果下载成功或任务已妥善处理。
+        - False: 如果下载失败且需要进一步处理。
         """
         success = False
+        failure_reason = None  # 用于跟踪失败原因
         try:
             logging.info(f"开始下载 {url}")
             tab.listen.start(True, method="GET")  # 开始监听网络请求
@@ -593,8 +591,14 @@ class XKW:
 
                     elif "20600001" in item.url:
                         logging.warning("请求过于频繁，直接跳过该链接。")
-                        # 直接跳过链接，不报错，也不发送通知
+                        success = True
                         return True  # 返回 True，表示任务处理完毕
+
+                    elif any(code in item.url for code in ["上限", "1000", "350"]):
+                        logging.warning("下载次数已达上限，直接跳过该链接。")
+                        success = False
+                        failure_reason = 'limit'
+                        return False  # 返回 False，表示任务处理失败
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
@@ -606,57 +610,99 @@ class XKW:
 
             # 超过最大等待时间，下载失败
             logging.warning(f"在 {max_wait_time} 秒内未能捕获到下载链接，下载失败: {url}")
+            success = False
+            failure_reason = 'timeout'
+            return False  # 返回 False，表示任务处理失败
 
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+            failure_reason = 'exception'
 
         finally:
             if not success:
-                # 1. 禁用当前的 XKW 实例
-                self.manager.disable_xkw_instance(self)
+                if failure_reason == 'limit':
+                    # 仅在达到下载上限时才进行账户切换
+                    self.handle_limit_failure(url, tab)
+                else:
+                    # 对于非账户上限的失败情况，执行其他处理逻辑
+                    self.handle_other_failures(url, tab, failure_reason)
 
-                # 2. 检查是否有其他可用的实例
-                available_xkw_instances = self.manager.get_available_xkw_instances(self)
-                if not available_xkw_instances:
-                    logging.error("没有可用的 XKW 实例进行重试。")
-                    if self.notifier:
-                        self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
-                    # 直接将任务添加到 pending_tasks 队列，并暂停任务分配
-                    self.manager.add_task(url)
-                    # 不再继续后续处理，直接返回
-                    return False
+            # 返回下载结果
+            return success
 
-                # 3. 确保 handle_login_status 只被调用一次
-                with self.handle_login_lock:
-                    if not self.is_handling_login:
-                        self.is_handling_login = True
-                        # 分别执行切换实例重试下载和处理登录状态
-                        retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,),
-                                                               daemon=True)
+    def handle_limit_failure(self, url, tab):
+        """
+        处理账户达到下载上限的失败情况，切换实例/账户进行重试。
 
-                        retry_thread.start()
-                        handle_login_thread.start()
+        参数:
+        - url: 下载的URL。
+        - tab: 当前浏览器标签页。
+        """
+        # 1. 禁用当前的 XKW 实例
+        self.manager.disable_xkw_instance(self)
 
-                # 重置标签页并将其放回队列
-                self.reset_tab(tab)
-                self.tabs.put(tab)
+        # 2. 检查是否有其他可用的实例
+        available_xkw_instances = self.manager.get_available_xkw_instances(self)
+        if not available_xkw_instances:
+            logging.error("没有可用的 XKW 实例进行重试。")
+            if self.notifier:
+                self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
+            # 直接将任务添加到 pending_tasks 队列，并暂停任务分配
+            self.manager.add_task(url)
+            # 不再继续后续处理，直接返回
+            return
 
-                # 获取当前账号的昵称
-                current_account = self.accounts[self.current_account_index]
-                nickname = current_account.get('nickname', current_account['username'])
+        # 3. 确保 handle_login_status 只被调用一次
+        with self.handle_login_lock:
+            if not self.is_handling_login:
+                self.is_handling_login = True
+                # 分别执行切换实例重试下载和处理登录状态
+                retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
+                handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
 
-                logging.error(
-                    f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
-                if self.notifier:
-                    self.notifier.notify(
-                        f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
-                        is_error=True
-                    )
-        # 返回下载结果
-        return success
+                retry_thread.start()
+                handle_login_thread.start()
+
+        # 重置标签页并将其放回队列
+        self.reset_tab(tab)
+        self.tabs.put(tab)
+
+        # 获取当前账号的昵称
+        current_account = self.accounts[self.current_account_index]
+        nickname = current_account.get('nickname', current_account['username'])
+
+        logging.error(
+            f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
+        if self.notifier:
+            self.notifier.notify(
+                f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
+                is_error=True
+            )
+
+    def handle_other_failures(self, url, tab, failure_reason):
+        """
+        处理非账户上限的失败情况，例如超时、异常等。
+
+        参数:
+        - url: 下载的URL。
+        - tab: 当前浏览器标签页。
+        - failure_reason: 失败原因。
+        """
+        # 记录详细的失败原因
+        logging.error(f"下载失败，原因: {failure_reason}. URL: {url}")
+        if self.notifier and failure_reason:
+            self.notifier.notify(
+                f"下载失败，原因: {failure_reason}. URL: {url}",
+                is_error=True
+            )
+
+        self.switch_browser_and_retry(url)
+
+        # 重置标签页并将其放回队列
+        self.reset_tab(tab)
+        self.tabs.put(tab)
 
     def click_confirm_button(self, tab):
         """
