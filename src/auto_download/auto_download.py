@@ -951,45 +951,73 @@ class XKW:
                 self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
             return False
 
-    def download(self, url, tab):
-        try:
-            logging.info(f"准备下载 URL: {url}")
-            # 增加随机延迟，模拟人类等待页面加载
-            pre_download_delay = random.uniform(0.5, 1)
-            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
-            time.sleep(pre_download_delay)
+    def download(self, url, tab, max_retries=3, retry_delay=5):
+        """
+        下载指定的 URL，支持重试机制。
 
-            tab.get(url)
+        :param url: 要下载的 URL
+        :param tab: 浏览器标签页对象
+        :param max_retries: 最大重试次数
+        :param retry_delay: 重试之间的延迟（秒）
+        """
+        attempt = 0
+        while attempt <= max_retries:
+            try:
+                logging.info(f"准备下载 URL: {url} (尝试 {attempt + 1}/{max_retries + 1})")
 
-            # 等待页面加载完成
-            tab.wait.load_start(timeout=10)
-            tab.wait.doc_loaded(timeout=30)
+                # 增加随机延迟，模拟人类等待页面加载
+                pre_download_delay = random.uniform(0.5, 1)
+                logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
+                time.sleep(pre_download_delay)
 
-            soft_id, title = self.extract_id_and_title(tab, url)
-            if not soft_id or not title:
-                if soft_id is None and title is None:
-                    logging.info(f"任务被跳过: {url}")
-                else:
-                    logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                return
+                tab.get(url)
 
-            download_button = tab("#btnSoftDownload")  # 获取下载按钮
-            if not download_button:
-                logging.error(f"无法找到下载按钮，跳过URL: {url}")
+                # 等待页面加载完成
+                tab.wait.load_start(timeout=10)
+                tab.wait.doc_loaded(timeout=30)
+
+                soft_id, title = self.extract_id_and_title(tab, url)
+                if not soft_id or not title:
+                    if soft_id is None and title is None:
+                        logging.info(f"任务被跳过: {url}")
+                    else:
+                        logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
+                    return
+
+                download_button = tab("#btnSoftDownload")  # 获取下载按钮
+                if not download_button:
+                    logging.error(f"无法找到下载按钮，跳过URL: {url}")
+                    if self.notifier:
+                        self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
+                    return
+
+                logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
+                click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
+                logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
+                time.sleep(click_delay)
+
+                self.listener(tab, download_button, url, title, soft_id)
+
+                # 如果下载成功，跳出重试循环
+                logging.info(f"下载成功: {url}")
+                break
+
+            except Exception as e:
+                logging.error(f"下载过程中出错: {e}", exc_info=True)
                 if self.notifier:
-                    self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
-                return
-            logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
-            click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
-            logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
-            time.sleep(click_delay)
-            self.listener(tab, download_button, url, title, soft_id)
-        except Exception as e:
-            logging.error(f"下载过程中出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-        finally:
-            self.tabs.put(tab)
+                    self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+
+                attempt += 1
+                if attempt > max_retries:
+                    logging.error(f"超过最大重试次数 ({max_retries})，下载失败: {url}")
+                    if self.notifier:
+                        self.notifier.notify(f"超过最大重试次数 ({max_retries})，下载失败: {url}", is_error=True)
+                else:
+                    logging.info(f"等待 {retry_delay} 秒后重试下载: {url}")
+                    time.sleep(retry_delay)
+
+            finally:
+                self.tabs.put(tab)
 
     def run(self):
         """
