@@ -631,7 +631,7 @@ class XKW:
             # 获取当前日期和时间
             today = datetime.today()
             date_str = today.strftime('%Y-%m-%d')
-            week_number = today.strftime('%Y-%U')  # 年份和周数组合
+            week_number = today.strftime('%Y-%W')  # 年份和周数组合，周从星期一开始
 
             time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
