@@ -522,6 +522,11 @@ class XKW:
                         logging.info(f"下载链接获取成功: {item.url}")
                         logging.info(f"下载成功，开始处理上传任务: {url}")
 
+                        # 立即释放标签页
+                        self.reset_tab(tab)
+                        self.tabs.put(tab)
+                        logging.debug("标签页已重置并释放。")
+
                         # 匹配下载的文件
                         file_path = self.match_downloaded_file(title)
                         if not file_path:
@@ -549,8 +554,6 @@ class XKW:
                         # 记录账号下载次数
                         self.account_count(url, tab)
 
-                        # 重置标签页
-                        self.reset_tab(tab)
                         success = True
                         return True  # 下载成功，返回 True
 
@@ -599,12 +602,13 @@ class XKW:
                         self.is_handling_login = True
                         # 分别执行切换实例重试下载和处理登录状态
                         retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
+                        handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,),
+                                                               daemon=True)
 
                         retry_thread.start()
                         handle_login_thread.start()
 
-                # 重置标签页并将其放回队列
+                # **确保标签页已被释放**
                 self.reset_tab(tab)
                 self.tabs.put(tab)
 
@@ -612,10 +616,12 @@ class XKW:
                 current_account = self.accounts[self.current_account_index]
                 nickname = current_account.get('nickname', current_account['username'])
 
-                logging.error(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
+                logging.error(
+                    f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
                 if self.notifier:
-                    self.notifier.notify(f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
-                                         is_error=True)
+                    self.notifier.notify(
+                        f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
+                        is_error=True)
         # 返回下载结果
         return success
 
