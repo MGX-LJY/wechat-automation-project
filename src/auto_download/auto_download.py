@@ -540,8 +540,8 @@ class XKW:
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
-            # 尝试立即点击确认按钮
-            time.sleep(random.uniform(8, 10))  # 随机延迟，等待页面加载
+            # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
+            time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
             self.click_confirm_button(tab)
 
             # 设置总的等待时间和间隔
@@ -601,7 +601,7 @@ class XKW:
                 total_wait_time += elapsed
                 logging.info(f"未捕获到下载链接，已等待 {total_wait_time:.1f} 秒。")
 
-                # 尝试再次点击确认按钮
+                # 尝试再次点击确认按钮，但如果未找到，不报错，直接继续
                 self.click_confirm_button(tab)
 
             # 超过最大等待时间，下载失败
@@ -677,6 +677,10 @@ class XKW:
                     a.click()
                     logging.info("点击确认按钮成功。")
                     return True
+                else:
+                    logging.debug("未找到确认按钮。")
+            else:
+                logging.debug("未找到确认按钮的 iframe。")
         except Exception as e:
             logging.error(f"尝试点击确认按钮时发生错误: {e}", exc_info=True)
         return False
