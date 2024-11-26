@@ -1202,21 +1202,21 @@ class AutoDownloadManager:
         # 为每个实例提供不同的账号列表
         accounts_xkw1 = [
             {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02X'},
-            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
             {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
             {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能01X'},
-            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13X'}
+            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13X'},
+            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'}
 
         ]
 
         accounts_xkw2 = [
+            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
             {'username': '13143019361', 'password': '428199Li@', 'nickname': '全能14X'},
             {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
-            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'}
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
