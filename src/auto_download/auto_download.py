@@ -496,7 +496,7 @@ class XKW:
             nickname_element = tab.ele('tag:a@@class=username', timeout=5)
             if nickname_element:
                 nickname_text = nickname_element.text.strip()
-                logging.debug(f"提取到的昵称文本: {nickname_text}")
+                logging.info(f"提取到的昵称文本: {nickname_text}")
 
                 # 使用正则表达式匹配“全能”后跟一个数字和“X”
                 match = re.match(r'^全能\d+X$', nickname_text)
@@ -710,10 +710,10 @@ class XKW:
         nickname = current_account.get('nickname', current_account['username'])
 
         logging.error(
-            f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}")
+            f"下载失败，已禁用实例 {self.id}，账号：{nickname} ({current_account['username']}), URL: {url}")
         if self.notifier:
             self.notifier.notify(
-                f"下载失败，已禁用实例 {self.id}，并尝试切换实例和处理登录状态。账号：{nickname} ({current_account['username']}), URL: {url}",
+                f"下载失败，已禁用实例 {self.id}，账号：{nickname} ({current_account['username']}), URL: {url}",
                 is_error=True
             )
 
