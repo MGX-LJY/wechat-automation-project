@@ -684,47 +684,46 @@ class XKW:
         - url: 下载的URL。
         - tab: 当前浏览器标签页。
         """
-        # 1. 禁用当前的 XKW 实例
-        self.manager.disable_xkw_instance(self)
+        try:
+            # 使用 handle_login_lock 确保只有一个线程能够执行以下逻辑
+            with self.handle_login_lock:
+                if self.is_handling_login:
+                    # 如果已经有一个线程在处理登录/切换账号，当前线程无需重复处理
+                    logging.info(f"实例 {self.id} 已在处理登录/切换账号，跳过当前 handle_limit_failure 调用。")
+                    return
 
-        # 2. 检查是否有其他可用的实例
-        available_xkw_instances = self.manager.get_available_xkw_instances(self)
-        if not available_xkw_instances:
-            logging.error("没有可用的 XKW 实例进行重试。")
-            if self.notifier:
-                self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
-            # 直接将任务添加到 pending_tasks 队列，并暂停任务分配
-            self.manager.add_task(url)
-            # 不再继续后续处理，直接返回
-            return
-
-        # 3. 确保 handle_login_status 只被调用一次
-        with self.handle_login_lock:
-            if not self.is_handling_login:
+                # 标记当前正在处理登录/切换账号
                 self.is_handling_login = True
-                # 分别执行切换实例重试下载和处理登录状态
-                retry_thread = threading.Thread(target=self.switch_browser_and_retry, args=(url,), daemon=True)
-                handle_login_thread = threading.Thread(target=self.handle_login_status, args=(tab,), daemon=True)
 
-                retry_thread.start()
-                handle_login_thread.start()
+                # 记录失败原因并日志记录
+                # 获取当前账号的昵称
+                current_account = self.accounts[self.current_account_index]
+                nickname = current_account.get('nickname', current_account['username'])
 
-        # 重置标签页并将其放回队列
-        self.switch_browser_and_retry(url)
-        self.reset_tab(tab)
-        self.tabs.put(tab)
+                logging.error(
+                    f"下载失败，开始禁用实例和切换新账号 {self.id}，账号：{nickname} ({current_account['username']}), URL: {url}")
+                if self.notifier:
+                    self.notifier.notify(
+                        f"下载失败，开始禁用实例和切换新账号 {self.id}，账号：{nickname} ({current_account['username']}), URL: {url}",
+                        is_error=True
+                    )
 
-        # 获取当前账号的昵称
-        current_account = self.accounts[self.current_account_index]
-        nickname = current_account.get('nickname', current_account['username'])
+                # 1. 禁用当前的 XKW 实例
+                self.manager.disable_xkw_instance(self)
 
-        logging.error(
-            f"下载失败，已禁用实例 {self.id}，账号：{nickname} ({current_account['username']}), URL: {url}")
-        if self.notifier:
-            self.notifier.notify(
-                f"下载失败，已禁用实例 {self.id}，账号：{nickname} ({current_account['username']}), URL: {url}",
-                is_error=True
-            )
+                # 2. 重置标签页并将其放回队列
+                self.switch_browser_and_retry(url)
+                self.reset_tab(tab)
+                self.tabs.put(tab)
+        except Exception as e:
+            logging.error(f"处理账户下载上限失败时发生错误: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"处理账户下载上限失败时发生错误: {e}", is_error=True)
+        finally:
+            # 确保无论成功与否，都要重置 is_handling_login 标志
+            with self.handle_login_lock:
+                self.is_handling_login = False
+                logging.debug(f"实例 {self.id} 的 handle_limit_failure 处理完成，is_handling_login 设为 False。")
 
     def handle_other_failures(self, url, tab, failure_reason):
         """
@@ -1012,25 +1011,45 @@ class XKW:
     def switch_browser_and_retry(self, url):
         """
         切换到另一个浏览器实例重新尝试下载。
+        如果没有可用的实例，直接将任务添加到 pending_tasks 队列中。
 
         参数:
         - url: 需要重新下载的 URL。
 
         返回:
         - True: 如果成功切换并重新添加任务。
-        - False: 如果没有可用的实例。
+        - False: 如果没有可用的实例，任务已被添加到 pending_tasks。
         """
         try:
             available_xkw_instances = self.manager.get_available_xkw_instances(self)
             if available_xkw_instances:
                 xkw_instance = random.choice(available_xkw_instances)
                 logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance.id}")
+                if self.notifier:
+                    self.notifier.notify(f"切换到新的 XKW 实例 {xkw_instance.id} 进行下载。")
+
+                # 将任务分配给选中的实例
                 xkw_instance.add_task(url)
+                logging.info(f"已将 URL 添加到 XKW 实例 {xkw_instance.id} 的任务队列: {url}")
+
+                # 启动处理登录状态的线程
+                try:
+                    tab_for_login = xkw_instance.tabs.get(timeout=10)
+                except queue.Empty:
+                    logging.error(f"获取实例 {xkw_instance.id} 的标签页超时，无法处理登录状态。")
+                    if self.notifier:
+                        self.notifier.notify(f"获取实例 {xkw_instance.id} 的标签页超时，无法处理登录状态。", is_error=True)
+                    return False
+
+                retry_thread = threading.Thread(target=xkw_instance.handle_login_status, args=(tab_for_login,), daemon=True)
+                retry_thread.start()
+                logging.info(f"已启动实例 {xkw_instance.id} 的 handle_login_status 线程。")
                 return True
             else:
-                logging.error("没有可用的 XKW 实例进行重试。")
+                logging.warning("没有可用的 XKW 实例进行重试。将任务添加到 pending_tasks 队列。")
                 if self.notifier:
-                    self.notifier.notify(f"下载失败且没有其他实例可用来重试：{url}", is_error=True)
+                    self.notifier.notify(f"没有可用的实例可切换，任务已添加到 pending_tasks 队列：{url}", is_error=True)
+                self.manager.enqueue_pending_task(url)
                 return False
         except Exception as e:
             logging.error(f"切换浏览器实例时出错: {e}", exc_info=True)
