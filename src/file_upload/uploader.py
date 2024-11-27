@@ -121,9 +121,14 @@ class Uploader:
 
     def rename_file_with_id(self, file_path: str, soft_id: str) -> Optional[str]:
         """
-        将文件名修改为 [soft_id]原文件名。
+        将文件名修改为 [soft_id]原文件名，如果已经重命名过，则不重复修改。
         """
         directory, original_filename = os.path.split(file_path)
+        # 检查文件名是否已经包含 [soft_id] 前缀
+        if original_filename.startswith(f"[{soft_id}]"):
+            logging.info(f"文件 {file_path} 已经包含 soft_id 前缀，跳过重命名。")
+            return file_path  # 已经重命名过，直接返回原路径
+
         new_filename = f"[{soft_id}]{original_filename}"
         new_file_path = os.path.join(directory, new_filename)
 
@@ -131,9 +136,14 @@ class Uploader:
             logging.warning(f"目标文件 {new_file_path} 已存在，无法重命名 {file_path}")
             return None  # 返回 None 表示重命名失败
 
-        os.rename(file_path, new_file_path)
-        logging.info(f"已将文件 {file_path} 重命名为 {new_file_path}")
-        return new_file_path
+        try:
+            os.rename(file_path, new_file_path)
+            logging.info(f"已将文件 {file_path} 重命名为 {new_file_path}")
+            return new_file_path
+        except Exception as e:
+            logging.error(f"重命名文件时发生错误：{e}", exc_info=True)
+            self.error_handler.handle_exception(e)
+            return None
 
     def add_upload_task(self, file_path: str, soft_id: str, recipient_type: str = 'group'):
         """
