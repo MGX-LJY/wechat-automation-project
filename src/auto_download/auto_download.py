@@ -589,23 +589,21 @@ class XKW:
                         success = True
                         return True  # 下载成功，返回 True
 
-                    elif "20600001" in item.url:
-                        logging.warning("请求过于频繁，直接跳过该链接。")
-                        success = True
-                        return True  # 返回 True，表示任务处理完毕
-
-                # 在每次循环结束后检查是否出现下载上限提示
-                if self.check_limit_message(tab):
+                result = self.check_limit_message(tab)
+                if result == "limit":
                     logging.warning("账户下载上限，直接跳过该链接。")
                     success = False
                     failure_reason = 'limit'
+                    return False
+                elif result == "qr_code":
+                    logging.warning("需要扫码登录，提醒管理员进行扫码并切换账号")
+                    success = False
+                    failure_reason = 'qr_code'
                     return False
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
                 total_wait_time += elapsed
-                logging.info(f"未捕获到下载链接，已等待 {total_wait_time:.1f} 秒。")
-
                 # 尝试再次点击确认按钮，但如果未找到，不报错，直接继续
                 self.click_confirm_button(tab)
 
@@ -626,6 +624,8 @@ class XKW:
                 if failure_reason == 'limit':
                     # 仅在达到下载上限时才进行账户切换
                     self.handle_limit_failure(url, tab)
+                elif failure_reason == 'qr_code':
+                    self.handle_limit_failure(url, tab)
                 else:
                     # 对于非账户上限的失败情况，执行其他处理逻辑
                     self.handle_other_failures(url, tab, failure_reason)
@@ -635,38 +635,47 @@ class XKW:
 
     def check_limit_message(self, tab):
         """
-        检查页面是否出现“学科网提示您”的提示信息。
+        检查页面是否出现特定的提示信息。
 
-        只使用，通过检测iframe的src是否包含特定代码来判断。
+        返回值：
+        - None：未检测到任何目标提示
+        - "limit"：检测到下载上限提示（code=20603114）
+        - "qr_code"：检测到需要扫码的提示（code=20603132）
         """
-        limit_detected = False
-        target_code = "20603114"  # 目标代码
-
-        # ：检查特定的 iframe 元素
         try:
-            logging.info("：检查特定的 iframe 元素")
+            logging.info("检查特定的 iframe 元素")
             # 使用正则表达式查找包含 "risk-control-dialog" 的 iframe src
             iframe_pattern = re.compile(r'<iframe[^>]+src=["\']([^"\']*risk-control-dialog[^"\']*)["\']', re.IGNORECASE)
             iframes = iframe_pattern.findall(tab.html)
             if iframes:
-                logging.info(f"：检测到 {len(iframes)} 个特定的 iframe 元素")
+                logging.info(f"检测到 {len(iframes)} 个特定的 iframe 元素")
                 for iframe_src in iframes:
-                    logging.info(f"：获取 iframe 的 src: {iframe_src}")
-                    # 检查 src 是否包含目标代码
-                    if target_code in iframe_src:
-                        logging.info(f"：检测到包含目标代码的 iframe src: {iframe_src}")
-                        limit_detected = True
-                        break  # 检测到一次即可
+                    logging.info(f"获取 iframe 的 src: {iframe_src}")
+                    # 提取 src 中的 code 参数
+                    code_match = re.search(r'code=(\d+)', iframe_src)
+                    if code_match:
+                        code = code_match.group(1)
+                        logging.info(f"检测到 code 参数: {code}")
+                        if code == "20603114":
+                            logging.info("检测到下载上限提示")
+                            return "limit"
+                        elif code == "20603132":
+                            logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
+                            if self.notifier:
+                                self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
+                            return "qr_code"
+                        else:
+                            logging.info(f"code 参数不在目标列表中: {code}")
                     else:
-                        logging.info(f"：iframe src 不包含目标代码: {iframe_src}")
+                        logging.info("未找到 code 参数")
             else:
-                logging.info("：未检测到特定的 iframe 元素")
+                logging.info("未检测到特定的 iframe 元素")
         except Exception as e:
-            logging.error(f"：出现异常 - {e}")
+            logging.error(f"出现异常 - {e}")
 
-        # 返回检测结果
-        return limit_detected
-    
+        # 返回 None 表示未检测到任何目标提示
+        return None
+
     def handle_limit_failure(self, url, tab):
         """
         处理账户达到下载上限的失败情况，切换实例/账户进行重试。
