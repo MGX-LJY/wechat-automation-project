@@ -229,7 +229,7 @@ class XKW:
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义初始相似度阈值
-            similarity_threshold = 90  # 前30秒的阈值
+            similarity_threshold = 100  # 前30秒的阈值
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
