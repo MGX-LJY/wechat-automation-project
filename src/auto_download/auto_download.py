@@ -815,7 +815,8 @@ class XKW:
                             current_account = account
                             current_account_username = account.get('username', '')
                             matched = True
-                            logging.info(f"匹配到账号：索引 {self.current_account_index}, 昵称: {current_account_nickname} ({current_account_username})")
+                            logging.info(
+                                f"匹配到账号：索引 {self.current_account_index}, 昵称: {current_account_nickname} ({current_account_username})")
                             break
                     if not matched:
                         logging.warning(f"未在账号列表中找到匹配的昵称：{current_account_nickname}")
@@ -826,13 +827,50 @@ class XKW:
                         self.manager.enqueue_pending_task(url)
                         return
                 else:
-                    logging.info("无法获取当前账号昵称，切换到下一个账号。")
-                    with XKW.download_counts_lock:
-                        with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
-                            log_writer = csv.writer(csvfile)
-                            log_writer.writerow([time_str, '', ''])
-                    self.handle_login_status(tab)
-                    return
+                    logging.warning("无法获取当前账号昵称，尝试重新导航并重新提取昵称。")
+
+                    # 重新导航到 zxxk.com
+                    try:
+                        tab.get('https://www.zxxk.com')
+                        time.sleep(3)  # 等待页面加载
+
+                        # 重新尝试提取昵称
+                        current_account_nickname = self.get_nickname(tab)
+                        if current_account_nickname:
+                            matched = False
+                            for index, account in enumerate(self.accounts):
+                                if account.get('nickname') == current_account_nickname:
+                                    self.current_account_index = index
+                                    current_account = account
+                                    current_account_username = account.get('username', '')
+                                    matched = True
+                                    logging.info(
+                                        f"重新匹配到账号：索引 {self.current_account_index}, 昵称: {current_account_nickname} ({current_account_username})")
+                                    break
+                            if not matched:
+                                logging.warning(f"重新尝试后，未在账号列表中找到匹配的昵称：{current_account_nickname}")
+                                with XKW.download_counts_lock:
+                                    with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                                        log_writer = csv.writer(csvfile)
+                                        log_writer.writerow([time_str, current_account_nickname, '未知账号'])
+                                self.manager.enqueue_pending_task(url)
+                                return
+                        else:
+                            logging.error("重新提取昵称失败，切换到下一个账号。")
+                            with XKW.download_counts_lock:
+                                with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                                    log_writer = csv.writer(csvfile)
+                                    log_writer.writerow([time_str, '', '无法提取昵称'])
+                            self.handle_login_status(tab)
+                            return
+                    except Exception as nav_e:
+                        logging.error(f"重新导航和提取昵称时出错: {nav_e}", exc_info=True)
+                        with XKW.download_counts_lock:
+                            with open(XKW.download_log_file, 'a', encoding='utf-8', newline='') as csvfile:
+                                log_writer = csv.writer(csvfile)
+                                log_writer.writerow([time_str, '', '导航失败'])
+                        self.handle_login_status(tab)
+                        return
 
             with XKW.download_counts_lock:
                 account_counts = XKW.download_counts.get(current_account_nickname, {})
@@ -863,7 +901,8 @@ class XKW:
                         f"每日计数: {daily_count_info['count']}, 每周计数: {weekly_count_info['count']}"
                     ])
 
-                logging.info(f"账号 {current_account_nickname} 的下载计数: 每日 {daily_count_info['count']}, 每周 {weekly_count_info['count']}")
+                logging.info(
+                    f"账号 {current_account_nickname} 的下载计数: 每日 {daily_count_info['count']}, 每周 {weekly_count_info['count']}")
 
                 if daily_count_info['count'] >= 87 or weekly_count_info['count'] >= 350:
                     if daily_count_info['count'] >= 87:
