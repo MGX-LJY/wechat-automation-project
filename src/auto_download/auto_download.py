@@ -231,6 +231,13 @@ class XKW:
             similarity_threshold = 85  # 主相似度阈值
             alternative_threshold = 75  # 备用相似度阈值，用于辅助判断
 
+            # 文件大小范围（可配置）
+            min_file_size = self.co.min_file_size if hasattr(self.co,
+                                                             'min_file_size') else 0.1 * 1024 * 1024  # 默认最小 0.1 MB
+            max_file_size = self.co.max_file_size if hasattr(self.co,
+                                                             'max_file_size') else 10 * 1024 * 1024 * 1024  # 默认最大 10 GB
+            logging.debug(f"文件大小范围: {min_file_size} 字节 到 {max_file_size} 字节")
+
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
                 candidates = []
@@ -263,8 +270,7 @@ class XKW:
                         file_path = os.path.join(download_dir, file_name)
                         if os.path.exists(file_path):
                             file_size = os.path.getsize(file_path)
-                            # 假设目标文件大小在一定范围内（需要根据实际情况调整）
-                            if 1 * 1024 * 1024 < file_size < 10 * 1024 * 1024 * 1024:
+                            if min_file_size < file_size < max_file_size:
                                 candidates.append((file_name, combined_similarity))
 
                 if candidates:
