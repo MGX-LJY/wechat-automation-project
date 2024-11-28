@@ -587,17 +587,6 @@ class XKW:
             # 开始监听循环
             while total_wait_time < max_wait_time:
                 start_time = time.time()
-
-                # 检查是否弹出登录窗口 during listening
-                if self.is_login_popup_present(tab):
-                    logging.warning("下载过程中检测到未登录状态，开始处理登录。")
-                    if self.handle_login_status(tab):
-                        logging.info("登录成功后继续监听下载链接。")
-                    else:
-                        logging.error("登录失败，无法继续下载任务。")
-                        failure_reason = 'login_required'
-                        return False
-
                 for item in tab.listen.steps(timeout=interval):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
@@ -648,6 +637,11 @@ class XKW:
                     success = False
                     failure_reason = 'qr_code'
                     return False
+                elif result == "login_required":
+                    logging.warning("下载需要登录，尝试登录并重试")
+                    success = False
+                    failure_reason = 'login_required'
+                    return False
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
@@ -674,7 +668,7 @@ class XKW:
                 elif failure_reason == 'qr_code':
                     self.handle_limit_failure(url, tab)
                 elif failure_reason == 'login_required':
-                    self.handle_login_status(tab)
+                    self.handle_limit_failure(url, tab)
                 else:
                     # 对于非账户上限的失败情况，执行其他处理逻辑
                     self.handle_other_failures(url, tab, failure_reason)
@@ -721,7 +715,9 @@ class XKW:
                 logging.info("未检测到特定的 iframe 元素")
         except Exception as e:
             logging.error(f"出现异常 - {e}")
-
+        # 检查是否弹出登录窗口 during listening
+            self.is_login_popup_present(tab)
+            return 'login_required'
         # 返回 None 表示未检测到任何目标提示
         return None
 
