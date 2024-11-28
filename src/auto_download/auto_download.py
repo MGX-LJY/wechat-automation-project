@@ -222,21 +222,14 @@ class XKW:
             # 预期的文件扩展名，可以根据需求调整
             expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx']
 
-            # 处理标题：保留中文、数字、空格和下划线
-            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_]', '', title)
+            # 处理标题：保留中文、数字、空格、下划线、破折号、加号
+            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
             processed_title = processed_title.strip().lower()
+            processed_title = re.sub(r'[\-\+]+', ' ', processed_title)
             logging.debug(f"处理后的标题: {processed_title}")
 
-            # 定义相似度阈值
-            similarity_threshold = 85  # 主相似度阈值
-            alternative_threshold = 75  # 备用相似度阈值，用于辅助判断
-
-            # 文件大小范围（可配置）
-            min_file_size = self.co.min_file_size if hasattr(self.co,
-                                                             'min_file_size') else 0.1 * 1024 * 1024  # 默认最小 0.1 MB
-            max_file_size = self.co.max_file_size if hasattr(self.co,
-                                                             'max_file_size') else 10 * 1024 * 1024 * 1024  # 默认最大 10 GB
-            logging.debug(f"文件大小范围: {min_file_size} 字节 到 {max_file_size} 字节")
+            # 定义初始相似度阈值
+            similarity_threshold = 90  # 前30秒的阈值
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
@@ -255,23 +248,18 @@ class XKW:
                         logging.debug(f"文件 {file_name} 尚未下载完成，跳过。")
                         continue
 
-                    # 计算多种相似度
-                    name_lower = file_name.lower()
-                    partial_ratio = fuzz.partial_ratio(processed_title, name_lower)
-                    token_set_ratio = fuzz.token_set_ratio(processed_title, name_lower)
-                    combined_similarity = (partial_ratio * 0.6) + (token_set_ratio * 0.4)
-                    logging.debug(
-                        f"文件 '{file_name}' 的 partial_ratio: {partial_ratio}, token_set_ratio: {token_set_ratio}, 综合相似度: {combined_similarity}")
+                    # 处理文件名：保留中文、数字、空格、下划线、破折号、加号
+                    processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', file_name)
+                    processed_file_name = processed_file_name.strip().lower()
+                    processed_file_name = re.sub(r'[\-\+]+', ' ', processed_file_name)
+                    logging.debug(f"处理后的文件名: {processed_file_name}")
 
-                    if combined_similarity >= similarity_threshold:
-                        candidates.append((file_name, combined_similarity))
-                    elif combined_similarity >= alternative_threshold:
-                        # 辅助匹配，可以根据文件大小或其他属性进一步筛选
-                        file_path = os.path.join(download_dir, file_name)
-                        if os.path.exists(file_path):
-                            file_size = os.path.getsize(file_path)
-                            if min_file_size < file_size < max_file_size:
-                                candidates.append((file_name, combined_similarity))
+                    # 计算相似度
+                    similarity = fuzz.partial_ratio(processed_title, processed_file_name)
+                    logging.debug(f"文件 '{file_name}' 与标题的相似度: {similarity}")
+
+                    if similarity >= similarity_threshold:
+                        candidates.append((file_name, similarity))
 
                 if candidates:
                     # 选择相似度最高的文件
@@ -283,6 +271,13 @@ class XKW:
                         return file_path
                     else:
                         logging.debug(f"文件 {file_path} 不存在，等待中...")
+
+                # 更新相似度阈值，根据 elapsed_time 决定
+                if elapsed_time < 60:
+                    similarity_threshold = 90
+                else:
+                    similarity_threshold = 85
+                logging.debug(f"当前相似度阈值: {similarity_threshold}")
 
                 # 确定下一次的重试间隔
                 if elapsed_time < initial_wait:
@@ -298,7 +293,8 @@ class XKW:
                 time.sleep(sleep_time)
                 elapsed_time += sleep_time
                 logging.debug(
-                    f"未找到匹配的文件 '{title}'，等待 {sleep_time} 秒后重试... (已等待 {elapsed_time}/{max_wait_time} 秒)")
+                    f"未找到匹配的文件 '{title}'，等待 {sleep_time} 秒后重试... (已等待 {elapsed_time}/{max_wait_time} 秒)"
+                )
 
             # 超过最大等待时间，放弃匹配
             logging.error(f"在 {max_wait_time} 秒内未能找到匹配的下载文件: {title}")
