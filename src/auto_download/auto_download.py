@@ -273,8 +273,8 @@ class XKW:
                         logging.debug(f"文件 {file_path} 不存在，等待中...")
 
                 # 更新相似度阈值，根据 elapsed_time 决定
-                if elapsed_time < 60:
-                    similarity_threshold = 96
+                if elapsed_time < 180:
+                    similarity_threshold = 100
                 else:
                     similarity_threshold = 85
                 logging.debug(f"当前相似度阈值: {similarity_threshold}")
