@@ -77,6 +77,8 @@ class AdminCommandsHandler:
             'query_individual_last_week_downloads': r'^查询个人\s+(\S+)\s+上周\s+下载份数$',
             'query_individual_this_month_downloads': r'^查询个人\s+(\S+)\s+这个月\s+下载份数$',
             'query_individual_last_month_downloads': r'^查询个人\s+(\S+)\s+上个月\s+下载份数$',
+            'query_all_groups_today_downloads': r'^查询所有群组今天下载量$',
+            'query_all_groups_this_week_downloads': r'^查询所有群组这周下载量$',
 
         }
 
@@ -203,6 +205,25 @@ class AdminCommandsHandler:
                             count = self.point_manager.get_last_month_download_count(recipient_type, individual_name)
                             return f"个人 '{individual_name}' 上个月的下载份数为 {count}。"
 
+                    elif cmd == 'query_all_groups_today_downloads':
+                        counts = self.point_manager.get_all_groups_today_download_counts()
+                        if counts:
+                            message_lines = ["所有群组今天的下载量："]
+                            for item in counts:
+                                message_lines.append(f"群组 '{item['group_name']}': {item['download_count']} 次")
+                            return '\n'.join(message_lines)
+                        else:
+                            return "没有群组的下载记录。"
+
+                    elif cmd == 'query_all_groups_this_week_downloads':
+                        counts = self.point_manager.get_all_groups_week_download_counts()
+                        if counts:
+                            message_lines = ["所有群组这周的下载量："]
+                            for item in counts:
+                                message_lines.append(f"群组 '{item['group_name']}': {item['download_count']} 次")
+                            return '\n'.join(message_lines)
+                        else:
+                            return "没有群组的下载记录。"
 
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
@@ -438,6 +459,11 @@ class AdminCommandsHandler:
             "    示例：查询个人 用户1 上周 下载份数\n"
             "    示例：查询个人 用户1 这个月 下载份数\n"
             "    示例：查询个人 用户1 上个月 下载份数\n\n"
+
+            "20. 查询所有群组今天下载量\n"
+            "    示例：查询所有群组今天下载量\n\n"
+            "21. 查询所有群组这周下载量\n"
+            "    示例：查询所有群组这周下载量\n\n"
 
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"

@@ -730,6 +730,44 @@ class PointManager:
         start_of_last_month = last_day_last_month.replace(day=1)
         return self.get_download_count(recipient_type, recipient_name, start_of_last_month, last_day_last_month)
 
+    def get_all_groups_download_counts(self, start_date: datetime.date, end_date: datetime.date) -> List[Dict]:
+        """
+        获取所有群组在指定日期范围内的下载次数。
+        """
+        try:
+            with self.lock:
+                self.cursor.execute('''
+                    SELECT recipient_name, SUM(download_count) as total_downloads
+                    FROM daily_download_summary
+                    WHERE recipient_type = 'whole_group' AND date BETWEEN ? AND ?
+                    GROUP BY recipient_name
+                ''', (start_date, end_date))
+                rows = self.cursor.fetchall()
+                return [
+                    {
+                        'group_name': row[0],
+                        'download_count': row[1]
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logging.error(f"获取所有群组下载次数时出错：{e}", exc_info=True)
+            return []
+
+    def get_all_groups_today_download_counts(self) -> List[Dict]:
+        """获取所有群组今天的下载次数。"""
+        today = datetime.now().date()
+        return self.get_all_groups_download_counts(today, today)
+
+    def get_all_groups_week_download_counts(self) -> List[Dict]:
+        """
+        获取所有群组本周的下载次数。
+        本周从周一开始到今天。
+        """
+        today = datetime.now().date()
+        start_of_week = today - timedelta(days=today.weekday())  # 周一
+        return self.get_all_groups_download_counts(start_of_week, today)
+
     # 关闭数据库连接
     def close(self):
         with self.lock:
