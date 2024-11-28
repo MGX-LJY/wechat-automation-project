@@ -220,7 +220,7 @@ class XKW:
             elapsed_time = 0
 
             # 预期的文件扩展名，可以根据需求调整
-            expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx']
+            expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.wps']
 
             # 处理标题：保留中文、数字、空格、下划线、破折号、加号
             processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
