@@ -212,18 +212,24 @@ class XKW:
             download_dir = self.co.download_path
             logging.debug(f"下载目录: {download_dir}")
 
+            # 配置参数
             max_wait_time = 1800  # 最大等待时间（秒）
             initial_wait = 60  # 初始等待时间（秒）
             initial_interval = 0.5  # 前60秒的重试间隔（秒）
             subsequent_interval = 5  # 后续的重试间隔（秒）
             elapsed_time = 0
 
-            # 处理标题：去除所有非中文字符和数字字符
-            processed_title = re.sub(r'[^\u4e00-\u9fa5\d]', '', title)
+            # 预期的文件扩展名，可以根据需求调整
+            expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx']
+
+            # 处理标题：保留中文、数字、空格和下划线
+            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_]', '', title)
+            processed_title = processed_title.strip().lower()
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义相似度阈值
-            similarity_threshold = 85  # 设定一个合理的阈值，如80分
+            similarity_threshold = 85  # 主相似度阈值
+            alternative_threshold = 75  # 备用相似度阈值，用于辅助判断
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
@@ -231,18 +237,35 @@ class XKW:
                 for file_name in os.listdir(download_dir):
                     logging.debug(f" - {file_name}")
 
+                    # 过滤不期望的文件扩展名
+                    _, ext = os.path.splitext(file_name)
+                    if ext.lower() not in expected_extensions:
+                        logging.debug(f"文件 {file_name} 的扩展名不在预期范围内，跳过。")
+                        continue
+
                     # 忽略未下载完成的文件
                     if file_name.endswith('.crdownload'):
                         logging.debug(f"文件 {file_name} 尚未下载完成，跳过。")
                         continue
 
-                    # 计算相似度
-                    # 这里使用partial_ratio适用于部分匹配的情况
-                    similarity = fuzz.partial_ratio(processed_title, file_name)
-                    logging.debug(f"文件 '{file_name}' 与标题的相似度: {similarity}")
+                    # 计算多种相似度
+                    name_lower = file_name.lower()
+                    partial_ratio = fuzz.partial_ratio(processed_title, name_lower)
+                    token_set_ratio = fuzz.token_set_ratio(processed_title, name_lower)
+                    combined_similarity = (partial_ratio * 0.6) + (token_set_ratio * 0.4)
+                    logging.debug(
+                        f"文件 '{file_name}' 的 partial_ratio: {partial_ratio}, token_set_ratio: {token_set_ratio}, 综合相似度: {combined_similarity}")
 
-                    if similarity >= similarity_threshold:
-                        candidates.append((file_name, similarity))
+                    if combined_similarity >= similarity_threshold:
+                        candidates.append((file_name, combined_similarity))
+                    elif combined_similarity >= alternative_threshold:
+                        # 辅助匹配，可以根据文件大小或其他属性进一步筛选
+                        file_path = os.path.join(download_dir, file_name)
+                        if os.path.exists(file_path):
+                            file_size = os.path.getsize(file_path)
+                            # 假设目标文件大小在一定范围内（需要根据实际情况调整）
+                            if 1 * 1024 * 1024 < file_size < 10 * 1024 * 1024 * 1024:
+                                candidates.append((file_name, combined_similarity))
 
                 if candidates:
                     # 选择相似度最高的文件
