@@ -11,6 +11,7 @@ from datetime import datetime
 import json
 import csv
 from typing import Tuple
+from rapidfuzz import fuzz, process
 
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
@@ -221,12 +222,12 @@ class XKW:
             processed_title = re.sub(r'[^\u4e00-\u9fa5\d]', '', title)
             logging.debug(f"处理后的标题: {processed_title}")
 
-            # 创建一个更灵活的正则表达式，允许任意字符在关键字符之间
-            pattern_string = '.*'.join(re.escape(char) for char in processed_title)
-            pattern = re.compile(pattern_string, re.IGNORECASE)
+            # 定义相似度阈值
+            similarity_threshold = 90  # 设定一个合理的阈值，如80分
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
+                candidates = []
                 for file_name in os.listdir(download_dir):
                     logging.debug(f" - {file_name}")
 
@@ -235,13 +236,24 @@ class XKW:
                         logging.debug(f"文件 {file_name} 尚未下载完成，跳过。")
                         continue
 
-                    if pattern.search(file_name):
-                        file_path = os.path.join(download_dir, file_name)
-                        if os.path.exists(file_path):
-                            logging.info(f"匹配到下载的文件: {file_path}")
-                            return file_path
-                        else:
-                            logging.debug(f"文件 {file_path} 不存在，等待中...")
+                    # 计算相似度
+                    # 这里使用partial_ratio适用于部分匹配的情况
+                    similarity = fuzz.partial_ratio(processed_title, file_name)
+                    logging.debug(f"文件 '{file_name}' 与标题的相似度: {similarity}")
+
+                    if similarity >= similarity_threshold:
+                        candidates.append((file_name, similarity))
+
+                if candidates:
+                    # 选择相似度最高的文件
+                    best_match = max(candidates, key=lambda x: x[1])
+                    best_file_name, best_similarity = best_match
+                    file_path = os.path.join(download_dir, best_file_name)
+                    if os.path.exists(file_path):
+                        logging.info(f"匹配到下载的文件: {best_file_name} (相似度: {best_similarity})")
+                        return file_path
+                    else:
+                        logging.debug(f"文件 {file_path} 不存在，等待中...")
 
                 # 确定下一次的重试间隔
                 if elapsed_time < initial_wait:
@@ -258,6 +270,7 @@ class XKW:
                 elapsed_time += sleep_time
                 logging.debug(
                     f"未找到匹配的文件 '{title}'，等待 {sleep_time} 秒后重试... (已等待 {elapsed_time}/{max_wait_time} 秒)")
+
             # 超过最大等待时间，放弃匹配
             logging.error(f"在 {max_wait_time} 秒内未能找到匹配的下载文件: {title}")
             if self.notifier:

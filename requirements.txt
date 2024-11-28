@@ -7,3 +7,6 @@ PyQRCode~=1.2.1
 urllib3~=2.2.3
 DrissionPage~=4.1.0.9
 pillow~=11.0.0
+psutil~=6.1.0
+anytree~=2.12.1
+RapidFuzz~=3.10.1
