@@ -529,6 +529,30 @@ class XKW:
                 self.notifier.notify(f"提取昵称时出错: {e}", is_error=True)
             return ""
 
+    def is_login_popup_present(self, tab) -> bool:
+        """
+        检查当前页面是否存在登录弹窗（<div class="pop-window">）。
+
+        参数:
+        - tab: 当前浏览器标签页。
+
+        返回:
+        - True: 存在登录弹窗。
+        - False: 不存在登录弹窗。
+        """
+        try:
+            logging.debug("检查是否存在登录弹窗（<div class='pop-window'>）。")
+            pop_window = tab.ele('div.pop-window', timeout=3)
+            if pop_window:
+                logging.info("检测到登录弹窗，表示当前未登录。")
+                return True
+            else:
+                logging.debug("未检测到登录弹窗。")
+                return False
+        except Exception as e:
+            logging.error(f"检查登录弹窗时出错: {e}", exc_info=True)
+            return False
+
     def listener(self, tab, download, url, title, soft_id):
         """
         监听下载过程，处理下载链接的获取和确认按钮的点击。
@@ -563,6 +587,17 @@ class XKW:
             # 开始监听循环
             while total_wait_time < max_wait_time:
                 start_time = time.time()
+
+                # 检查是否弹出登录窗口 during listening
+                if self.is_login_popup_present(tab):
+                    logging.warning("下载过程中检测到未登录状态，开始处理登录。")
+                    if self.handle_login_status(tab):
+                        logging.info("登录成功后继续监听下载链接。")
+                    else:
+                        logging.error("登录失败，无法继续下载任务。")
+                        failure_reason = 'login_required'
+                        return False
+
                 for item in tab.listen.steps(timeout=interval):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
@@ -635,10 +670,11 @@ class XKW:
         finally:
             if not success:
                 if failure_reason == 'limit':
-                    # 仅在达到下载上限时才进行账户切换
                     self.handle_limit_failure(url, tab)
                 elif failure_reason == 'qr_code':
                     self.handle_limit_failure(url, tab)
+                elif failure_reason == 'login_required':
+                    self.handle_login_status(tab)
                 else:
                     # 对于非账户上限的失败情况，执行其他处理逻辑
                     self.handle_other_failures(url, tab, failure_reason)
