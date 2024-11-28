@@ -223,7 +223,7 @@ class XKW:
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义相似度阈值
-            similarity_threshold = 90  # 设定一个合理的阈值，如80分
+            similarity_threshold = 85  # 设定一个合理的阈值，如80分
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
@@ -1119,19 +1119,6 @@ class XKW:
                 # 将任务分配给选中的实例
                 xkw_instance.add_task(url)
                 logging.info(f"已将 URL 添加到 XKW 实例 {xkw_instance.id} 的任务队列: {url}")
-
-                # 启动处理登录状态的线程
-                try:
-                    tab_for_login = xkw_instance.tabs.get(timeout=10)
-                except queue.Empty:
-                    logging.error(f"获取实例 {xkw_instance.id} 的标签页超时，无法处理登录状态。")
-                    if self.notifier:
-                        self.notifier.notify(f"获取实例 {xkw_instance.id} 的标签页超时，无法处理登录状态。", is_error=True)
-                    return False
-
-                retry_thread = threading.Thread(target=xkw_instance.handle_login_status, args=(tab_for_login,), daemon=True)
-                retry_thread.start()
-                logging.info(f"已启动实例 {xkw_instance.id} 的 handle_login_status 线程。")
                 return True
             else:
                 logging.warning("没有可用的 XKW 实例进行重试。将任务添加到 pending_tasks 队列。")
