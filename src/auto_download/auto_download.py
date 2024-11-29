@@ -1590,6 +1590,22 @@ class AutoDownloadManager:
         if self.notifier:
             self.notifier.notify("已重新分配所有 pending_tasks，恢复任务分配。")
 
+    def get_current_account_usage(self) -> str:
+        """
+        获取当前活跃的 XKW 实例的账号使用情况。
+
+        返回:
+        - 如果有活跃的实例，返回其账号使用情况字符串。
+        - 如果没有活跃的实例，返回相应的提示信息。
+        """
+        with self.xkw_lock:
+            if self.active_xkw_instances:
+                # 这里只返回第一个活跃实例的账号使用情况
+                xkw_instance = self.active_xkw_instances[0]
+                return xkw_instance.get_current_account_usage()
+            else:
+                return "当前没有活跃的实例，无法获取账号使用情况。"
+
     def stop(self):
         """
         停止 AutoDownloadManager 和其内部的所有 XKW 实例。
