@@ -35,6 +35,8 @@ class AdminCommandsHandler:
             '18': "禁用全部实例",
             '19': "查询群组下载份数 <群组名称> <时间段>",
             '20': "查询个人下载份数 <个人名称> <时间段>",
+            '21': "查询当前账号使用情况",
+
         }
 
         self.commands = {
@@ -79,6 +81,7 @@ class AdminCommandsHandler:
             'query_individual_last_month_downloads': r'^查询个人\s+(\S+)\s+上个月\s+下载份数$',
             'query_all_groups_today_downloads': r'^查询所有群组今天下载量$',
             'query_all_groups_this_week_downloads': r'^查询所有群组这周下载量$',
+            'query_current_account_usage': r'^查询当前账号使用情况$',
 
         }
 
@@ -163,6 +166,10 @@ class AdminCommandsHandler:
                     elif cmd == 'disable_all_instances':  # 新增的禁用全部实例命令处理
                         response = self.browser_controller.disable_all_instances()
                         return response
+
+                    elif cmd == 'query_current_account_usage':
+                        usage_info = self.browser_controller.get_current_account_usage()
+                        return usage_info
 
                     # 新增下载份数查询命令处理逻辑
                     if cmd.startswith('query_group') and cmd.endswith('_downloads'):
@@ -464,7 +471,9 @@ class AdminCommandsHandler:
             "    示例：查询所有群组今天下载量\n\n"
             "21. 查询所有群组这周下载量\n"
             "    示例：查询所有群组这周下载量\n\n"
-
+            "22. 查询当前账号使用情况\n"
+            "    示例：查询当前账号使用情况\n\n"
+            
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"
             "例如，发送 '1' 获取命令模板。"

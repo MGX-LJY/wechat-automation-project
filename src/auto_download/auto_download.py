@@ -981,6 +981,57 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"记录账号下载次数时出错: {e}", is_error=True)
 
+    def get_current_account_usage(self) -> str:
+        """
+        获取当前账号的使用情况，包括下载计数等信息。
+
+        返回:
+        - 包含账号使用情况的字符串。
+        """
+        try:
+            with self.account_index_lock:
+                current_account = self.accounts[self.current_account_index]
+                nickname = current_account.get('nickname', current_account['username'])
+                username = current_account['username']
+
+            # 获取当前日期和周数
+            today = datetime.today()
+            date_str = today.strftime('%Y-%m-%d')
+            week_number = today.strftime('%Y-%W')  # 年份和周数组合，周从星期一开始
+
+            with XKW.download_counts_lock:
+                account_counts = XKW.download_counts.get(nickname, {})
+                daily_count_info = account_counts.get('daily', {})
+                weekly_count_info = account_counts.get('weekly', {})
+
+                # 检查并重置每日计数
+                if daily_count_info.get('date') != date_str:
+                    daily_count = 0
+                else:
+                    daily_count = daily_count_info.get('count', 0)
+
+                # 检查并重置每周计数
+                if weekly_count_info.get('week') != week_number:
+                    weekly_count = 0
+                else:
+                    weekly_count = weekly_count_info.get('count', 0)
+
+            usage_info = (
+                f"当前账号信息：\n"
+                f"昵称：{nickname}\n"
+                f"用户名：{username}\n"
+                f"今日下载次数：{daily_count}/87\n"
+                f"本周下载次数：{weekly_count}/350\n"
+            )
+            logging.info(f"获取当前账号使用情况：\n{usage_info}")
+            return usage_info
+
+        except Exception as e:
+            logging.error(f"获取当前账号使用情况时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"获取当前账号使用情况时出错: {e}", is_error=True)
+            return "获取当前账号使用情况时发生错误。"
+
     def get_next_available_account_index(self) -> int:
         """
         获取下一个下载次数未达标的账号索引（每日计数 < 87 且 每周计数 < 350）。
