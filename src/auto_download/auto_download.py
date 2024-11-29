@@ -512,7 +512,7 @@ class XKW:
     def get_nickname(self, tab) -> str:
         """
         悬停在“我的”元素上，并从下拉菜单中提取当前账号的昵称。
-        直接进行文字匹配，昵称格式为“全能数字X”，例如“全能1X”。
+        直接进行文字匹配，昵称格式为“全能数字X”，例如“全能1X”或“全能1x”。
 
         参数:
         - tab: 当前浏览器标签页。
@@ -539,14 +539,14 @@ class XKW:
                 nickname_text = nickname_element.text.strip()
                 logging.info(f"提取到的昵称文本: {nickname_text}")
 
-                # 使用正则表达式匹配“全能”后跟一个数字和“X”
-                match = re.match(r'^全能\d+X$', nickname_text)
+                # 使用正则表达式匹配“全能”后跟一个数字和“X”或“x”
+                match = re.match(r'^全能\d+[Xx]$', nickname_text)
                 if match:
                     nickname = match.group()
                     logging.info(f"提取到符合格式的昵称: {nickname}")
                     return nickname
                 else:
-                    logging.error(f"提取到的昵称不符合格式要求（全能数字X）：{nickname_text}")
+                    logging.error(f"提取到的昵称不符合格式要求（全能数字X 或 全能数字x）：{nickname_text}")
                     return ""
             else:
                 logging.error("未找到昵称元素，无法提取昵称。")
@@ -1431,7 +1431,7 @@ class AutoDownloadManager:
             {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
             {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
-            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13X'},
+            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'}
 
         ]
