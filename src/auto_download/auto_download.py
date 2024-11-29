@@ -232,11 +232,19 @@ class XKW:
             # 定义初始相似度阈值
             similarity_threshold = 100  # 前90秒的阈值
 
+            # 正则表达式模式，用于匹配带数字编号的文件名，例如：[123456]filename.pdf
+            numbered_file_pattern = re.compile(r'^\[\d+\]', re.IGNORECASE)
+
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
                 candidates = []
                 for file_name in os.listdir(download_dir):
                     logging.debug(f" - {file_name}")
+
+                    # 跳过带数字编号的文件
+                    if numbered_file_pattern.match(file_name):
+                        logging.info(f"文件 {file_name} 带有数字编号前缀，跳过。")
+                        continue
 
                     # 过滤不期望的文件扩展名
                     _, ext = os.path.splitext(file_name)
