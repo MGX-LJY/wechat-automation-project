@@ -220,7 +220,8 @@ class XKW:
             elapsed_time = 0
 
             # 预期的文件扩展名，可以根据需求调整
-            expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.wps']
+            expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx',
+                                   '.xls', '.xlsx', '.wps']
 
             # 处理标题：保留中文、数字、空格、下划线、破折号、加号
             processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
@@ -229,7 +230,7 @@ class XKW:
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义初始相似度阈值
-            similarity_threshold = 100  # 前30秒的阈值
+            similarity_threshold = 100  # 前90秒的阈值
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
@@ -273,10 +274,12 @@ class XKW:
                         logging.debug(f"文件 {file_path} 不存在，等待中...")
 
                 # 更新相似度阈值，根据 elapsed_time 决定
-                if elapsed_time < 180:
+                if elapsed_time < 90:
                     similarity_threshold = 100
-                else:
+                elif elapsed_time < 360:
                     similarity_threshold = 85
+                else:
+                    similarity_threshold = 75
                 logging.debug(f"当前相似度阈值: {similarity_threshold}")
 
                 # 确定下一次的重试间隔
@@ -662,11 +665,6 @@ class XKW:
                     success = False
                     failure_reason = 'qr_code'
                     return False
-                elif result == "login_required":
-                    logging.warning("下载需要登录，尝试登录并重试")
-                    success = False
-                    failure_reason = 'login_required'
-                    return False
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
@@ -676,6 +674,12 @@ class XKW:
 
             # 超过最大等待时间，下载失败
             logging.warning(f"在 {max_wait_time} 秒内未能捕获到下载链接，下载失败: {url}")
+            # 检查账号是否登录
+            if not self.is_logged_in(tab):
+                logging.warning("账号未登录，尝试重新登录。")
+                if self.notifier:
+                    self.notifier.notify("账号未登录，尝试重新登录。")
+                self.handle_login_status(tab)
             success = False
             failure_reason = 'timeout'
             return False  # 返回 False，表示任务处理失败
@@ -740,10 +744,6 @@ class XKW:
                 logging.info("未检测到特定的 iframe 元素")
         except Exception as e:
             logging.error(f"出现异常 - {e}")
-        # 检查是否弹出登录窗口 during listening
-            self.is_login_popup_present(tab)
-            return 'login_required'
-        # 返回 None 表示未检测到任何目标提示
         return None
 
     def handle_limit_failure(self, url, tab):
