@@ -989,15 +989,17 @@ class XKW:
         - 包含账号使用情况的字符串。
         """
         try:
-            with self.account_index_lock:
-                current_account = self.accounts[self.current_account_index]
-                nickname = current_account.get('nickname', current_account['username'])
-                username = current_account['username']
+            nickname = self.get_nickname_current_account()
+
+            if not nickname:
+                return "无法获取当前账号的昵称，可能未登录或提取失败。"
+
+            username = self.get_username_by_nickname(nickname)
 
             # 获取当前日期和周数
             today = datetime.today()
             date_str = today.strftime('%Y-%m-%d')
-            week_number = today.strftime('%Y-%W')  # 年份和周数组合，周从星期一开始
+            week_number = today.strftime('%W')  # 年份和周数组合，周从星期一开始
 
             with XKW.download_counts_lock:
                 account_counts = XKW.download_counts.get(nickname, {})
@@ -1031,6 +1033,55 @@ class XKW:
             if self.notifier:
                 self.notifier.notify(f"获取当前账号使用情况时出错: {e}", is_error=True)
             return "获取当前账号使用情况时发生错误。"
+
+    def get_nickname_current_account(self) -> str:
+        """
+        使用 get_nickname 方法获取当前账号的昵称。
+
+        返回:
+        - 当前账号的昵称字符串，或空字符串表示获取失败。
+        """
+        try:
+            # 获取一个活跃的标签页
+            tab = self.tabs.get(timeout=10)  # 设置适当的超时时间
+            tab.get('https://www.zxxk.com')
+            nickname = self.get_nickname(tab)
+            # 将标签页放回队列
+            self.reset_tab(tab)
+            self.tabs.put(tab)
+            return nickname
+        except queue.Empty:
+            logging.error("无法获取标签页以提取昵称。")
+            if self.notifier:
+                self.notifier.notify("无法获取标签页以提取昵称。", is_error=True)
+            return ""
+        except Exception as e:
+            logging.error(f"获取当前账号昵称时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"获取当前账号昵称时出错: {e}", is_error=True)
+            return ""
+
+    def get_username_by_nickname(self, nickname: str) -> str:
+        """
+        根据昵称获取用户名。
+
+        参数:
+        - nickname: 账号的昵称。
+
+        返回:
+        - 对应的用户名，或空字符串如果未找到。
+        """
+        try:
+            for account in self.accounts:
+                if account.get('nickname') == nickname:
+                    return account.get('username', '')
+            logging.warning(f"未找到昵称为 {nickname} 的账号。")
+            return ""
+        except Exception as e:
+            logging.error(f"根据昵称获取用户名时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"根据昵称获取用户名时出错: {e}", is_error=True)
+            return ""
 
     def get_next_available_account_index(self) -> int:
         """
