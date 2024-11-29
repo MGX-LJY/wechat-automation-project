@@ -1,3 +1,5 @@
+import csv
+import json
 import logging
 import os
 import queue
@@ -8,13 +10,11 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-import json
-import csv
 from typing import Tuple
-from rapidfuzz import fuzz, process
 
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
+from rapidfuzz import fuzz
 
 from src.notification.notifier import Notifier
 
@@ -243,7 +243,7 @@ class XKW:
 
                     # 跳过带数字编号的文件
                     if numbered_file_pattern.match(file_name):
-                        logging.info(f"文件 {file_name} 带有数字编号前缀，跳过。")
+                        logging.debug(f"文件 {file_name} 带有数字编号前缀，跳过。")
                         continue
 
                     # 过滤不期望的文件扩展名
