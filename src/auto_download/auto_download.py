@@ -57,7 +57,7 @@ class XKW:
     - accounts: 账号列表，每个实例独有。
     """
     # 初始化下载计数器和锁
-    download_counts_lock = threading.Lock()
+    download_counts_lock = threading.RLock()
     download_counts = {}
     download_counts_file = 'download_counts.json'
     download_log_file = 'download_log.csv'
@@ -83,7 +83,7 @@ class XKW:
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
         self.is_handling_login = False  # 新增标志位，防止重复调用 handle_login_status
-        self.account_index_lock = threading.Lock()  # 新增锁，用于账号索引的同步
+        self.account_index_lock = threading.RLock()  # 新增锁，用于账号索引的同步
         # 添加账号列表和当前账号索引
         if accounts is not None:
             self.accounts = accounts  # 使用传入的账号列表
@@ -127,7 +127,7 @@ class XKW:
             logging.info("XKW manager 线程已启动。")
 
         # 添加登录锁和冷却时间
-        self.handle_login_lock = threading.Lock()  # 新增锁
+        self.handle_login_lock = threading.RLock()  # 新增锁
         self.last_login_attempt = 0
         self.login_cooldown = 60  # 冷却时间，单位秒
 
@@ -673,6 +673,22 @@ class XKW:
                     success = False
                     failure_reason = 'qr_code'
                     return False
+                elif result == "skip":
+                    logging.info("下载频繁，已打开并下载一个了，直接跳过即可")
+                    success = True
+                    return True
+                elif result == "limit_reached":
+                    logging.info("达到350份上限，更新账号数据并切换账号")
+                    # 更新数据库中的下载记录
+                    nickname = self.get_nickname(tab)
+                    if nickname:
+                        self.point_manager.update_user_points("XKW_Group", nickname, delta=-1)
+                        self.point_manager.log_download('user', nickname, url)
+                    # 切换账号
+                    self.handle_login_status(tab)
+                    success = False
+                    failure_reason = 'limit_reached'
+                    return False
 
                 # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
@@ -719,8 +735,10 @@ class XKW:
 
         返回值：
         - None：未检测到任何目标提示
-        - "limit"：检测到下载上限提示（code=20603114）
-        - "qr_code"：检测到需要扫码的提示（code=20603132）
+        - "limit": 检测到下载上限提示（code=20603114）
+        - "qr_code": 检测到需要扫码的提示（code=20603132）
+        - "skip": 检测到下载频繁提示（code=20603116），说明已经打开并下载了一个了，直接跳过即可
+        - "limit_reached": 检测到已达到350份上限（code=20602004），更新账号数据并切换账号
         """
         try:
             logging.info("检查特定的 iframe 元素")
@@ -744,6 +762,12 @@ class XKW:
                             if self.notifier:
                                 self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
                             return "qr_code"
+                        elif code == "20603116":
+                            logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
+                            return "skip"
+                        elif code == "20602004":
+                            logging.info("检测到已达到350份上限，更新账号数据并切换账号")
+                            return "limit_reached"
                         else:
                             logging.info(f"code 参数不在目标列表中: {code}")
                     else:
@@ -1462,7 +1486,7 @@ class AutoDownloadManager:
         self.xkw_instances = [xkw1, xkw2]  # 所有的 XKW 实例
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
-        self.xkw_lock = threading.Lock()  # 线程锁
+        self.xkw_lock = threading.RLock()
 
         self.pending_tasks = queue.Queue()  # 用于保存挂起的下载任务
         self.paused = False  # 标志是否暂停任务分配
