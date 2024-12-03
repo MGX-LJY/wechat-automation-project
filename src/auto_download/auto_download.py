@@ -1542,27 +1542,22 @@ class AutoDownloadManager:
         try:
             logging.info(f"准备添加 URL 到下载任务队列: {url}")
             with self.xkw_lock:
-                available_instances = self.get_available_xkw_instances()
+                available_instances = self.get_available_xkw_instances(current_instance)
                 if not available_instances:
-                    # 如果没有活跃实例，将任务添加到 pending_tasks 队列
                     self.pending_tasks.put(url)
                     logging.info(f"没有活跃实例，任务已添加到 pending_tasks 队列：{url}")
                     if self.notifier:
-                        self.notifier.notify(f"没有活跃实例，任务已添加到 pending_tasks 队列：{url}",
-                                             is_error=True)
+                        self.notifier.notify(f"没有活跃实例，任务已添加到 pending_tasks 队列：{url}", is_error=True)
                     return
 
-                # 随机选择一个活跃实例
                 selected_instance = random.choice(available_instances)
+                selected_instance.add_task(url)
+                logging.info(f"已将 URL 添加到 XKW 实例 {selected_instance.id} 的任务队列: {url}")
 
-            # 分配任务给选中的实例
-            selected_instance.add_task(url)
-            logging.info(f"已将 URL 添加到 XKW 实例 {selected_instance.id} 的任务队列: {url}")
-
-            # 添加随机延迟，模拟任务分发的不规则性
-            delay_seconds = random.uniform(1, 2)
-            logging.debug(f"分配任务后暂停 {delay_seconds:.1f} 秒")
-            time.sleep(delay_seconds)
+                # 添加随机延迟，模拟任务分发的不规则性
+                delay_seconds = random.uniform(1, 2)
+                logging.debug(f"分配任务后暂停 {delay_seconds:.1f} 秒")
+                time.sleep(delay_seconds)
         except Exception as e:
             logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
