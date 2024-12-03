@@ -1119,6 +1119,7 @@ class XKW:
                         if self.notifier:
                             self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
                         self.is_handling_login = False
+                        self.manager.enable_xkw_instance(self)
                         return
                     else:
                         logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
