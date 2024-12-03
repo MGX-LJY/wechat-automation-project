@@ -21,7 +21,6 @@ from src.notification.notifier import Notifier
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')
-LOCK = threading.Lock()
 
 # 初始化日志记录器
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -713,7 +712,7 @@ class XKW:
         - "limit_reached": 检测到已达到350份上限（code=20602004），更新账号数据并切换账号
         """
         try:
-            logging.info("检查特定的 iframe 元素")
+            logging.debug("检查特定的 iframe 元素")
             # 使用正则表达式查找包含 "risk-control-dialog" 的 iframe src
             iframe_pattern = re.compile(r'<iframe[^>]+src=["\']([^"\']*risk-control-dialog[^"\']*)["\']', re.IGNORECASE)
             iframes = iframe_pattern.findall(tab.html)
@@ -745,7 +744,7 @@ class XKW:
                     else:
                         logging.info("未找到 code 参数")
             else:
-                logging.info("未检测到特定的 iframe 元素")
+                logging.debug("未检测到特定的 iframe 元素")
         except Exception as e:
             logging.error(f"出现异常 - {e}")
         return None
@@ -1392,8 +1391,8 @@ class AutoDownloadManager:
             {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
-            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'}
-
+            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
+            {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
         ]
 
         accounts_xkw2 = [
@@ -1403,6 +1402,7 @@ class AutoDownloadManager:
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
+            {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表

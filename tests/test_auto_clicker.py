@@ -1,133 +1,66 @@
-import re
-from rapidfuzz import fuzz
+import json
+import requests
+import base64
+import csv
+import random
 
+def make_dict(total_numbers, city, isp):
+    # 解码URL和Headers
+    url = base64.b64decode("aHR0cDovL2FwcC53ZXdlNzc4OC5jbjo4MC9hcHAvUXVlcnlTaHVmZmxlQ29kZT90b2tlbj0=").decode('utf-8')
+    headers = json.loads(base64.b64decode(
+        "eyJBY2NlcHQtRW5jb2RpbmciOiAiZGVmbGF0ZSwgZ3ppcCIsICJPcmlnaW4iOiAiaHR0cDovL2FwcC53ZXdlNzc4OC5jbiIsICJYLVJlcXVlc3RlZC1XaXRoIjogIlhNTEh0dHBSZXF1ZXN0IiwgIlVzZXItQWdlbnQiOiAiTW96aWxsYS81LjAgKFdpbmRvd3M7IFU7IFdpbmRvd3MgTlQgNi4yOyB6aC1DTikgQXBwbGVXZWJLaXQvNTMzKyAoS0hUTUwsIGxpa2UgR2Vja28pIiwgIkNvbnRlbnQtVHlwZSI6ICJhcHBsaWNhdGlvbi94LXd3dy1mb3JtLXVybGVuY29kZWQ7IGNoYXJzZXQ9VVRGLTgiLCAiQWNjZXB0IjogImFwcGxpY2F0aW9uL2pzb24sIHRleHQvamF2YXNjcmlwdCwgKi8qOyBxPTAuMDEiLCAiUmVmZXJlciI6ICJodHRwOi8vYXBwLndld2U3Nzg4LmNuL2FwcC9mbGFzaCJ9").decode('utf-8'))
+    # 请求数据
+    data = {"total": total_numbers, "city": city, "isp": isp}
+    response = requests.post(url, headers=headers, data=data)
+    data = response.json()
+    prefix = data['prefix']
+    suffix = data['suffix']
+    prefixInfo = data['prefixInfo']
+    no = 0
 
-def preprocess_title(title):
-    """
-    预处理标题，去除所有非中文字符和数字字符。
+    # 创建用于跟踪已使用前缀和手机号的集合
+    used_prefixes = set()
+    used_phone_numbers = set()
 
-    参数:
-    - title: 原始标题字符串。
+    # 将前缀和前缀信息组合并打乱顺序
+    prefix_info_list = list(zip(prefix, prefixInfo))
+    random.shuffle(prefix_info_list)
+    random.shuffle(suffix)
 
-    返回:
-    - 处理后的标题字符串。
-    """
-    return re.sub(r'[^\u4e00-\u9fa5\d]', '', title)
+    with open("telephone_number_dict.csv", "w", encoding="UTF-8", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["手机号", "手机号归属地"])
+        for pref, pref_info in prefix_info_list:
+            if pref in used_prefixes:
+                continue
+            for suff in suffix:
+                phoneNum = pref + suff
+                if phoneNum in used_phone_numbers:
+                    continue
+                phoneInfo = pref_info['province'] + pref_info['city'] + pref_info['isp']
+                print(phoneNum, phoneInfo)
+                writer.writerow([phoneNum, phoneInfo])
+                used_prefixes.add(pref)
+                used_phone_numbers.add(phoneNum)
+                no += 1
+                if no >= total_numbers:
+                    break
+            if no >= total_numbers:
+                break
+    print("[*]手机号字典（telephone_number_dict.csv）生成成功，共计生成：{}条，请打开字典查看详细内容！".format(no))
 
-
-def extract_key_fields(title):
-    """
-    提取标题中的关键字段，如学校名称和考试类型。
-
-    参数:
-    - title: 预处理后的标题字符串。
-
-    返回:
-    - Tuple of (学校名称, 考试类型)
-    """
-    # 假设标题格式为：精品解析：<学校名称><学年><年级><考试类型>语文试题
-    # 例如：精品解析：辽宁省抚顺市实验中学20242025学年八年级上学期期初考试语文试题
-    match = re.match(r'精品解析：(.+?)(\d{4}-\d{4}学年八年级.+?语文试题)', title)
-    if match:
-        school_name = match.group(1)
-        exam_type = match.group(2)
-        return school_name, exam_type
-    return "", ""
-
-
-def calculate_similarity(title1, title2):
-    """
-    计算两个标题之间的各种相似度分数。
-
-    参数:
-    - title1: 第一个标题字符串。
-    - title2: 第二个标题字符串。
-
-    返回:
-    - Dictionary containing different similarity scores.
-    """
-    return {
-        'fuzz_ratio': fuzz.ratio(title1, title2),
-        'fuzz_partial_ratio': fuzz.partial_ratio(title1, title2),
-        'fuzz_token_sort_ratio': fuzz.token_sort_ratio(title1, title2),
-        'fuzz_token_set_ratio': fuzz.token_set_ratio(title1, title2)
-    }
-
-
-def main():
-    # 原始标题
-    original_title = "精品解析：辽宁省抚顺市实验中学2024-2025学年八年级上学期期初考试语文试题"
-
-    # 下载目录中的两个文件名
-    title_a = "精品解析：辽宁省抚顺市实验中学2024-2025学年八年级上学期期初考试语文试题.docx"
-    title_b = "精品解析：辽宁省大连市甘井子区2024-2025学年八年级10月月考语文试题.docx"
-
-    # 预处理标题
-    processed_original = preprocess_title(original_title)
-    processed_a = preprocess_title(title_a)
-    processed_b = preprocess_title(title_b)
-
-    # 提取关键字段
-    school_a, exam_a = extract_key_fields(processed_a)
-    school_b, exam_b = extract_key_fields(processed_b)
-    school_original, exam_original = extract_key_fields(processed_original)
-
-    print("=== 标题预处理 ===")
-    print(f"原始标题预处理后: {processed_original}")
-    print(f"文件A预处理后: {processed_a}")
-    print(f"文件B预处理后: {processed_b}\n")
-
-    print("=== 提取关键字段 ===")
-    print(f"原始标题 - 学校名称: {school_original}, 考试类型: {exam_original}")
-    print(f"文件A - 学校名称: {school_a}, 考试类型: {exam_a}")
-    print(f"文件B - 学校名称: {school_b}, 考试类型: {exam_b}\n")
-
-    # 计算相似度
-    similarity_a = calculate_similarity(processed_original, processed_a)
-    similarity_b = calculate_similarity(processed_original, processed_b)
-
-    print("=== 相似度分数 ===")
-    print("文件A与原始标题的相似度:")
-    for key, value in similarity_a.items():
-        print(f"  {key}: {value}")
-    print("\n文件B与原始标题的相似度:")
-    for key, value in similarity_b.items():
-        print(f"  {key}: {value}")
-
-    # 定义相似度阈值
-    threshold_ratio = 90
-    threshold_token_set_ratio = 90
-
-    # 判断匹配
-    print("\n=== 匹配判断 ===")
-
-    def is_match(similarity, school_match, exam_match):
-        return (similarity['fuzz_ratio'] >= threshold_ratio and
-                similarity['fuzz_token_set_ratio'] >= threshold_token_set_ratio and
-                school_match and
-                exam_match)
-
-    # 判断文件A
-    school_match_a = school_original in school_a
-    exam_match_a = exam_original in exam_a
-    match_a = is_match(similarity_a, school_match_a, exam_match_a)
-    print(f"文件A匹配: {'成功' if match_a else '失败'}")
-
-    # 判断文件B
-    school_match_b = school_original in school_b
-    exam_match_b = exam_original in exam_b
-    match_b = is_match(similarity_b, school_match_b, exam_match_b)
-    print(f"文件B匹配: {'成功' if match_b else '失败'}")
-
-    # 结果总结
-    print("\n=== 结果总结 ===")
-    if match_a and not match_b:
-        print("只有文件A成功匹配，文件B被正确忽略。")
-    elif match_a and match_b:
-        print("文件A和文件B都匹配，可能需要进一步优化阈值或匹配条件。")
-    else:
-        print("未能成功匹配到文件A，可能需要降低阈值或检查匹配逻辑。")
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    try:
+        print(""" __  __       _        ____  _                      ____  _      _   
+|  \/  | __ _| | _____|  _ \| |__   ___  _ __   ___|  _ \(_) ___| |_ 
+| |\/| |/ _` | |/ / _ \ |_) | '_ \ / _ \| '_ \ / _ \ | | | |/ __| __|
+| |  | | (_| |   <  __/  __/| | | | (_) | | | |  __/ |_| | | (__| |_ 
+|_|  |_|\__,_|_|\_\___|_|   |_| |_|\___/|_| |_|\___|____/|_|\___|\__|
+Hx0战队-手机号字典生成器V1.1               Update:2023.11.07                                        
+        """)
+        total_numbers = 20  # 生成20个号码
+        city = "1201"  # 天津的城市区域代码
+        isp = "4001,4006,4008"  # 三个运营商
+        make_dict(total_numbers, city, isp)
+    except Exception as e:
+        print(e)
