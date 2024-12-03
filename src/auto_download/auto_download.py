@@ -1532,13 +1532,7 @@ class AutoDownloadManager:
                 logging.info("所有实例已经是活跃状态。")
                 return "所有实例已经是活跃状态。"
 
-    def add_task(self, url: str):
-        """
-        添加单个 URL 到下载任务队列，并随机分配给一个活跃的实例。
-
-        参数:
-        - url: 要下载的文件的 URL。
-        """
+    def add_task(self, url: str, current_instance=None):
         try:
             logging.info(f"准备添加 URL 到下载任务队列: {url}")
             with self.xkw_lock:
