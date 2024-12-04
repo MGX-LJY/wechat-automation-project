@@ -1419,6 +1419,16 @@ class AutoDownloadManager:
         self.pending_tasks = queue.Queue()  # 用于保存挂起的下载任务
         self.paused = False  # 标志是否暂停任务分配
 
+        # 新增：创建一个新的任务队列用于批量处理
+        self.task_queue = queue.Queue()
+        self.batch_size = 10  # 每批处理的任务数量
+        self.batch_interval = 30  # 每批之间的时间间隔（秒）
+
+        # 启动批量处理线程
+        self.batch_processor_thread = threading.Thread(target=self.process_task_queue, daemon=True)
+        self.batch_processor_thread.start()
+        logging.info("批量任务处理线程已启动。")
+
     def disable_xkw_instance(self, xkw_instance):
         """
         禁用指定的 XKW 实例。
@@ -1532,9 +1542,47 @@ class AutoDownloadManager:
                 logging.info("所有实例已经是活跃状态。")
                 return "所有实例已经是活跃状态。"
 
-    def add_task(self, url: str, current_instance=None):
+    def process_task_queue(self):
+        """
+        处理任务队列，每隔 batch_interval 秒处理 batch_size 个任务。
+        """
+        while True:
+            try:
+                if self.paused:
+                    logging.debug("任务分配已暂停，等待恢复...")
+                    time.sleep(1)
+                    continue
+
+                batch = []
+                for _ in range(self.batch_size):
+                    try:
+                        url = self.task_queue.get_nowait()
+                        batch.append(url)
+                    except queue.Empty:
+                        break
+
+                if batch:
+                    logging.info(f"准备批量分配 {len(batch)} 个下载任务。")
+                    for url in batch:
+                        self._assign_task(url)
+                    logging.info(f"已批量分配 {len(batch)} 个下载任务。")
+                else:
+                    logging.debug("任务队列为空，等待新的任务...")
+
+                # 等待指定的间隔时间 before processing the next batch
+                time.sleep(self.batch_interval)
+            except Exception as e:
+                logging.error(f"批量任务处理过程中出错: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"批量任务处理过程中出错: {e}", is_error=True)
+                time.sleep(self.batch_interval)  # 避免紧急错误循环
+
+    def _assign_task(self, url: str, current_instance=None):
+        """
+        内部方法：将单个任务分配给可用的 XKW 实例。
+        """
         try:
-            logging.info(f"准备添加 URL 到下载任务队列: {url}")
+            logging.info(f"准备分配 URL 到下载任务队列: {url}")
             with self.xkw_lock:
                 available_instances = self.get_available_xkw_instances(current_instance)
                 if not available_instances:
@@ -1548,14 +1596,28 @@ class AutoDownloadManager:
                 selected_instance.add_task(url)
                 logging.info(f"已将 URL 添加到 XKW 实例 {selected_instance.id} 的任务队列: {url}")
 
-                # 添加随机延迟，模拟任务分发的不规则性
-                delay_seconds = random.uniform(1, 2)
-                logging.debug(f"分配任务后暂停 {delay_seconds:.1f} 秒")
-                time.sleep(delay_seconds)
         except Exception as e:
-            logging.error(f"添加 URL 时发生错误: {e}", exc_info=True)
+            logging.error(f"分配 URL 时发生错误: {e}", exc_info=True)
             if self.notifier:
-                self.notifier.notify(f"添加 URL 时发生错误: {e}", is_error=True)
+                self.notifier.notify(f"分配 URL 时发生错误: {e}", is_error=True)
+            # 将任务回退到 pending_tasks 以便稍后重试
+            self.pending_tasks.put(url)
+
+    def add_task(self, url: str):
+        """
+        向任务队列添加一个下载任务。
+
+        参数:
+        - url: 要下载的文件的 URL。
+        """
+        try:
+            logging.info(f"准备添加 URL 到批量任务队列: {url}")
+            self.task_queue.put(url)
+            logging.info(f"任务已添加到批量任务队列: {url}")
+        except Exception as e:
+            logging.error(f"添加 URL 到批量任务队列时发生错误: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"添加 URL 到批量任务队列时发生错误: {e}", is_error=True)
 
     def enqueue_pending_task(self, url: str):
         """
