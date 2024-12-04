@@ -1,4 +1,4 @@
-# 使用示例
+from lib.wxautox.wxauto import WeChat
 
 # 初始化微信对象
 wx = WeChat(language='cn', debug=True)
@@ -16,7 +16,7 @@ for msg in msgs:
     print("-" * 20)
 
 # 获取新消息
-new_msgs = wx.GetNewMessage()
+new_msgs = wx.GetListenMessage()
 
 for chat, messages in new_msgs.items():
     print(f"聊天对象: {chat}")
