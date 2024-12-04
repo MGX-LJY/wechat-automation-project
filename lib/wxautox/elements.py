@@ -19,6 +19,7 @@ class WxParam:
     DEFALUT_SAVEPATH = os.path.join(os.getcwd(), 'wxauto文件')
     SHORTCUT_SEND = '{Enter}'
     SAVE_PATH_METHOD = 1   # 1: win32api, 2: uiautomation
+    MOUSE_MOVE = False
 
 class WeChatBase:
     def _lang(self, text, langtype='MAIN'):
@@ -100,7 +101,7 @@ class WeChatBase:
         if not imgcontrol.Exists(0.5):
             return None
         RollIntoView(self.C_MsgList, imgcontrol)
-        imgcontrol.Click(simulateMove=False)
+        imgcontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         imgobj = WeChatImage()
         savepath = imgobj.Save()
         imgobj.Close()
@@ -123,14 +124,14 @@ class WeChatBase:
 
         copy = [i for i in options if i.Name == '复制']
         if copy:
-            copy[0].Click(simulateMove=False)
+            copy[0].Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         else:
             filecontrol.RightClick(simulateMove=False)
-            filecontrol.Click(simulateMove=False)
+            filecontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             filewin = self.UiaAPI.WindowControl(ClassName='MsgFileWnd')
             accept_button = filewin.ButtonControl(Name='接收文件')
             if accept_button.Exists(2):
-                accept_button.Click(simulateMove=False)
+                accept_button.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             
             while True:
                 try:
@@ -140,7 +141,7 @@ class WeChatBase:
                     options = [i for i in menu.ListControl().GetChildren() if i.ControlTypeName == 'MenuItemControl']
                     copy = [i for i in options if i.Name == '复制']
                     if copy:
-                        copy[0].Click(simulateMove=False)
+                        copy[0].Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                         break
                     else:
                         filecontrol.RightClick(simulateMove=False)
@@ -164,11 +165,11 @@ class WeChatBase:
         menu = self.UiaAPI.MenuControl(ClassName='CMenuWnd')
         option = menu.MenuItemControl(Name="语音转文字")
         if not option.Exists(0.5):
-            voicecontrol.Click(simulateMove=False)
+            voicecontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             if not msgitem.GetProgenyControl(8, 4):
                 return None
         else:
-            option.Click(simulateMove=False)
+            option.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
         text = ''
         while True:
@@ -213,12 +214,12 @@ class ChatWnd(WeChatBase):
         wxlog.debug(f"@所有人：{self.who} --> {msg}")
         
         if not self.editbox.HasKeyboardFocus:
-            self.editbox.Click(simulateMove=False)
+            self.editbox.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
         self.editbox.Input('@')
         atwnd = self.UiaAPI.PaneControl(ClassName='ChatContactMenu')
         if atwnd.Exists(maxSearchSeconds=0.1):
-            atwnd.ListItemControl(Name='所有人').Click(simulateMove=False)
+            atwnd.ListItemControl(Name='所有人').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             if msg:
                 if not msg.startswith('\n'):
                     msg = '\n' + msg
@@ -245,7 +246,7 @@ class ChatWnd(WeChatBase):
             return None
         
         if clear:
-            self.editbox.ShortcutSelectAll()
+            self.editbox.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
 
         def _at(name):
             self.editbox.Input(name)
@@ -271,7 +272,7 @@ class ChatWnd(WeChatBase):
         wxlog.debug(f"发送消息：{self.who} --> {msg}")
         
         if not self.editbox.HasKeyboardFocus:
-            self.editbox.Click(simulateMove=False)
+            self.editbox.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
         if at:
             if isinstance(at, str):
@@ -291,8 +292,8 @@ class ChatWnd(WeChatBase):
                 raise TimeoutError(f'发送消息超时 --> {self.who} - {msg}')
             SetClipboardText(msg)
             if not self.editbox.HasKeyboardFocus:
-                self.editbox.Click(simulateMove=False)
-            self.editbox.ShortcutPaste()
+                self.editbox.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+            self.editbox.ShortcutPaste(move=WxParam.MOUSE_MOVE)
             wxlog.debug(ReadClipboardData())
             if self.editbox.GetValuePattern().Value:
                 break
@@ -304,7 +305,7 @@ class ChatWnd(WeChatBase):
         Args:
             emotion_index (int): 表情序号，从0开始
         """
-        self.UiaAPI.ButtonControl(RegexName='表情.*?').Click()
+        self.UiaAPI.ButtonControl(RegexName='表情.*?').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         EmotionWnd = self.UiaAPI.PaneControl(ClassName='EmotionWnd')
         emotion_list = EmotionWnd.ListControl()
         while not emotion_list.TextControl(Name="添加的单个表情").Exists(0):
@@ -350,7 +351,7 @@ class ChatWnd(WeChatBase):
         emotion = next_page(emotion_index, emotion_list, emotions, last_one, idx, amount)
         if emotion is not None:
             RollIntoView(emotion_list, emotion)
-            emotion.Click()
+            emotion.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return True
         else:
             wxlog.debug(f'未找到表情索引：{emotion_index}')
@@ -386,14 +387,14 @@ class ChatWnd(WeChatBase):
         
         if filelist:
             
-            self.editbox.ShortcutSelectAll()
+            self.editbox.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
             t0 = time.time()
             while True:
                 if time.time() - t0 > 10:
                     raise TimeoutError(f'发送文件超时 --> {filelist}')
                 SetClipboardFiles(filelist)
                 time.sleep(0.2)
-                self.editbox.ShortcutPaste()
+                self.editbox.ShortcutPaste(move=WxParam.MOUSE_MOVE)
                 if self.editbox.GetValuePattern().Value:
                     break
             self.editbox.SendKeys(WxParam.SHORTCUT_SEND)
@@ -499,7 +500,7 @@ class ChatWnd(WeChatBase):
         roominfoWnd = self.UiaAPI.WindowControl(ClassName='SessionChatRoomDetailWnd', searchDepth=1)
         more = roominfoWnd.ButtonControl(Name='查看更多', searchDepth=8)
         if more.Exists(0.1):
-            more.Click()
+            more.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         
         if add_friend_mode:
             members = [GroupMemberElement(i, self) for i in roominfoWnd.ListControl(Name='聊天成员').GetChildren()]
@@ -542,7 +543,7 @@ class ChatRecordWnd:
                         for _ in range(10):
                             if imgcontrol:
                                 RollIntoView(listcontrol, imgcontrol, True)
-                                imgcontrol.Click()
+                                imgcontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                                 img = WeChatImage()
                                 imgpath = img.Save()
                                 img.Close()
@@ -554,7 +555,7 @@ class ChatRecordWnd:
                         videocontrol = item.GetProgenyControl(5, control_type='ButtonControl')
                         if videocontrol:
                             RollIntoView(listcontrol, videocontrol, True)
-                            videocontrol.Click()
+                            videocontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                             video = WeChatImage(video=True)
                             videopath = video.Save()
                             video.Close()
@@ -609,7 +610,7 @@ class WeChatImage:
         result = ''
         ctrls = self.PhotoBox.GetChildren()
         if len(ctrls) == 2:
-            self.t_ocr.Click(simulateMove=False)
+            self.t_ocr.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         ctrls = self.PhotoBox.GetChildren()
         if len(ctrls) != 3:
             Warnings.lightred('获取文字识别失败', stacklevel=2)
@@ -629,7 +630,8 @@ class WeChatImage:
         Returns:
             str: 文件保存路径，即savepath
         """
-        
+        if WxParam.MOUSE_MOVE:
+            self._show()
         if not savepath:
             if self._video_mode:
                 savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"微信视频_{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}.mp4")
@@ -640,7 +642,7 @@ class WeChatImage:
             
         if self.t_save.Exists(maxSearchSeconds=5):
             time.sleep(0.3)
-            self.t_save.Click(simulateMove=False)
+            self.t_save.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         else:
             raise TimeoutError('下载超时')
         time.sleep(0.5)
@@ -668,7 +670,7 @@ class WeChatImage:
         elif WxParam.SAVE_PATH_METHOD == 2:
             path_control = uia.WindowControl(Name='图片查看',ClassName="ImagePreviewWnd", searchDepth=1).EditControl(Name="文件名:")
             SetClipboardText(savepath)
-            path_control.Click()
+            path_control.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             path_control.SendKeys('{Ctrl}A', api=False)
             path_control.SendKeys('{Ctrl}V', api=False)
         # time.sleep(0.3)
@@ -679,7 +681,7 @@ class WeChatImage:
         """上一张"""
         if self.t_previous.IsKeyboardFocusable:
             
-            self.t_previous.Click(simulateMove=False)
+            self.t_previous.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return True
         else:
             Warnings.lightred('上一张按钮不可用', stacklevel=2)
@@ -689,7 +691,7 @@ class WeChatImage:
         """下一张"""
         if self.t_next.IsKeyboardFocusable:
             
-            self.t_next.Click(simulateMove=False)
+            self.t_next.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return True
         else:
             if warning:
@@ -756,7 +758,7 @@ class NewFriendsElement:
         wxlog.debug(f"接受好友请求：{self.name}  备注：{remark} 标签：{tags}")
         self._wx._show()
         RollIntoView(self.NewFriendsBox, self.Status)
-        self.Status.Click(simulateMove=False)
+        self.Status.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         NewFriendsWnd = self._wx.UiaAPI.WindowControl(ClassName='WeUIDialog')
         tipscontrol = NewFriendsWnd.TextControl(Name="你的联系人较多，添加新的朋友时需选择权限")
 
@@ -768,23 +770,23 @@ class NewFriendsElement:
 
         if remark:
             remarkedit = NewFriendsWnd.TextControl(Name='备注名').GetParentControl().EditControl()
-            remarkedit.Click(simulateMove=False)
-            remarkedit.ShortcutSelectAll()
+            remarkedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+            remarkedit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
             remarkedit.Input(remark)
         
         if tags:
             tagedit = NewFriendsWnd.TextControl(Name='标签').GetParentControl().EditControl()
             for tag in tags:
-                tagedit.Click(simulateMove=False)
+                tagedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 tagedit.Input(tag)
-                NewFriendsWnd.PaneControl(ClassName='DropdownWindow').TextControl().Click(simulateMove=False)
+                NewFriendsWnd.PaneControl(ClassName='DropdownWindow').TextControl().Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
         if permission == '朋友圈':
-            permission_sns.Click()
+            permission_sns.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         elif permission == '仅聊天':
-            permission_chat.Click()
+            permission_chat.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
-        NewFriendsWnd.ButtonControl(Name='确定').Click(simulateMove=False)
+        NewFriendsWnd.ButtonControl(Name='确定').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
     def GetAccount(self, wait=5):
         """获取好友号
@@ -799,14 +801,14 @@ class NewFriendsElement:
         #     wxlog.debug(f"非好友状态无法获取好友号：{self.name}")
         #     return 
         wxlog.debug(f"获取好友号：{self.name}")
-        self.ele.Click()
+        self.ele.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         account_tag_control = self._wx.ChatBox.TextControl(Name='微信号：')
         if account_tag_control.Exists(wait):
             account = account_tag_control.GetParentControl().GetChildren()[-1].Name
-            self._wx.ChatBox.ButtonControl(Name='').Click()
+            self._wx.ChatBox.ButtonControl(Name='').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return account
         else:
-            self._wx.ChatBox.ButtonControl(Name='').Click()
+            self._wx.ChatBox.ButtonControl(Name='').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         
 
 class ContactWnd:
@@ -839,8 +841,10 @@ class ContactWnd:
             keyword (str): 搜索关键词
         """
         wxlog.debug(f"搜索好友：{keyword}")
-        self.ContactBox.EditControl(Name="搜索").Click(simulateMove=False)
-        self.ContactBox.ShortcutSelectAll()
+        if WxParam.MOUSE_MOVE:
+            self._show()
+        self.ContactBox.EditControl(Name="搜索").Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+        self.ContactBox.ShortcutSelectAll(click=False)
         self.ContactBox.Input(keyword)
 
     def GetAllFriends(self, speed: int = 5):
@@ -853,6 +857,8 @@ class ContactWnd:
             list: 好友列表
         """
         wxlog.debug("获取好友列表")
+        if WxParam.MOUSE_MOVE:
+            self._show()
         
         contacts_list = []
 
@@ -863,9 +869,9 @@ class ContactWnd:
         while n < 5:
             for _, ele in enumerate(contact_ele_list):
                 contacts_info = {
-                    'nickname': ele.TextControl().Name,
-                    'remark': ele.ButtonControl(foundIndex=2).Name,
-                    'tags': ele.ButtonControl(foundIndex=3).Name.split('，'),
+                    'nickname': ele.TextControl().Name.replace('</em>', '').replace('<em>', ''),
+                    'remark': ele.ButtonControl(foundIndex=2).Name.replace('</em>', '').replace('<em>', ''),
+                    'tags': ele.ButtonControl(foundIndex=3).Name.replace('</em>', '').replace('<em>', '').split('，'),
                 }
                 if contacts_info.get('remark') in ('添加备注', ''):
                     contacts_info['remark'] = None
@@ -908,7 +914,9 @@ class ContactWnd:
         Returns:
             list: 群列表
         """
-        self.UiaAPI.PaneControl(Name='最近群聊').Click()
+        if WxParam.MOUSE_MOVE:
+            self._show()
+        self.UiaAPI.PaneControl(Name='最近群聊').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         group_list_control = self.UiaAPI.PaneControl(Name='最近群聊').GetParentControl().ListControl()
         groups = []
 
@@ -970,8 +978,8 @@ class ContactElement:
             remark (str): 新备注名
         """
         wxlog.debug(f"修改好友备注名：{self.nickname} --> {remark}")
-        self.element.ButtonControl(foundIndex=2).Click(simulateMove=False)
-        self.element.ShortcutSelectAll()
+        self.element.ButtonControl(foundIndex=2).Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+        self.element.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
         self.element.Input(remark)
         self.element.SendKeys('{Enter}')
 
@@ -992,8 +1000,8 @@ class AddMemberWnd:
             keyword (str): 搜索关键词
         """
         wxlog.debug(f"搜索好友：{keyword}")
-        # self.searchbox.Click(simulateMove=False)
-        # self.searchbox.ShortcutSelectAll()
+        # self.searchbox.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+        # self.searchbox.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
         self.searchbox.Input(keyword)
         time.sleep(0.5)
         result = self.UiaAPI.ListControl(Name="请勾选需要添加的联系人").GetChildren()
@@ -1007,7 +1015,7 @@ class AddMemberWnd:
         """
         result = self.Search(keyword)
         if len(result) == 1:
-            result[0].ButtonControl().Click()
+            result[0].ButtonControl().Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             wxlog.debug(f"添加好友：{keyword}")
         elif len(result) > 1:
             wxlog.warning(f"搜索到多个好友：{keyword}")
@@ -1015,7 +1023,7 @@ class AddMemberWnd:
             wxlog.error(f"未找到好友：{keyword}")
 
     def Submit(self):
-        self.UiaAPI.ButtonControl(Name='完成').Click()
+        self.UiaAPI.ButtonControl(Name='完成').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         wxlog.debug("提交添加好友请求")
         confirmdlg = self.UiaAPI.WindowControl(ClassName='ConfirmDialog')
         t0 = time.time()
@@ -1028,7 +1036,7 @@ class AddMemberWnd:
             if confirmdlg.Exists(0.1):
                 wxlog.debug("新增群好友成功，确认添加")
                 time.sleep(1)
-                # confirmdlg.ButtonControl(Name='确定').Click()
+                # confirmdlg.ButtonControl(Name='确定').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 confirmdlg.SendKeys('{ENTER}')
                 return
 
@@ -1061,6 +1069,7 @@ class GroupMemberElement:
             0 - 添加失败
             1 - 发送请求成功
             2 - 已经是好友
+            3 - 对方不允许通过群聊添加好友
                 
         Example:
             >>> addmsg = '你好，我是xxxx'      # 添加好友的消息
@@ -1087,7 +1096,7 @@ class GroupMemberElement:
             contactwnd.SendKeys('{Esc}')
             return returns['已经是好友']
         else:
-            addbtn.Click()
+            addbtn.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             NewFriendsWnd = self._wx.UiaAPI.WindowControl(ClassName='WeUIDialog')
             AlertWnd = self._wx.UiaAPI.WindowControl(ClassName='AlertDialog')
 
@@ -1104,7 +1113,7 @@ class GroupMemberElement:
             if status == 0:
                 return returns['添加失败']
             elif status == 2:
-                AlertWnd.ButtonControl().Click()
+                AlertWnd.ButtonControl().Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 return returns['对方不允许通过群聊添加好友']
             elif status == 1:
                 tipscontrol = NewFriendsWnd.TextControl(Name="你的联系人较多，添加新的朋友时需选择权限")
@@ -1117,30 +1126,30 @@ class GroupMemberElement:
 
                 if addmsg:
                     msgedit = NewFriendsWnd.TextControl(Name="发送添加朋友申请").GetParentControl().EditControl()
-                    msgedit.Click()
-                    msgedit.ShortcutSelectAll()
+                    msgedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+                    msgedit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
                     msgedit.Input(addmsg)
 
                 if remark:
                     remarkedit = NewFriendsWnd.TextControl(Name='备注名').GetParentControl().EditControl()
-                    remarkedit.Click()
-                    remarkedit.ShortcutSelectAll()
+                    remarkedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+                    remarkedit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
                     remarkedit.Input(remark)
 
                 if tags:
                     tagedit = NewFriendsWnd.TextControl(Name='标签').GetParentControl().EditControl()
                     for tag in tags:
-                        tagedit.Click()
+                        tagedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                         tagedit.Input(tag)
-                        NewFriendsWnd.PaneControl(ClassName='DropdownWindow').TextControl().Click()
+                        NewFriendsWnd.PaneControl(ClassName='DropdownWindow').TextControl().Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 
                 if permission == '朋友圈':
-                    permission_sns.Click()
+                    permission_sns.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 elif permission == '仅聊天':
-                    permission_chat.Click()
+                    permission_chat.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
                 # while NewFriendsWnd.Exists(0.3):
-                NewFriendsWnd.ButtonControl(Name='确定').Click()
+                NewFriendsWnd.ButtonControl(Name='确定').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 return returns['发送请求成功']
             return returns['添加失败']
 
@@ -1171,6 +1180,36 @@ class Message:
     def __repr__(self):
         return str(self.info[:2])
     
+    @property
+    def details(self):
+        if hasattr(self, '_details'):
+            return self._details
+        chat_info = {
+            'id': self.id,
+            'type': self.type,
+            'sender': self.sender,
+            'content': self.content,
+        }
+        if self.type == 'time':
+            chat_info['time'] = self.time
+        elif self.type == 'friend':
+            chat_info['sender_remark'] = self.sender_remark
+        if self.chatbox.PaneControl(ClassName='popupshadow').Exists(0):
+            chat_name_control = self.chatbox.GetProgenyControl(12)
+        else:
+            chat_name_control = self.chatbox.GetProgenyControl(11)
+        chat_name_control_list = chat_name_control.GetParentControl().GetChildren()
+        chat_name_control_count = len(chat_name_control_list)
+        if chat_name_control_count == 1:
+            chat_info['chat_type'] = 'friend'
+            chat_info['chat_name'] = chat_name_control.Name
+        elif chat_name_control_count == 2:
+            chat_info['chat_type'] = 'group'
+            chat_info['chat_name'] = chat_name_control.Name.replace(chat_name_control_list[-1].Name, '')
+            chat_info['group_member_count'] = int(chat_name_control_list[-1].Name.replace('(', '').replace(')', ''))
+        self._details = chat_info
+        return self._details
+    
 
 class SysMessage(Message):
     type = 'sys'
@@ -1182,6 +1221,9 @@ class SysMessage(Message):
         self.sender = info[0]
         self.content = info[1]
         self.id = info[-1]
+        _is_main_window = hasattr(wx, 'ChatBox')
+        self.chatbox = wx.ChatBox if _is_main_window else wx.UiaAPI
+        
         wxlog.debug(f"【系统消息】{self.content}")
     
     # def __repr__(self):
@@ -1199,6 +1241,9 @@ class TimeMessage(Message):
         self.sender = info[0]
         self.content = info[1]
         self.id = info[-1]
+        _is_main_window = hasattr(wx, 'ChatBox')
+        self.chatbox = wx.ChatBox if _is_main_window else wx.UiaAPI
+        
         wxlog.debug(f"【时间消息】{self.time}")
     
     # def __repr__(self):
@@ -1215,6 +1260,9 @@ class RecallMessage(Message):
         self.sender = info[0]
         self.content = info[1]
         self.id = info[-1]
+        _is_main_window = hasattr(wx, 'ChatBox')
+        self.chatbox = wx.ChatBox if _is_main_window else wx.UiaAPI
+        
         wxlog.debug(f"【撤回消息】{self.content}")
     
     # def __repr__(self):
@@ -1231,7 +1279,9 @@ class SelfMessage(Message):
         self.sender = info[0]
         self.content = info[1]
         self.id = info[-1]
-        self.chatbox = obj.ChatBox if hasattr(obj, 'ChatBox') else obj.UiaAPI
+        _is_main_window = hasattr(obj, 'ChatBox')
+        self.chatbox = obj.ChatBox if _is_main_window else obj.UiaAPI
+        
         wxlog.debug(f"【自己消息】{self.content}")
     
     # def __repr__(self):
@@ -1251,21 +1301,21 @@ class SelfMessage(Message):
         headcontrol = [i for i in self.control.GetFirstChildControl().GetChildren() if i.ControlTypeName == 'ButtonControl'][0]
         RollIntoView(self.chatbox.ListControl(), headcontrol, equal=True)
         xbias = int(headcontrol.BoundingRectangle.width()*1.5)
-        headcontrol.Click()
+        headcontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         headcontrol.RightClick(x=-xbias, simulateMove=False)
         menu = self._winobj.UiaAPI.MenuControl(ClassName='CMenuWnd')
         quote_option = menu.MenuItemControl(Name="引用")
         if not quote_option.Exists(maxSearchSeconds=0.1):
             wxlog.debug('该消息当前状态无法引用')
             return False
-        quote_option.Click(simulateMove=False)
+        quote_option.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         editbox = self.chatbox.EditControl(searchDepth=15)
         t0 = time.time()
         while True:
             if time.time() - t0 > 10:
                 raise TimeoutError(f'发送消息超时 --> {msg}')
             SetClipboardText(msg)
-            editbox.ShortcutPaste()
+            editbox.ShortcutPaste(move=WxParam.MOUSE_MOVE)
             if editbox.GetValuePattern().Value.replace('\r￼', ''):
                 break
         
@@ -1297,26 +1347,26 @@ class SelfMessage(Message):
         headcontrol = [i for i in self.control.GetFirstChildControl().GetChildren() if i.ControlTypeName == 'ButtonControl'][0]
         RollIntoView(self.chatbox.ListControl(), headcontrol, equal=True)
         xbias = int(headcontrol.BoundingRectangle.width()*1.5)
-        headcontrol.Click()
+        headcontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         headcontrol.RightClick(x=-xbias, simulateMove=False)
         menu = self._winobj.UiaAPI.MenuControl(ClassName='CMenuWnd')
         forward_option = menu.MenuItemControl(Name="转发...")
         if not forward_option.Exists(maxSearchSeconds=0.1):
             wxlog.debug('该消息当前状态无法转发')
             return False
-        forward_option.Click(simulateMove=False)
+        forward_option.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         SetClipboardText(friend)
         contactwnd = self._winobj.UiaAPI.WindowControl(ClassName='SelectContactWnd')
         edit = contactwnd.EditControl()
         while not edit.HasKeyboardFocus:
-            edit.Click()
+            edit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             time.sleep(0.1)
-        edit.ShortcutSelectAll()
-        edit.ShortcutPaste()
+        edit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
+        edit.ShortcutPaste(move=WxParam.MOUSE_MOVE)
         checkbox = contactwnd.ListControl().CheckBoxControl()
         if checkbox.Exists(1):
-            checkbox.Click(simulateMove=False)
-            contactwnd.ButtonControl(Name='发送').Click(simulateMove=False)
+            checkbox.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+            contactwnd.ButtonControl(Name='发送').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return True
         else:
             contactwnd.SendKeys('{Esc}')
@@ -1361,7 +1411,9 @@ class FriendMessage(Message):
         self.content = info[1]
         self.id = info[-1]
         self.info[0] = info[0][0]
-        self.chatbox = obj.ChatBox if hasattr(obj, 'ChatBox') else obj.UiaAPI
+        _is_main_window = hasattr(obj, 'ChatBox')
+        self.chatbox = obj.ChatBox if _is_main_window else obj.UiaAPI
+        
         if self.sender == self.sender_remark:
             wxlog.debug(f"【好友消息】{self.sender}: {self.content}")
         else:
@@ -1384,21 +1436,21 @@ class FriendMessage(Message):
         headcontrol = [i for i in self.control.GetFirstChildControl().GetChildren() if i.ControlTypeName == 'ButtonControl'][0]
         RollIntoView(self.chatbox.ListControl(), headcontrol, equal=False)
         xbias = int(headcontrol.BoundingRectangle.width()*1.5)
-        headcontrol.Click()
+        headcontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         headcontrol.RightClick(x=xbias, simulateMove=False)
         menu = self._winobj.UiaAPI.MenuControl(ClassName='CMenuWnd')
         quote_option = menu.MenuItemControl(Name="引用")
         if not quote_option.Exists(maxSearchSeconds=0.1):
             wxlog.debug('该消息当前状态无法引用')
             return False
-        quote_option.Click(simulateMove=False)
+        quote_option.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         editbox = self.chatbox.EditControl(searchDepth=15)
         t0 = time.time()
         while True:
             if time.time() - t0 > 10:
                 raise TimeoutError(f'发送消息超时 --> {msg}')
             SetClipboardText(msg)
-            editbox.ShortcutPaste()
+            editbox.ShortcutPaste(move=WxParam.MOUSE_MOVE)
             if editbox.GetValuePattern().Value.replace('\r￼', ''):
                 break
 
@@ -1429,26 +1481,26 @@ class FriendMessage(Message):
         headcontrol = [i for i in self.control.GetFirstChildControl().GetChildren() if i.ControlTypeName == 'ButtonControl'][0]
         RollIntoView(self.chatbox.ListControl(), headcontrol, equal=True)
         xbias = int(headcontrol.BoundingRectangle.width()*1.5)
-        headcontrol.Click()
+        headcontrol.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         headcontrol.RightClick(x=xbias, simulateMove=False)
         menu = self._winobj.UiaAPI.MenuControl(ClassName='CMenuWnd')
         forward_option = menu.MenuItemControl(Name="转发...")
         if not forward_option.Exists(maxSearchSeconds=0.1):
             wxlog.debug('该消息当前状态无法转发')
             return False
-        forward_option.Click(simulateMove=False)
+        forward_option.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         SetClipboardText(friend)
         contactwnd = self._winobj.UiaAPI.WindowControl(ClassName='SelectContactWnd')
         edit = contactwnd.EditControl()
         while not edit.HasKeyboardFocus:
-            edit.Click()
+            edit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             time.sleep(0.1)
-        edit.ShortcutSelectAll()
-        edit.ShortcutPaste()
+        edit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
+        edit.ShortcutPaste(move=WxParam.MOUSE_MOVE)
         checkbox = contactwnd.ListControl().CheckBoxControl()
         if checkbox.Exists(1):
-            checkbox.Click(simulateMove=False)
-            contactwnd.ButtonControl(Name='发送').Click(simulateMove=False)
+            checkbox.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+            contactwnd.ButtonControl(Name='发送').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return True
         else:
             contactwnd.SendKeys('{Esc}')
@@ -1572,7 +1624,7 @@ class FriendMessage(Message):
             contactwnd.SendKeys('{Esc}')
             return returns['已经是好友']
         else:
-            addbtn.Click()
+            addbtn.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             if type(self._winobj) == ChatWnd:
                 NewFriendsWnd = self._winobj._wx.UiaAPI.WindowControl(ClassName='WeUIDialog')
                 AlertWnd = self._winobj._wx.UiaAPI.WindowControl(ClassName='AlertDialog')
@@ -1595,7 +1647,7 @@ class FriendMessage(Message):
             if status == 0:
                 return returns['添加失败']
             elif status == 2:
-                AlertWnd.ButtonControl().Click()
+                AlertWnd.ButtonControl().Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 return returns['对方不允许通过群聊添加好友']
             elif status == 1:
                 tipscontrol = NewFriendsWnd.TextControl(Name="你的联系人较多，添加新的朋友时需选择权限")
@@ -1608,29 +1660,29 @@ class FriendMessage(Message):
 
                 if addmsg:
                     msgedit = NewFriendsWnd.TextControl(Name="发送添加朋友申请").GetParentControl().EditControl()
-                    msgedit.Click(simulateMove=False)
-                    msgedit.ShortcutSelectAll()
+                    msgedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+                    msgedit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
                     msgedit.Input(addmsg)
 
                 if remark:
                     remarkedit = NewFriendsWnd.TextControl(Name='备注名').GetParentControl().EditControl()
-                    remarkedit.Click(simulateMove=False)
-                    remarkedit.ShortcutSelectAll()
+                    remarkedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
+                    remarkedit.ShortcutSelectAll(move=WxParam.MOUSE_MOVE)
                     remarkedit.Input(remark)
 
                 if tags:
                     tagedit = NewFriendsWnd.TextControl(Name='标签').GetParentControl().EditControl()
                     for tag in tags:
-                        tagedit.Click(simulateMove=False)
+                        tagedit.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                         tagedit.Input(tag)
-                        NewFriendsWnd.PaneControl(ClassName='DropdownWindow').TextControl().Click(simulateMove=False)
+                        NewFriendsWnd.PaneControl(ClassName='DropdownWindow').TextControl().Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
                 if permission == '朋友圈':
-                    permission_sns.Click()
+                    permission_sns.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 elif permission == '仅聊天':
-                    permission_chat.Click()
+                    permission_chat.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
 
-                NewFriendsWnd.ButtonControl(Name='确定').Click(simulateMove=False)
+                NewFriendsWnd.ButtonControl(Name='确定').Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
                 return returns['发送请求成功']
             return returns['添加失败']
 
@@ -1671,7 +1723,7 @@ class LoginWnd:
     def login(self):
         enter_button = self.UiaAPI.ButtonControl(Name='进入微信')
         if enter_button.Exists(0.5):
-            enter_button.Click()
+            enter_button.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
             return True
 
     def get_qrcode(self):
@@ -1683,7 +1735,7 @@ class LoginWnd:
         self.reopen()
         switch_account_button = self.UiaAPI.ButtonControl(Name='切换账号')
         if switch_account_button.Exists(0.5):
-            switch_account_button.Click()
+            switch_account_button.Click(move=WxParam.MOUSE_MOVE, simulateMove=False, return_pos=False)
         
         qrcode_control = self.UiaAPI.ButtonControl(Name='二维码')
         qrcode = qrcode_control.ScreenShot()
@@ -1698,5 +1750,39 @@ class LoginWnd:
         """重新打开"""
         path = self._app_path
         self.shutdown()
-        os.system(f'start {path}')
+        os.system(f'start "{path}"')
         self.UiaAPI = uia.PaneControl(ClassName=self._clsname, searchDepth=1)
+
+class ChatHistoryWnd:
+    _clsname = 'FileManagerWnd'
+
+    def __init__(self):
+        self.api = uia.WindowControl(ClassName=self._clsname)
+
+    def __repr__(self) -> str:
+        return f"<wxauto ChatHistoryWnd Object at {hex(id(self))}>"
+    
+    def GetHistory(self):
+        msgids = []
+        msgs = []
+        listcontrol = self.api.ListControl()
+        while True:
+            listitems = listcontrol.GetChildren()
+            listitemids = [item.GetRuntimeId() for item in listitems]
+            try:
+                msgids = msgids[msgids.index(listitemids[0]):]
+            except:
+                pass
+            for item in listitems:
+                msgid = item.GetRuntimeId()
+                if msgid not in msgids:
+                    msgids.append(msgid)
+                    msgs.append(parse_msg(item))
+            topcontrol = listitems[-1]
+            top = topcontrol.BoundingRectangle.top
+            self.api.WheelDown(wheelTimes=3)
+            time.sleep(0.1)
+            if topcontrol.Exists(0.1) and top == topcontrol.BoundingRectangle.top and listitemids == [item.GetRuntimeId() for item in listcontrol.GetChildren()]:
+                self.api.SendKeys('{Esc}')
+                break
+        return msgs

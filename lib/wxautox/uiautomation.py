@@ -6393,7 +6393,7 @@ class Control():
         """
         return self.MoveCursorToInnerPos(simulateMove=simulateMove)
 
-    def Click(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False, pos='center') -> None:
+    def Click(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False, pos='center', return_pos=True) -> None:
         """
         x: int, if < 0, click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6411,7 +6411,8 @@ class Control():
             point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
             if point:
                 Click(point[0], point[1], waitTime)
-            win32api.SetCursorPos(pos)
+            if return_pos:
+                win32api.SetCursorPos(pos)
         else:
             if not hasattr(self, 'winapi'):
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
@@ -6528,35 +6529,35 @@ class Control():
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
             self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True)
 
-    def ShortcutPaste(self, click=True) -> None:
+    def ShortcutPaste(self, click=True, move=False) -> None:
         """
         Paste content from clipboard like Ctrl+V.
         click: bool, if True, first click control.
         """
         if click:
-            self.Click()
+            self.Click(move=move, simulateMove=False, return_pos=False)
         if not hasattr(self, 'winapi'):
             self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
         self.winapi.shortcut_paste()
 
-    def ShortcutSearch(self, click=True) -> None:
+    def ShortcutSearch(self, click=True, move=False) -> None:
         """
         Search content from clipboard like Ctrl+F.
         click: bool, if True, first click control.
         """
         if click:
-            self.Click()
+            self.Click(move=move, simulateMove=False, return_pos=False)
         if not hasattr(self, 'winapi'):
             self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
         self.winapi.shortcut_search()
 
-    def ShortcutSelectAll(self, click=True) -> None:
+    def ShortcutSelectAll(self, click=True, move=False) -> None:
         """
         Select all content like Ctrl+A.
         click: bool, if True, first click control.
         """
         if click:
-            self.Click()
+            self.Click(move=move, simulateMove=False, return_pos=False)
         if not hasattr(self, 'winapi'):
             self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
         self.winapi.shortcut_select_all()

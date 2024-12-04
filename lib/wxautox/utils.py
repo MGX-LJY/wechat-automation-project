@@ -242,6 +242,109 @@ def PasteFile(folder):
         finally:
             win32clipboard.CloseClipboard()
 
+def parse_msg(control: uia.Control):
+    if control.ControlTypeName == 'PaneControl':
+        return None
+    
+    info = {}
+    # Text
+    if control.Name == '':
+        info['type'] = 'Text'
+        info['sender'] = control.ButtonControl().Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(6).Name
+
+    # Image
+    elif control.Name == '[图片]':
+        info['type'] = 'Image'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = ""
+
+    # Video
+    elif control.Name == '[视频]':
+        info['type'] = 'Video'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = ""
+
+    # Location
+    elif control.Name == '[位置]':
+        info['type'] = 'Location'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(7, 1, control_type='TextControl').Name + control.GetProgenyControl(7, control_type='TextControl').Name
+
+    # File
+    elif control.Name == '[文件]':
+        info['type'] = 'File'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(8, control_type='TextControl').Name
+
+    # Voice
+    elif control.Name.startswith('[语音]'):
+        info['type'] = 'Voice'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.Name
+
+    # Sticker
+    elif control.Name == '[动画表情]':
+        info['type'] = 'Sticker'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = ""
+
+    # VideoChannel
+    elif control.Name == '[视频号]':
+        info['type'] = 'VideoChannel'
+        info['source'] = control.GetProgenyControl(8, -1, control_type='TextControl').Name
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.Name
+
+    # Link
+    elif control.Name == '链接':
+        info['type'] = 'Link'
+        info['describe'] = control.GetProgenyControl(7, control_type='TextControl').Name
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(6, control_type='TextControl').Name
+
+    # Music
+    elif control.Name == '[音乐]':
+        info['type'] = 'Music'
+        info['describe'] = control.GetProgenyControl(8, -1, control_type='TextControl').Name
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(8, control_type='TextControl').Name
+
+    else:
+        # MiniProgram
+        tempcontrol = control.GetProgenyControl(7, -1, control_type='TextControl')
+        if tempcontrol and tempcontrol.Name == '小程序':
+            info['type'] = 'MiniProgram'
+            info['source'] = control.GetProgenyControl(7, control_type='TextControl').Name
+            info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+            info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+            info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+            info['content'] = control.Name
+    
+        # Advertisement
+
+    return info
+
 def GetText(HWND):
     length = win32gui.SendMessage(HWND, win32con.WM_GETTEXTLENGTH)*2
     buffer = win32gui.PyMakeBuffer(length)
@@ -287,9 +390,17 @@ def FindWinEx(HWND, classname=None, name=None) -> list:
 
 def ClipboardFormats(unit=0, *units):
     units = list(units)
-    win32clipboard.OpenClipboard()
-    u = win32clipboard.EnumClipboardFormats(unit)
-    win32clipboard.CloseClipboard()
+    retry_count = 5
+    while retry_count > 0:
+        try:
+            win32clipboard.OpenClipboard()
+            try:
+                u = win32clipboard.EnumClipboardFormats(unit)
+            finally:
+                win32clipboard.CloseClipboard()
+            break
+        except Exception as e:
+            retry_count -= 1
     units.append(u)
     if u:
         units = ClipboardFormats(u, *units)
