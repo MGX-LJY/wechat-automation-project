@@ -194,29 +194,29 @@ class WeChat(WeChatBase):
         """是否有新消息"""
         
         return IsRedPixel(self.A_ChatIcon)
-    
+
     def GetNextNewMessage(self, savepic=False, savefile=False, savevoice=False, timeout=10):
         """获取下一个新消息"""
-        msgs_ = self.GetAllMessage()
-        msgids = [i[-1] for i in msgs_]
+        msgs_ = self.GetAllMessage(savepic=savepic, savefile=savefile, savevoice=savevoice)
+        msgids = [i.id for i in msgs_]
 
         if not self.usedmsgid:
             self.usedmsgid = msgids
-        
+
         newmsgids = [i for i in msgids if i not in self.usedmsgid]
         oldmsgids = [i for i in self.usedmsgid if i in msgids]
         if newmsgids and oldmsgids:
             MsgItems = self.C_MsgList.GetChildren()
             msgids = [''.join([str(i) for i in i.GetRuntimeId()]) for i in MsgItems]
             new = []
-            for i in range(len(msgids)-1, -1, -1):
+            for i in range(len(msgids) - 1, -1, -1):
                 if msgids[i] in self.usedmsgid:
-                    new = msgids[i+1:]
+                    new = msgids[i + 1:]
                     break
             NewMsgItems = [
-                i for i in MsgItems 
+                i for i in MsgItems
                 if ''.join([str(i) for i in i.GetRuntimeId()]) in new
-                and i.ControlTypeName == 'ListItemControl'
+                   and i.ControlTypeName == 'ListItemControl'
             ]
             if NewMsgItems:
                 wxlog.debug('获取当前窗口新消息')
@@ -239,13 +239,13 @@ class WeChat(WeChatBase):
                 self.ChatWith(session)
                 NewMsgItems = self.C_MsgList.GetChildren()[-sessiondict[session]:]
                 msgs = self._getmsgs(NewMsgItems, savepic, savefile, savevoice)
-                msgs_ = self.GetAllMessage()
-                self.usedmsgid = [i[-1] for i in msgs_]
-                return {session:msgs}
+                msgs_ = self.GetAllMessage(savepic=savepic, savefile=savefile, savevoice=savevoice)
+                self.usedmsgid = [i.id for i in msgs_]
+                return {session: msgs}
         else:
             wxlog.debug('没有新消息')
             return {}
-    
+
     def GetAllNewMessage(self, max_round=10):
         """获取所有新消息
         
@@ -641,13 +641,15 @@ class WeChat(WeChatBase):
         else:
             Warnings.lightred('所有文件都无法成功发送', stacklevel=2)
             return False
-            
+
     def GetAllMessage(self, savepic=False, savefile=False, savevoice=False):
         '''获取当前窗口中加载的所有聊天记录
-        
+
         Args:
             savepic (bool): 是否自动保存聊天图片
-            
+            savefile (bool): 是否自动保存聊天文件
+            savevoice (bool): 是否自动保存语音转文字
+
         Returns:
             list: 聊天记录信息
         '''
@@ -656,7 +658,7 @@ class WeChat(WeChatBase):
         MsgItems = self.C_MsgList.GetChildren()
         msgs = self._getmsgs(MsgItems, savepic, savefile=savefile, savevoice=savevoice)
         return msgs
-    
+
     def LoadMoreMessage(self):
         """加载当前聊天页面更多聊天信息
         

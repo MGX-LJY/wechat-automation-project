@@ -50,9 +50,10 @@ class WeChatBase:
                     else:
                         break
                 winrect = MsgItem.BoundingRectangle
-                mid = (winrect.left + winrect.right)/2
+                mid = (winrect.left + winrect.right) / 2
                 if User.BoundingRectangle.left < mid:
-                    if MsgItem.TextControl().Exists(0.1) and MsgItem.TextControl().BoundingRectangle.top < User.BoundingRectangle.top:
+                    if MsgItem.TextControl().Exists(
+                            0.1) and MsgItem.TextControl().BoundingRectangle.top < User.BoundingRectangle.top:
                         name = (User.Name, MsgItem.TextControl().Name)
                     else:
                         name = (User.Name, User.Name)
@@ -63,7 +64,7 @@ class WeChatBase:
                 Msg = ['SYS', MsgItemName, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
         uia.SetGlobalSearchTimeout(10.0)
         return ParseMessage(Msg, MsgItem, self)
-    
+
     def _getmsgs(self, msgitems, savepic=False, savefile=False, savevoice=False):
         msgs = []
         for MsgItem in msgitems:
@@ -1162,26 +1163,35 @@ class SessionElement:
 class Message:
     type = 'message'
 
-    def __getitem__(self, index):
-        return self.info[index]
-    
-    def __str__(self):
-        return self.content
-    
-    def __repr__(self):
-        return str(self.info[:2])
-    
-
-class SysMessage(Message):
-    type = 'sys'
-    
     def __init__(self, info, control, wx):
         self.info = info
         self.control = control
         self.wx = wx
-        self.sender = info[0]
+        self.sender = None  # 发送者
+        self.friend = None  # 好友信息
+        self.group = None  # 群组信息
+
+    def __getitem__(self, index):
+        return self.info[index]
+
+    def __str__(self):
+        return self.content
+
+    def __repr__(self):
+        return str(self.info[:2])
+
+
+class SysMessage(Message):
+    type = 'sys'
+
+    def __init__(self, info, control, wx):
+        super().__init__(info, control, wx)
+        self.sender = '系统'
         self.content = info[1]
         self.id = info[-1]
+        # 系统消息通常不属于任何群组或好友
+        self.friend = None
+        self.group = None
         wxlog.debug(f"【系统消息】{self.content}")
     
     # def __repr__(self):
@@ -1203,37 +1213,39 @@ class TimeMessage(Message):
     
     # def __repr__(self):
     #     return f'<wxauto TimeMessage at {hex(id(self))}>'
-    
+
 
 class RecallMessage(Message):
     type = 'recall'
-    
+
     def __init__(self, info, control, wx):
-        self.info = info
-        self.control = control
-        self.wx = wx
+        super().__init__(info, control, wx)
         self.sender = info[0]
         self.content = info[1]
         self.id = info[-1]
+        # 根据上下文确定是否属于好友或群组
+        self.friend = None
+        self.group = None
         wxlog.debug(f"【撤回消息】{self.content}")
-    
+
     # def __repr__(self):
     #     return f'<wxauto RecallMessage at {hex(id(self))}>'
-    
+
 
 class SelfMessage(Message):
     type = 'self'
-    
+
     def __init__(self, info, control, obj):
-        self.info = info
-        self.control = control
-        self._winobj = obj
-        self.sender = info[0]
+        super().__init__(info, control, obj)
+        self.sender = '自己'
         self.content = info[1]
         self.id = info[-1]
         self.chatbox = obj.ChatBox if hasattr(obj, 'ChatBox') else obj.UiaAPI
+        # 根据上下文确定是否属于好友或群组
+        self.friend = obj.who if isinstance(obj, ChatWnd) and obj.language == 'friend' else None
+        self.group = obj.who if isinstance(obj, ChatWnd) and obj.language == 'group' else None
         wxlog.debug(f"【自己消息】{self.content}")
-    
+
     # def __repr__(self):
     #     return f'<wxauto SelfMessage at {hex(id(self))}>'
 
@@ -1349,24 +1361,24 @@ class SelfMessage(Message):
         # chatrecordwnd.SendKeys('{Esc}')
         return msgs
 
+
 class FriendMessage(Message):
     type = 'friend'
-    
+
     def __init__(self, info, control, obj):
-        self.info = info
-        self.control = control
-        self._winobj = obj
+        super().__init__(info, control, obj)
         self.sender = info[0][0]
         self.sender_remark = info[0][1]
         self.content = info[1]
         self.id = info[-1]
-        self.info[0] = info[0][0]
+        self.friend = self.sender_remark if self.sender != self.sender_remark else self.sender
+        self.group = None  # 好友消息不涉及群组
         self.chatbox = obj.ChatBox if hasattr(obj, 'ChatBox') else obj.UiaAPI
         if self.sender == self.sender_remark:
             wxlog.debug(f"【好友消息】{self.sender}: {self.content}")
         else:
             wxlog.debug(f"【好友消息】{self.sender}({self.sender_remark}): {self.content}")
-    
+
     # def __repr__(self):
     #     return f'<wxauto FriendMessage at {hex(id(self))}>'
 
@@ -1640,11 +1652,17 @@ message_types = {
     'SYS': SysMessage,
     'Time': TimeMessage,
     'Recall': RecallMessage,
-    'Self': SelfMessage
+    'Self': SelfMessage,
+    'Friend': FriendMessage,  # 确保 'Friend' 类型对应 FriendMessage 类
+    # 添加其他类型如果有的话
 }
 
+
 def ParseMessage(data, control, wx):
-    return message_types.get(data[0], FriendMessage)(data, control, wx)
+    message_type = data[0]
+    message_class = message_types.get(message_type, FriendMessage)
+    return message_class(data, control, wx)
+
 
 
 class LoginWnd:
