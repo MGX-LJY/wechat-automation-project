@@ -6,7 +6,7 @@ import threading
 import queue
 import time
 from typing import Optional, List, Dict
-from lib.wxauto.wxauto import WeChat
+from lib.wxautox.wxauto import WeChat
 from src.point_manager import PointManager
 
 
