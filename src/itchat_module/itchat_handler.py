@@ -2,18 +2,16 @@ import logging
 import os
 import re
 import threading
+import time
 from collections import deque
 from io import BytesIO
 from typing import Optional, List, Tuple, Any
-from urllib.parse import urlparse, urlunparse
 
 from PIL import Image
 
-from lib import itchat
-from lib.itchat.content import TEXT, SHARING
+from lib.wxautox import WeChat, ChatWnd  # 替换为实际的模块名
 from src.config.config_manager import ConfigManager
 from src.itchat_module.admin_commands import AdminCommandsHandler
-
 
 class ItChatHandler:
     """
@@ -78,61 +76,78 @@ class ItChatHandler:
             if os.path.exists(session_file):
                 os.remove(session_file)  # 删除已有的会话文件，确保每次都是新的登录
 
-            # 调用 itchat 的自动登录功能
-            itchat.auto_login(
-                hotReload=False,
-                enableCmdQR=False,
-                qrCallback=self.qr_callback  # 设置二维码回调函数
-            )
-            logging.info("微信登录成功")
-
-            # 更新好友列表和群组列表
-            itchat.get_friends(update=True)
-            itchat.get_chatrooms(update=True)
-
-            # 设置登录事件为已完成
-            self.login_event.set()
-            return
+            try:
+                # 调用新模块的登录功能
+                wx = WeChat(nickname=self.config.get('wechat', {}).get('nickname'), language='cn', debug=True)
+                # 绑定监听群组和好友
+                for group in self.monitor_groups:
+                    wx.AddListenChat(who=group, savepic=True, savefile=True, savevoice=False)
+                for individual in self.target_individuals:
+                    wx.AddListenChat(who=individual, savepic=False, savefile=False, savevoice=False)
+                # 绑定管理员（如果需要监听）
+                for admin in self.admins:
+                    wx.AddListenChat(who=admin, savepic=False, savefile=False, savevoice=False)
+                self.wechat = wx
+                logging.info("微信登录成功")
+                self.login_event.set()
+                return
+            except Exception as e:
+                logging.error(f"微信登录尝试 {attempt} 失败: {e}")
+                time.sleep(self.retry_interval)
 
         logging.critical("多次登录失败，应用启动失败。")
         raise Exception("多次登录失败，应用启动失败。")
 
     def run(self):
-        """注册消息处理函数并启动 ItChat 客户端监听消息"""
-        # 注册群聊消息的处理函数
-        @itchat.msg_register([TEXT, SHARING], isGroupChat=True)
-        def handle_group(msg):
-            self.message_handler.handle_group_message(msg)
+        """启动消息监听循环"""
+        # 启动一个单独的线程来监听消息
+        listener_thread = threading.Thread(target=self.listen_messages, daemon=True)
+        listener_thread.start()
 
-        # 注册个人消息的处理函数
-        @itchat.msg_register([TEXT, SHARING], isGroupChat=False)
-        def handle_individual(msg):
-            self.message_handler.handle_individual_message(msg)
+        # 主线程可以执行其他任务或保持运行
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logging.info("收到退出信号，正在退出...")
+            self.logout()
 
-        # 启动消息循环
-        itchat.run()
-
-    def qr_callback(self, uuid, status, qrcode):
-        """处理二维码回调，保存并显示二维码图像"""
-        logging.info(f"QR callback - UUID: {uuid}, Status: {status}")
-        if status == '0':
-            # 状态 0 表示需要展示二维码
-            with open(self.qr_path, 'wb') as f:
-                f.write(qrcode)
-            # 显示二维码图像
-            Image.open(BytesIO(qrcode)).show(title="微信登录二维码")
-        elif status == '201':
-            # 状态 201 表示已扫描二维码，等待确认
-            logging.info("二维码已扫描，请在手机上确认登录。")
-        elif status == '200':
-            # 状态 200 表示登录成功
-            logging.info("登录成功")
-        else:
-            logging.warning(f"未知的QR回调状态: {status}")
+    def listen_messages(self):
+        """监听并处理新消息"""
+        while not self.login_event.is_set():
+            time.sleep(1)
+        logging.info("开始监听新消息")
+        while True:
+            try:
+                new_messages = self.wechat.GetListenMessage()
+                for chat, messages in new_messages.items():
+                    if isinstance(chat, ChatWnd):
+                        chat_name = chat.who
+                        if chat.is_group:
+                            group_name = chat_name
+                            for msg in messages:
+                                sender_nickname = msg.sender
+                                content = msg.content
+                                self.message_handler.handle_group_message(
+                                    group_name=group_name,
+                                    sender_nickname=sender_nickname,
+                                    content=content
+                                )
+                        else:
+                            sender = chat_name
+                            for msg in messages:
+                                content = msg.content
+                                self.message_handler.handle_individual_message(
+                                    sender=sender,
+                                    content=content
+                                )
+            except Exception as e:
+                self.error_handler.handle_error(e)
+            time.sleep(1)  # 调整轮询间隔时间
 
     def logout(self):
         """登出微信账号，结束当前会话"""
-        itchat.logout()
+        self.wechat.logout()
 
     def update_config(self, new_config):
         """更新配置并应用变化"""
@@ -198,15 +213,8 @@ class MessageHandler:
 
     def get_message_content(self, msg) -> str:
         """获取消息的完整文本内容"""
-        msg_type = msg.get('Type', getattr(msg, 'type', ''))
-        if msg_type not in ['Text', 'Sharing']:
-            return ''
-        # 根据消息类型获取内容
-        if msg_type == 'Text':
-            return msg.get('Text', msg.get('text', ''))
-        elif msg_type == 'Sharing':
-            return msg.get('Url', msg.get('url', ''))
-        return ''
+        # 新模块的消息对象已经包含 content 属性
+        return msg.content
 
     def check_points(self, message_type, context_name, sender_name=None, group_type=None) -> bool:
         """
@@ -256,15 +264,9 @@ class MessageHandler:
         logging.debug("积分检查通过")
         return True
 
-    def handle_group_message(self, msg):
+    def handle_group_message(self, group_name: str, sender_nickname: str, content: str):
         """处理来自群组的消息，提取并处理URL"""
-        logging.debug(f"处理群组消息: {msg}")
-
-        # 获取群组名称
-        group_name = msg.get('User', {}).get('NickName', '')
-        if group_name not in self.monitor_groups:
-            logging.debug(f"忽略来自非监控群组的消息: {group_name}")
-            return
+        logging.debug(f"处理群组消息 - 群组: {group_name}, 发送者: {sender_nickname}, 内容: {content}")
 
         # 确定群组类型
         if group_name in self.group_types.get('whole_groups', []):
@@ -274,10 +276,8 @@ class MessageHandler:
         else:
             group_type = 'whole'  # 默认类型
 
-        # 获取发送者昵称
-        sender_nickname = msg.get('ActualNickName', '')
-        # 提取消息中的URL
-        urls = self.extract_urls(msg)
+        # 提取URL
+        urls = self.extract_urls(content)
         if not urls:
             return
 
@@ -317,23 +317,17 @@ class MessageHandler:
             else:
                 logging.warning("BrowserController 未设置，无法添加任务。")
 
-    def handle_individual_message(self, msg):
+    def handle_individual_message(self, sender: str, content: str):
         """处理来自个人的消息，提取URL或执行管理员命令"""
-        logging.debug(f"处理个人消息: {msg}")
-
-        # 获取发送者昵称
-        sender = msg['User'].get('NickName', '')
-        logging.debug(f"发送者昵称: {sender}")
-        logging.debug(f"监控的个人列表: {self.target_individuals}")
-        logging.debug(f"管理员列表: {self.admins}")
+        logging.debug(f"处理个人消息 - 发送者: {sender}, 内容: {content}")
 
         if sender not in self.target_individuals and sender not in self.admins:
             # 非目标个人或管理员，忽略消息
+            logging.debug(f"忽略来自非监控个人或非管理员的消息: {sender}")
             return
 
         if sender in self.admins:
             # 如果是管理员，处理命令
-            content = self.get_message_content(msg)  # 获取完整消息内容
             response = self.handle_admin_command(content)
             if response and self.notifier:
                 # 发送命令处理的响应
@@ -341,7 +335,7 @@ class MessageHandler:
             return
 
         # 提取URL
-        urls = self.extract_urls(msg)
+        urls = self.extract_urls(content)
         if not urls:
             return
 
@@ -379,37 +373,19 @@ class MessageHandler:
         response = self.admin_commands_handler.handle_command(message)
         return response
 
-    def extract_urls(self, msg) -> List[str]:
-        """从消息中提取URL列表"""
-        msg_type = msg.get('Type', getattr(msg, 'type', ''))
-
-        if msg_type not in ['Text', 'Sharing']:
-            return []
-
-        # 根据消息类型获取内容
-        if msg_type == 'Text':
-            content = msg.get('Text', msg.get('text', ''))
-        elif msg_type == 'Sharing':
-            content = msg.get('Url', msg.get('url', ''))
-        else:
-            content = ''
-
-        # 使用正则表达式提取URL
+    def extract_urls(self, content: str) -> List[str]:
+        """从消息内容中提取URL列表"""
         urls = self.regex.findall(content)
         return urls
 
-    def process_urls(self, urls: List[str]) -> list[tuple[bytes, str | None | Any]]:
+    def process_urls(self, urls: List[str]) -> List[Tuple[str, Optional[str]]]:
         """清理、验证并处理URL，返回有效的 (url, soft_id) 列表"""
         valid_urls = []
         for url in urls:
             # 清理URL并验证
-            # 使用 urlparse 解析URL
             parsed = urlparse(url)
-            # 移除 fragment（#后面的部分）
             clean = parsed._replace(fragment='')
-            # 重新构建 URL，并移除结尾的特殊字符
             cleaned_url = urlunparse(clean).rstrip('」””"\'')
-            # 验证URL（检查是否以 http:// 或 https:// 开头）
             if self.validation and not cleaned_url.startswith(('http://', 'https://')):
                 logging.warning(f"URL 验证失败: {cleaned_url}")
                 continue
