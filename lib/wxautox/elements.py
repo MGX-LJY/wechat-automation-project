@@ -72,7 +72,8 @@ class WeChatBase:
                 else:
                     # 个人聊天消息
                     Msg = ['Friend', name, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
-            except:
+            except Exception as e:
+                wxlog.error(f"消息拆分失败: {e}")
                 Msg = ['SYS', MsgItemName, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
         uia.SetGlobalSearchTimeout(10.0)
         return ParseMessage(Msg, MsgItem, self)
@@ -208,11 +209,11 @@ class ChatWnd(WeChatBase):
         self.savepic = False   # 该参数用于在自动监听的情况下是否自动保存聊天图片
 
         # 判断是否为群组聊天
-        group_pattern = r".+\(\d+\)$"  # 例如：工作群（10）
+        group_pattern = r".+\（\d+\）$"  # 使用中文括号
         if re.match(group_pattern, who):
             self.chattype = 'group'
             # 提取群组名称和人数
-            match = re.match(r"(.+)\((\d+)\)$", who)
+            match = re.match(r"(.+)\（(\d+)\）$", who)
             if match:
                 self.group_name = match.group(1)
                 self.group_num = int(match.group(2))
