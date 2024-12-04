@@ -54,12 +54,24 @@ class WeChatBase:
                 if User.BoundingRectangle.left < mid:
                     if MsgItem.TextControl().Exists(
                             0.1) and MsgItem.TextControl().BoundingRectangle.top < User.BoundingRectangle.top:
-                        name = (User.Name, MsgItem.TextControl().Name)
+                        sender_name = MsgItem.TextControl().Name
+                        name = (User.Name, sender_name)
                     else:
                         name = (User.Name, User.Name)
                 else:
                     name = 'Self'
-                Msg = [name, MsgItemName, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
+
+                # 获取所属聊天窗口类型
+                chat_window = self  # Assuming _split is called within ChatWnd or its subclass
+                if hasattr(chat_window, 'chattype') and chat_window.chattype == 'group':
+                    # 群组消息
+                    if isinstance(name, tuple) and name[0] != 'Self':
+                        Msg = ['Group', name, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
+                    else:
+                        Msg = ['Self', MsgItemName, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
+                else:
+                    # 个人聊天消息
+                    Msg = ['Friend', name, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
             except:
                 Msg = ['SYS', MsgItemName, ''.join([str(i) for i in MsgItem.GetRuntimeId()])]
         uia.SetGlobalSearchTimeout(10.0)
@@ -194,6 +206,23 @@ class ChatWnd(WeChatBase):
         self.GetAllMessage()
 
         self.savepic = False   # 该参数用于在自动监听的情况下是否自动保存聊天图片
+
+        # 判断是否为群组聊天
+        group_pattern = r".+\(\d+\)$"  # 例如：工作群（10）
+        if re.match(group_pattern, who):
+            self.chattype = 'group'
+            # 提取群组名称和人数
+            match = re.match(r"(.+)\((\d+)\)$", who)
+            if match:
+                self.group_name = match.group(1)
+                self.group_num = int(match.group(2))
+            else:
+                self.group_name = who
+                self.group_num = None
+        else:
+            self.chattype = 'friend'
+            self.group_name = None
+            self.group_num = None
 
     def __repr__(self) -> str:
         return f"<wxauto Chat Window at {hex(id(self))} for {self.who}>"
@@ -1646,6 +1675,114 @@ class FriendMessage(Message):
                 return returns['发送请求成功']
             return returns['添加失败']
 
+class GroupMessage(Message):
+    type = 'group'
+
+    def __init__(self, info, control, wx):
+        super().__init__(info, control, wx)
+        self.sender = info[0][0]          # 发送者昵称
+        self.sender_remark = info[0][1]   # 发送者备注名（如果有）
+        self.content = info[1]            # 消息内容
+        self.id = info[-1]                # 消息ID
+        self.group = wx.group_name        # 群组名称
+        self.friend = None                 # 群组消息不涉及单个好友
+        self.chatbox = wx.ChatBox if hasattr(wx, 'ChatBox') else wx.UiaAPI
+
+        if self.sender == self.sender_remark:
+            wxlog.debug(f"【群组消息】[{self.group}] {self.sender}: {self.content}")
+        else:
+            wxlog.debug(f"【群组消息】[{self.group}] {self.sender}({self.sender_remark}): {self.content}")
+
+    def quote(self, msg, at=None):
+        """引用群组消息并发送新的消息"""
+        wxlog.debug(f'发送引用消息：{msg}  --> [{self.group}] {self.sender} | {self.content}')
+        self._show_chat_window()
+        headcontrol = self._get_head_control()
+        RollIntoView(self.chatbox.ListControl(), headcontrol, equal=False)
+        xbias = int(headcontrol.BoundingRectangle.width() * 1.5)
+        headcontrol.Click()
+        headcontrol.RightClick(x=xbias, simulateMove=False)
+        menu = self.wx.UiaAPI.MenuControl(ClassName='CMenuWnd')
+        quote_option = menu.MenuItemControl(Name="引用")
+        if not quote_option.Exists(maxSearchSeconds=0.1):
+            wxlog.debug('该消息当前状态无法引用')
+            return False
+        quote_option.Click(simulateMove=False)
+        editbox = self.chatbox.EditControl(searchDepth=15)
+        t0 = time.time()
+        while True:
+            if time.time() - t0 > 10:
+                raise TimeoutError(f'发送消息超时 --> {msg}')
+            SetClipboardText(msg)
+            editbox.ShortcutPaste()
+            if editbox.GetValuePattern().Value.replace('\r￼', ''):
+                break
+
+        if at:
+            if isinstance(at, str):
+                at = [at]
+            for i in at:
+                editbox.Input('@' + i)
+                atwnd = self.wx.UiaAPI.PaneControl(ClassName='ChatContactMenu')
+                if atwnd.Exists(maxSearchSeconds=0.1):
+                    self.wx.UiaAPI.SendKeys('{ENTER}')
+
+        time.sleep(0.1)
+        editbox.SendKeys(WxParam.SHORTCUT_SEND)
+        return True
+
+    def forward(self, friend):
+        """转发群组消息给指定好友"""
+        wxlog.debug(f'转发群组消息：[{self.group}] {self.sender} --> {friend} | {self.content}')
+        self._show_chat_window()
+        headcontrol = self._get_head_control()
+        RollIntoView(self.chatbox.ListControl(), headcontrol, equal=True)
+        xbias = int(headcontrol.BoundingRectangle.width() * 1.5)
+        headcontrol.Click()
+        headcontrol.RightClick(x=xbias, simulateMove=False)
+        menu = self.wx.UiaAPI.MenuControl(ClassName='CMenuWnd')
+        forward_option = menu.MenuItemControl(Name="转发...")
+        if not forward_option.Exists(maxSearchSeconds=0.1):
+            wxlog.debug('该消息当前状态无法转发')
+            return False
+        forward_option.Click(simulateMove=False)
+        SetClipboardText(friend)
+        contactwnd = self.wx.UiaAPI.WindowControl(ClassName='SelectContactWnd')
+        edit = contactwnd.EditControl()
+        while not edit.HasKeyboardFocus:
+            edit.Click()
+            time.sleep(0.1)
+        edit.ShortcutSelectAll()
+        edit.ShortcutPaste()
+        checkbox = contactwnd.ListControl().CheckBoxControl()
+        if checkbox.Exists(1):
+            checkbox.Click(simulateMove=False)
+            contactwnd.ButtonControl(Name='发送').Click(simulateMove=False)
+            return True
+        else:
+            contactwnd.SendKeys('{Esc}')
+            raise FriendNotFoundError(f'未找到好友：{friend}')
+
+    def parse(self):
+        """解析群组消息内容（如果是合并转发的消息）"""
+        wxlog.debug(f'解析群组消息内容：[{self.group}] {self.sender} | {self.content}')
+        self._show_chat_window()
+        headcontrol = self._get_head_control()
+        RollIntoView(self.chatbox.ListControl(), headcontrol, equal=True)
+        xbias = int(headcontrol.BoundingRectangle.width() * 1.5)
+        headcontrol.Click(x=xbias, simulateMove=False)
+        chatrecordwnd = ChatRecordWnd()
+        time.sleep(2)
+        msgs = chatrecordwnd.GetContent()
+        return msgs
+
+    def _show_chat_window(self):
+        """将聊天窗口显示到前台"""
+        self.wx._show()
+
+    def _get_head_control(self):
+        """获取消息的头部控件（发送者头像或昵称）"""
+        return [i for i in self.control.GetFirstChildControl().GetChildren() if i.ControlTypeName == 'ButtonControl'][0]
 
 
 message_types = {
@@ -1653,7 +1790,8 @@ message_types = {
     'Time': TimeMessage,
     'Recall': RecallMessage,
     'Self': SelfMessage,
-    'Friend': FriendMessage,  # 确保 'Friend' 类型对应 FriendMessage 类
+    'Friend': FriendMessage,
+    'Group': GroupMessage,    # 新增 'Group' 类型对应 GroupMessage 类
     # 添加其他类型如果有的话
 }
 
@@ -1662,7 +1800,6 @@ def ParseMessage(data, control, wx):
     message_type = data[0]
     message_class = message_types.get(message_type, FriendMessage)
     return message_class(data, control, wx)
-
 
 
 class LoginWnd:
