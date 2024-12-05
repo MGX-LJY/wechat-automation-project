@@ -648,7 +648,7 @@ class XKW:
                 elif result == "qr_code":
                     logging.warning("需要扫码登录，提醒管理员进行扫码并切换账号")
                     success = False
-                    failure_reason = 'qr_code'
+                    failure_reason = 'limit'
                     return False
                 elif result == "skip":
                     logging.info("下载频繁，已打开并下载一个了，直接跳过即可")
@@ -688,8 +688,6 @@ class XKW:
         finally:
             if not success:
                 if failure_reason == 'limit':
-                    self.handle_limit_failure(url, tab)
-                elif failure_reason == 'qr_code':
                     self.handle_limit_failure(url, tab)
                 else:
                     # 对于非账户上限的失败情况，执行其他处理逻辑
