@@ -1439,7 +1439,7 @@ class AutoDownloadManager:
 
         accounts_xkw3 = [
             {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
-            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能26'},
+            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
             {'username': '15130516893', 'password': '428199Li@', 'nickname': '全能18'},
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
