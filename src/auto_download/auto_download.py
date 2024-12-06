@@ -1426,8 +1426,6 @@ class AutoDownloadManager:
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
-
-
         ]
 
         accounts_xkw2 = [
@@ -1437,7 +1435,6 @@ class AutoDownloadManager:
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
-
         ]
 
         accounts_xkw3 = [
@@ -1446,7 +1443,6 @@ class AutoDownloadManager:
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
             {'username': '15130516893', 'password': '428199Li@', 'nickname': '全能18'},
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
-
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
@@ -1457,7 +1453,7 @@ class AutoDownloadManager:
         xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co3, manager=self, id='xkw3', accounts=accounts_xkw3)
 
-        self.xkw_instances = [xkw1, xkw2]  # 所有的 XKW 实例
+        self.xkw_instances = [xkw1, xkw2, xkw3]  # 所有的 XKW 实例
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
         self.xkw_lock = threading.RLock()
