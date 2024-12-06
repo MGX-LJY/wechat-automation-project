@@ -927,10 +927,10 @@ class XKW:
                     logging.info(
                         f"账号 {current_account_nickname} 的下载计数: 每日 {daily_count_info['count']}, 每周 {weekly_count_info['count']}")
 
-                    if daily_count_info['count'] >= 59 or weekly_count_info['count'] >= 350:
-                        if daily_count_info['count'] >= 59:
+                    if daily_count_info['count'] >= 51 or weekly_count_info['count'] >= 350:
+                        if daily_count_info['count'] >= 51:
                             limit_type = "每日"
-                            limit_value = 59
+                            limit_value = 51
                         else:
                             limit_type = "每周"
                             limit_value = 350
@@ -987,7 +987,7 @@ class XKW:
                 f"当前账号信息：\n"
                 f"昵称：{nickname}\n"
                 f"用户名：{username}\n"
-                f"今日下载次数：{daily_count}/59\n"
+                f"今日下载次数：{daily_count}/51\n"
                 f"本周下载次数：{weekly_count}/350\n"
             )
             logging.info(f"获取当前账号使用情况：\n{usage_info}")
@@ -1050,7 +1050,7 @@ class XKW:
 
     def get_next_available_account_index(self) -> int:
         """
-        获取下一个下载次数未达标的账号索引（每日计数 < 59 且 每周计数 < 350）。
+        获取下一个下载次数未达标的账号索引（每日计数 < 51 且 每周计数 < 350）。
         如果所有账号均达到下载次数限制，则返回 -1。
 
         返回:
@@ -1086,7 +1086,7 @@ class XKW:
                 weekly_count = weekly_count_info.get('count', 0)
 
             # 检查每日和每周计数是否未达上限
-            if daily_count < 59 and weekly_count < 350:
+            if daily_count < 51 and weekly_count < 350:
                 return next_index
 
         # 如果所有账号都达到下载次数限制
@@ -1433,7 +1433,7 @@ class AutoDownloadManager:
         accounts_xkw2 = [
             {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
             {'username': '13143019361', 'password': '428199Li@', 'nickname': '全能01X'},
-            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
+            {'username': '19536946517', 'password': '428199Li@', 'nickname': '全能06X'},
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
@@ -1444,7 +1444,7 @@ class AutoDownloadManager:
             {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
             {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能26'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
-            {'username': '15930596893', 'password': '428199Li@', 'nickname': '全能18'},
+            {'username': '15130516893', 'password': '428199Li@', 'nickname': '全能18'},
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
 
         ]
