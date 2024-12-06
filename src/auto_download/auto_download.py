@@ -645,11 +645,6 @@ class XKW:
                     success = False
                     failure_reason = 'limit'
                     return False
-                elif result == "qr_code":
-                    logging.warning("需要扫码登录，提醒管理员进行扫码并切换账号")
-                    success = False
-                    failure_reason = 'limit'
-                    return False
                 elif result == "skip":
                     logging.info("下载频繁，已打开并下载一个了，直接跳过即可")
                     success = True
@@ -770,7 +765,7 @@ class XKW:
                             logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
                             if self.notifier:
                                 self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
-                            return "qr_code"
+                            return "limit"
                         elif code == "20602004":
                             logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
                             return "skip"
@@ -932,10 +927,10 @@ class XKW:
                     logging.info(
                         f"账号 {current_account_nickname} 的下载计数: 每日 {daily_count_info['count']}, 每周 {weekly_count_info['count']}")
 
-                    if daily_count_info['count'] >= 87 or weekly_count_info['count'] >= 350:
-                        if daily_count_info['count'] >= 87:
+                    if daily_count_info['count'] >= 59 or weekly_count_info['count'] >= 350:
+                        if daily_count_info['count'] >= 59:
                             limit_type = "每日"
-                            limit_value = 87
+                            limit_value = 59
                         else:
                             limit_type = "每周"
                             limit_value = 350
@@ -992,7 +987,7 @@ class XKW:
                 f"当前账号信息：\n"
                 f"昵称：{nickname}\n"
                 f"用户名：{username}\n"
-                f"今日下载次数：{daily_count}/87\n"
+                f"今日下载次数：{daily_count}/59\n"
                 f"本周下载次数：{weekly_count}/350\n"
             )
             logging.info(f"获取当前账号使用情况：\n{usage_info}")
@@ -1055,7 +1050,7 @@ class XKW:
 
     def get_next_available_account_index(self) -> int:
         """
-        获取下一个下载次数未达标的账号索引（每日计数 < 87 且 每周计数 < 350）。
+        获取下一个下载次数未达标的账号索引（每日计数 < 59 且 每周计数 < 350）。
         如果所有账号均达到下载次数限制，则返回 -1。
 
         返回:
@@ -1091,7 +1086,7 @@ class XKW:
                 weekly_count = weekly_count_info.get('count', 0)
 
             # 检查每日和每周计数是否未达上限
-            if daily_count < 87 and weekly_count < 350:
+            if daily_count < 59 and weekly_count < 350:
                 return next_index
 
         # 如果所有账号都达到下载次数限制
@@ -1443,7 +1438,7 @@ class AutoDownloadManager:
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
-            {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
+            {'username': '15930596893', 'password': '428199Li@', 'nickname': '全能18'},
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
