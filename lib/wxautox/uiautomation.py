@@ -17,13 +17,18 @@ import sys
 import time
 import datetime
 import re
+import random
 import threading
 import ctypes
 import ctypes.wintypes
 import comtypes #need pip install comtypes
 import comtypes.client
+import win32gui
+import win32api
+import win32con
 from PIL import ImageGrab
 from typing import (Any, Callable, Dict, List, Iterable, Tuple)  # need pip install typing for Python3.4 or lower
+from typing_extensions import Literal
 TreeNode = Any
 
 # print('uia done')
@@ -1398,6 +1403,15 @@ class Keys:
     VK_PA1 = 0xFD                           #PA1 key
     VK_OEM_CLEAR = 0xFE                     #Clear key
 
+GlobalKeyNames = [
+    'CONTROL', 
+    'ALT', 
+    'SHIFT', 
+    'WIN', 
+    'CTRL', 
+    'LWIN', 
+    'RWIN'
+]
 
 SpecialKeyNames = {
     'LBUTTON': Keys.VK_LBUTTON,                        #Left mouse button
@@ -1679,6 +1693,242 @@ class INPUT(ctypes.Structure):
     _fields_ = (('type', ctypes.wintypes.DWORD),
                 ('union', _INPUTUnion))
 
+# Add by Cluic
+class Win32:
+    def __init__(self, hwnd):
+        self.hwnd = hwnd
+        # print(time.time())
+    #     self._check_hwnd()
+
+    # def _check_hwnd(self):
+    #     if not win32gui.IsWindow(self.hwnd):
+    #         raise Exception("Window not found")
+    
+    def click(self, x: int, y: int, button: Literal["left", "right"] = "left"):
+        """
+        Click at the specified client coordinates.
+        
+        Args:
+            x: The x-coordinate.
+            y: The y-coordinate.
+            button: The button to click. Default is "left".
+        """
+        # print(x, y, button)
+        x, y = win32gui.ScreenToClient(self.hwnd, (x, y))
+        # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+        if button.lower() == "left":
+            win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, win32api.MAKELONG(x, y))
+            # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+            win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, win32api.MAKELONG(x, y))
+        elif button.lower() == "right":
+            win32api.SendMessage(self.hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, win32api.MAKELONG(x, y))
+            # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+            win32api.SendMessage(self.hwnd, win32con.WM_RBUTTONUP, 0, win32api.MAKELONG(x, y))
+        else:
+            raise ValueError("Invalid button")
+        
+    def hover(self, x: int, y: int):
+        """
+        Move the mouse to the specified client coordinates.
+        """
+        x, y = win32gui.ScreenToClient(self.hwnd, (x, y))
+        win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+
+    def double_click(self, x: int, y: int):
+        """
+        Double click at the specified client coordinates.
+        """
+        x, y = win32gui.ScreenToClient(self.hwnd, (x, y))
+        win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDBLCLK, win32con.MK_LBUTTON, win32api.MAKELONG(x, y))
+
+    def hover_by_bbox(self, bbox, pos: Literal["center", "top", "bottom", "right", "left"] = "center", xbias: int = 0, ybias: int = 0):
+        """
+        Move the mouse to the specified position relative to the bounding box.
+
+        Args:
+            bbox: The bounding box (left, top, right, bottom).
+            pos: The position to move to. Default is "center".
+            xbias: The x-coordinate bias. Default is 0.
+            ybias: The y-coordinate bias. Default is 0.
+        """
+        # Support for uiautomation package Rect object
+        if type(bbox).__name__ == "Rect":
+            bbox = (bbox.left, bbox.top, bbox.right, bbox.bottom)
+
+        left, top, right, bottom = bbox
+        if pos.lower() == "center":
+            x = (left + right) // 2
+            y = (top + bottom) // 2
+        elif pos.lower() == "top":
+            x = (left + right) // 2
+            y = top
+        elif pos.lower() == "bottom":
+            x = (left + right) // 2
+            y = bottom
+        elif pos.lower() == "right":
+            x = right
+            y = (top + bottom) // 2
+        elif pos.lower() == "left":
+            x = left
+            y = (top + bottom) // 2
+        else:
+            raise ValueError("Invalid position")
+        if not xbias:
+            xbias = 0
+        if not ybias:
+            ybias = 0
+        x += xbias
+        y += ybias
+        self.hover(x, y)
+
+    def click_by_bbox(
+            self, 
+            bbox, 
+            pos: Literal["center", "top", "bottom", "right", "left"] = "center",
+            button: Literal["left", "right"] = "left",
+            double_click: bool = False,
+            xbias: int = 0,
+            ybias: int = 0
+        ):
+        """
+        Click at the specified position relative to the bounding box.
+
+        Args:
+            bbox: The bounding box (left, top, right, bottom).
+            pos: The position to click. Default is "center".
+            button: The button to click. Default is "left". When `double_click` is True, this argument is ignored.
+            double_click: Whether to double click. Default is False.
+            xbias: The x-coordinate bias. Default is 0.
+            ybias: The y-coordinate bias. Default is 0.
+        """
+        # Support for uiautomation package Rect object
+        if type(bbox).__name__ == "Rect":
+            bbox = (bbox.left, bbox.top, bbox.right, bbox.bottom)
+        
+        # Calculate the click position
+        left, top, right, bottom = bbox
+        if pos.lower() == "center":
+            x = (left + right) // 2
+            y = (top + bottom) // 2
+        elif pos.lower() == "top":
+            x = (left + right) // 2
+            y = top
+        elif pos.lower() == "bottom":
+            x = (left + right) // 2
+            y = bottom
+        elif pos.lower() == "right":
+            x = right
+            y = (top + bottom) // 2
+        elif pos.lower() == "left":
+            x = left
+            y = (top + bottom) // 2
+        else:
+            raise ValueError("Invalid position")
+        if not xbias:
+            xbias = 0
+        if not ybias:
+            ybias = 0
+        x += xbias
+        y += ybias
+        if double_click:
+            self.double_click(x, y)
+        else:
+            self.click(x, y, button)
+
+    def scroll_wheel(self, bbox, delta=120):
+        """
+        Scroll the mouse wheel at the specified client coordinates.
+
+        Args:
+            client_x: The x-coordinate.
+            client_y: The y-coordinate.
+            delta: The amount to scroll. Default is 120. Positive values scroll up, negative values scroll down.
+        """
+        if type(bbox).__name__ == "Rect":
+            bbox = (bbox.left, bbox.top, bbox.right, bbox.bottom)
+        x = (bbox[0] + bbox[2]) // 2
+        y = (bbox[1] + bbox[3]) // 2
+        wParam = win32api.MAKELONG(0, delta)
+        lParam = win32api.MAKELONG(x, y)
+        win32api.SendMessage(self.hwnd, win32con.WM_MOUSEWHEEL, wParam, lParam)
+
+    def input(self, content: str, delay: float = -1):
+        """
+        Input text.
+        
+        Args:
+            content: The text to input.
+            delay: The delay between each character. Default is random between 0.01 and 0.05
+        """
+        for char in content:
+            if char == '\n':
+                self.send_keys_shortcut('{SHIFT}{ENTER}')
+            win32api.SendMessage(self.hwnd, win32con.WM_CHAR, ord(char), 0)
+            if delay < 0:
+                time.sleep(random.uniform(0.01, 0.05))
+            else:
+                time.sleep(delay)
+
+    def send_keys_shortcut(self, keys: str):
+        """
+        Send a key combination.
+
+        Args:
+            keys: The key combination. str
+
+        Example:
+            send_keys_shortcut('{LCTRL}{V}')  # Paste
+        """
+        keys = re.findall(r'\{(.*?)\}', keys)
+        hold_keys = []
+        for key in keys:
+            _key = SpecialKeyNames.get(key.upper(), CharacterCodes.get(key, None))
+            if key.upper() in GlobalKeyNames:
+                win32api.keybd_event(_key, 0, 0, 0)
+            elif _key is not None:
+                win32api.PostMessage(self.hwnd, win32con.WM_KEYDOWN, _key, 0)
+                time.sleep(0.05)
+            else:
+                continue
+            hold_keys.append(_key)
+
+        for _key in hold_keys[::-1]:
+            win32api.keybd_event(_key, 0, win32con.KEYEVENTF_KEYUP, 0)
+        time.sleep(0.1)
+
+    def shortcut_paste(self):
+        """
+        Paste the clipboard content.
+        """
+        win32api.keybd_event(win32con.VK_CONTROL, 0,0,0)
+        time.sleep(0.1)
+        win32gui.SendMessage(self.hwnd, win32con.WM_KEYDOWN, 86, 0)
+        win32api.keybd_event(86, 0, win32con.KEYEVENTF_KEYUP, 0)
+        win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
+        time.sleep(0.1)
+
+    def shortcut_search(self):
+        """
+        Open the search dialog.
+        """
+        win32api.keybd_event(win32con.VK_CONTROL, 0,0,0)
+        time.sleep(0.1)
+        win32gui.SendMessage(self.hwnd, win32con.WM_KEYDOWN, 70, 0)
+        win32api.keybd_event(70, 0, win32con.KEYEVENTF_KEYUP, 0)
+        win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
+        time.sleep(0.1)
+
+    def shortcut_select_all(self):
+        """
+        Select all text.
+        """
+        win32api.keybd_event(win32con.VK_CONTROL, 0,0,0)
+        time.sleep(0.1)
+        win32gui.SendMessage(self.hwnd, win32con.WM_KEYDOWN, 65, 0)
+        win32api.keybd_event(65, 0, win32con.KEYEVENTF_KEYUP, 0)
+        win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
+        time.sleep(0.1)
+
 
 class Rect():
     """
@@ -1689,6 +1939,23 @@ class Rect():
         self.top = top
         self.right = right
         self.bottom = bottom
+
+    @property
+    def bbox(self) -> Tuple[int, int, int, int]:
+        return self.left, self.top, self.right, self.bottom
+    
+    @property
+    def info(self) -> Dict[str, int]:
+        return {
+            'left': self.left,
+            'top': self.top,
+            'right': self.right,
+            'bottom': self.bottom,
+            'width': self.width(),
+            'height': self.height(),
+            'xcenter': self.xcenter(),
+            'ycenter': self.ycenter()
+        }
 
     def width(self) -> int:
         return self.right - self.left
@@ -6126,7 +6393,7 @@ class Control():
         """
         return self.MoveCursorToInnerPos(simulateMove=simulateMove)
 
-    def Click(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME) -> None:
+    def Click(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False, pos='center', return_pos=True) -> None:
         """
         x: int, if < 0, click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6139,11 +6406,64 @@ class Control():
         Click(10, 10): click left+10, top+10.
         Click(-10, -10): click right-10, bottom-10.
         """
-        point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
-        if point:
-            Click(point[0], point[1], waitTime)
+        if move:
+            pos = win32api.GetCursorPos()
+            point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
+            if point:
+                Click(point[0], point[1], waitTime)
+            if return_pos:
+                win32api.SetCursorPos(pos)
+        else:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.click_by_bbox(self.BoundingRectangle, xbias=x, ybias=y, pos=pos)
 
-    def MiddleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME) -> None:
+    def Flash(self, color=0x0000FF):
+        """
+        color: int, RGB color.
+        Flash the control with color.
+        """
+        rect = self.BoundingRectangle
+        if not rect:
+            print('Control has no BoundingRectangle.')
+            return
+        
+        left, top, right, bottom = rect.left, rect.top, rect.right, rect.bottom
+        desktop_hwnd = win32gui.GetDesktopWindow()
+        for i in range(3):
+            desktop_dc = win32gui.GetWindowDC(desktop_hwnd)
+            brush = win32gui.CreateSolidBrush(color)
+            rect_tuple = (left, top, right, bottom)
+            win32gui.FrameRect(desktop_dc, rect_tuple, brush)
+            time.sleep(0.5)
+            win32gui.InvalidateRect(desktop_hwnd, rect_tuple, True)
+            win32gui.ReleaseDC(desktop_hwnd, desktop_dc)
+            self.Hover()
+            time.sleep(0.5)
+
+    def Hover(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False) -> None:
+        """
+        x: int, if < 0, hover self.BoundingRectangle.right + x, if not None, ignore ratioX.
+        y: int, if < 0, hover self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
+        ratioX: float.
+        ratioY: float.
+        simulateMove: bool, if True, first move cursor to control smoothly.
+        waitTime: float.
+        
+        Hover(), Hover(ratioX=0.5, ratioY=0.5): hover center.
+        Hover(10, 10): hover left+10, top+10.
+        Hover(-10, -10): hover right-10, bottom-10.
+        """
+        if move:
+            point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
+            # if point:
+            #     Hover(point[0], point[1], waitTime)
+        else:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.hover_by_bbox(self.BoundingRectangle, xbias=x, ybias=y)
+
+    def MiddleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False) -> None:
         """
         x: int, if < 0, middle click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, middle click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6156,11 +6476,16 @@ class Control():
         MiddleClick(10, 10): middle click left+10, top+10.
         MiddleClick(-10, -10): middle click right-10, bottom-10.
         """
-        point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
-        if point:
-            MiddleClick(point[0], point[1], waitTime)
+        if move:
+            point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
+            if point:
+                MiddleClick(point[0], point[1], waitTime)
+        else:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True, xbias=x, ybias=y)
 
-    def RightClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME) -> None:
+    def RightClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move=False) -> None:
         """
         x: int, if < 0, right click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, right click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6173,11 +6498,16 @@ class Control():
         RightClick(10, 10): right click left+10, top+10.
         RightClick(-10, -10): right click right-10, bottom-10.
         """
-        point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
-        if point:
-            RightClick(point[0], point[1], waitTime)
+        if move:
+            point = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
+            if point:
+                RightClick(point[0], point[1], waitTime)
+        else:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.click_by_bbox(self.BoundingRectangle, button='right', xbias=x, ybias=y)
 
-    def DoubleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME) -> None:
+    def DoubleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move=False) -> None:
         """
         x: int, if < 0, right click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, right click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6190,9 +6520,47 @@ class Control():
         DoubleClick(10, 10): double click left+10, top+10.
         DoubleClick(-10, -10): double click right-10, bottom-10.
         """
-        x, y = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
-        Click(x, y, GetDoubleClickTime() * 1.0 / 2000)
-        Click(x, y, waitTime)
+        if move:
+            x, y = self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove)
+            Click(x, y, GetDoubleClickTime() * 1.0 / 2000)
+            Click(x, y, waitTime)
+        else:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True)
+
+    def ShortcutPaste(self, click=True, move=False) -> None:
+        """
+        Paste content from clipboard like Ctrl+V.
+        click: bool, if True, first click control.
+        """
+        if click:
+            self.Click(move=move, simulateMove=False, return_pos=False)
+        if not hasattr(self, 'winapi'):
+            self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+        self.winapi.shortcut_paste()
+
+    def ShortcutSearch(self, click=True, move=False) -> None:
+        """
+        Search content from clipboard like Ctrl+F.
+        click: bool, if True, first click control.
+        """
+        if click:
+            self.Click(move=move, simulateMove=False, return_pos=False)
+        if not hasattr(self, 'winapi'):
+            self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+        self.winapi.shortcut_search()
+
+    def ShortcutSelectAll(self, click=True, move=False) -> None:
+        """
+        Select all content like Ctrl+A.
+        click: bool, if True, first click control.
+        """
+        if click:
+            self.Click(move=move, simulateMove=False, return_pos=False)
+        if not hasattr(self, 'winapi'):
+            self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+        self.winapi.shortcut_select_all()
 
     def DragDrop(self, x1: int, y1: int, x2: int, y2: int, moveSpeed: float=1, waitTime: float = OPERATION_WAIT_TIME) -> None:
         rect = self.BoundingRectangle
@@ -6206,7 +6574,7 @@ class Control():
         y2 = (rect.top if y2 >= 0 else rect.bottom) + y2
         DragDrop(x1, y1, x2, y2, moveSpeed, waitTime)
 
-    def WheelDown(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, wheelTimes: int = 1, interval: float = 0.05, waitTime: float = OPERATION_WAIT_TIME) -> None:
+    def WheelDown(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, wheelTimes: int = 1, interval: float = 0.05, waitTime: float = OPERATION_WAIT_TIME, api=True) -> None:
         """
         Make control have focus first, move cursor to the specified position and mouse wheel down.
         x: int, if < 0, move x cursor to self.BoundingRectangle.right + x, if not None, ignore ratioX.
@@ -6217,13 +6585,18 @@ class Control():
         interval: float.
         waitTime: float.
         """
-        cursorX, cursorY = GetCursorPos()
-        self.SetFocus()
-        self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove=False)
-        WheelDown(wheelTimes, interval, waitTime)
-        SetCursorPos(cursorX, cursorY)
+        if api:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.scroll_wheel(self.BoundingRectangle, wheelTimes*(-120))
+        else:
+            cursorX, cursorY = GetCursorPos()
+            self.SetFocus()
+            self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove=False)
+            WheelDown(wheelTimes, interval, waitTime)
+            SetCursorPos(cursorX, cursorY)
 
-    def WheelUp(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, wheelTimes: int = 1, interval: float = 0.05, waitTime: float = OPERATION_WAIT_TIME) -> None:
+    def WheelUp(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, wheelTimes: int = 1, interval: float = 0.05, waitTime: float = OPERATION_WAIT_TIME, api=True) -> None:
         """
         Make control have focus first, move cursor to the specified position and mouse wheel up.
         x: int, if < 0, move x cursor to self.BoundingRectangle.right + x, if not None, ignore ratioX.
@@ -6234,11 +6607,16 @@ class Control():
         interval: float.
         waitTime: float.
         """
-        cursorX, cursorY = GetCursorPos()
-        self.SetFocus()
-        self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove=False)
-        WheelUp(wheelTimes, interval, waitTime)
-        SetCursorPos(cursorX, cursorY)
+        if api:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.scroll_wheel(self.BoundingRectangle, wheelTimes*120)
+        else:
+            cursorX, cursorY = GetCursorPos()
+            self.SetFocus()
+            self.MoveCursorToInnerPos(x, y, ratioX, ratioY, simulateMove=False)
+            WheelUp(wheelTimes, interval, waitTime)
+            SetCursorPos(cursorX, cursorY)
 
     def ShowWindow(self, cmdShow: int, waitTime: float = OPERATION_WAIT_TIME) -> bool:
         """
@@ -6315,7 +6693,17 @@ class Control():
         self.SetFocus()
         SendKey(key, waitTime)
 
-    def SendKeys(self, text: str, interval: float = 0.01, waitTime: float = OPERATION_WAIT_TIME, charMode: bool = True) -> None:
+    def Input(self, text: str, waitTime: float = -1) -> None:
+        """
+        Input text to edit control.
+        text: str.
+        waitTime: float. If < 0 use the random time between 0.01s and 0.05s per char.
+        """
+        if not hasattr(self, 'winapi'):
+            self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+        self.winapi.input(text, waitTime)
+
+    def SendKeys(self, text: str, interval: float = 0.01, waitTime: float = OPERATION_WAIT_TIME, charMode: bool = True, api=True) -> None:
         """
         Make control have focus first and type keys.
         `self.SetFocus` may not work for some controls, you may need to click it to make it have focus.
@@ -6324,8 +6712,13 @@ class Control():
         waitTime: float.
         charMode: bool, if False, the text typied is depend on the input method if a input method is on.
         """
-        self.SetFocus()
-        SendKeys(text, interval, waitTime, charMode)
+        if api:
+            if not hasattr(self, 'winapi'):
+                self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
+            self.winapi.send_keys_shortcut(text)
+        else:
+            self.SetFocus()
+            SendKeys(text, interval, waitTime, charMode)
 
     def GetPixelColor(self, x: int, y: int) -> int:
         """

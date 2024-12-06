@@ -4,3 +4,6 @@ class TargetNotFoundError(Exception):
 
 class FriendNotFoundError(Exception):
     pass
+
+class WeChatNotFoundError(Exception):
+    pass

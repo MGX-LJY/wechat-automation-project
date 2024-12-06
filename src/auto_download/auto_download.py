@@ -7,6 +7,7 @@ import random
 import re
 import threading
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -79,16 +80,7 @@ class XKW:
         self.download_lock = threading.Lock()  # 用于同步下载任务的启动时间
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
-        self.is_handling_login = False  # 新增标志位，防止重复调用 handle_login_status
         self.account_index_lock = threading.RLock()  # 新增锁，用于账号索引的同步
-        self.login_lock = threading.RLock()
-        # 新增：记录上一次账号切换的时间
-        self.last_account_switch_time = 0  # 记录上一次账号切换的时间（时间戳）
-        self.switch_account_cooldown = 600  # 切换账号后的冷却时间，单位秒（10分钟）
-        # 综合性的锁用于登录和账号切换
-        self.login_switch_lock = threading.RLock()
-        self.last_login_success_time = 0  # 记录上一次成功登录的时间（时间戳）
-        self.login_lock_duration = 600  # 锁定时间，单位秒（10分钟）
 
         # 添加账号列表和当前账号索引
         if accounts is not None:
@@ -132,9 +124,8 @@ class XKW:
             self.manager_thread.start()
             logging.info("XKW manager 线程已启动。")
 
-        self.login_switch_lock = threading.RLock()
-        self.last_login_attempt = 0
-        self.login_cooldown = 60  # 冷却时间，单位秒
+        self.handle_login_lock = threading.RLock()
+        self.login_locked_until = 0  # 时间戳，表示登录锁定结束的时间
 
         # 记录失败次数
         self.failure_count = 0
@@ -397,17 +388,50 @@ class XKW:
             return None, None
 
     def is_logged_in(self, tab):
+        """
+        检查当前是否已登录。
+
+        参数:
+        - tab: 浏览器标签页。
+
+        返回:
+        - True: 已登录。
+        - False: 未登录。
+        """
         try:
+            results = []
+            for _ in range(2):
+                result = self._check_login_status(tab)
+                results.append(result)
+                time.sleep(1)  # 可选：增加一点延迟
+            if results[0] == results[1]:
+                return results[0]
+            else:
+                # 如果前两次结果不一致，进行第三次检查
+                result = self._check_login_status(tab)
+                results.append(result)
+                # 返回出现次数最多的结果
+                return max(set(results), key=results.count)
+        except Exception as e:
+            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            return False
+
+    def _check_login_status(self, tab):
+        """实际执行一次登录状态检查"""
+        try:
+            # 访问主页以检查登录状态
             tab.get('https://www.zxxk.com')
-            tab.wait.doc_loaded(timeout=30)
-            my_element = tab.ele('text:我的', timeout=10)
+            time.sleep(10)  # 确保页面加载完成
+            # 尝试找到“我的”元素，登录后该元素应存在
+            my_element = tab.ele('text:我的', timeout=5)
             if my_element:
                 return True
             else:
+                # 如果找不到“我的”元素，尝试查找“登录”按钮，未登录时应存在
                 login_element = tab.ele('text:登录', timeout=5)
                 return not bool(login_element)
         except Exception as e:
-            logging.error(f"检查登录状态时出错: {e}", exc_info=True)
+            logging.error(f"执行登录状态检查时出错: {e}", exc_info=True)
             return False
 
     def login(self, tab):
@@ -418,77 +442,65 @@ class XKW:
         max_retries = len(self.accounts)  # 确保尝试所有账号
         retries = 0
         while retries < max_retries:
-            with self.login_switch_lock:
-                current_time = time.time()
-                elapsed_time = current_time - self.last_login_success_time
-                if elapsed_time < self.login_lock_duration:
-                    wait_time = self.login_lock_duration - elapsed_time
-                    logging.info(f"登录锁定中，等待 {wait_time:.1f} 秒后再尝试登录。")
-                    time.sleep(wait_time)
+            account = self.accounts[self.current_account_index]
+            username = account['username']
+            password = account['password']
+            nickname = account.get('nickname', username)
+            try:
+                # 访问登录页面
+                tab.get('https://sso.zxxk.com/login')
+                logging.info(f'账号 {nickname} ({username}) 正在访问登录页面。')
+                time.sleep(random.uniform(1, 2))  # 增加随机延迟，等待页面完全加载
 
-                account = self.accounts[self.current_account_index]
-                username = account['username']
-                password = account['password']
-                nickname = account.get('nickname', username)
-                try:
-                    # 访问登录页面
-                    tab.get('https://sso.zxxk.com/login')
-                    logging.info(f'账号 {nickname} ({username}) 正在访问登录页面。')
-                    time.sleep(random.uniform(1, 2))  # 增加随机延迟，等待页面完全加载
+                # 点击“账户密码/验证码登录”按钮
+                login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
+                if login_switch_button:
+                    login_switch_button.click()
+                    logging.info(f'账号 {nickname} ({username}) 点击“账户密码/验证码登录”按钮成功。')
+                    time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
 
-                    # 点击“账户密码/验证码登录”按钮
-                    login_switch_button = tab.ele('tag:button@@class=another@@text():账户密码/验证码登录', timeout=10)
-                    if login_switch_button:
-                        login_switch_button.click()
-                        logging.info(f'账号 {nickname} ({username}) 点击“账户密码/验证码登录”按钮成功。')
-                        time.sleep(random.uniform(1, 2))  # 等待登录表单切换完成
+                # 获取用户名和密码输入框
+                username_field = tab.ele('#username', timeout=10)
+                password_field = tab.ele('#password', timeout=10)
 
-                    # 获取用户名和密码输入框
-                    username_field = tab.ele('#username', timeout=10)
-                    password_field = tab.ele('#password', timeout=10)
+                # 清空输入框，确保没有残留内容
+                username_field.clear()
+                password_field.clear()
+                logging.info(f'账号 {nickname} ({username}) 清空用户名和密码输入框成功。')
+                time.sleep(random.uniform(1, 2))  # 等待输入框清空
 
-                    # 清空输入框，确保没有残留内容
-                    username_field.clear()
-                    password_field.clear()
-                    logging.info(f'账号 {nickname} ({username}) 清空用户名和密码输入框成功。')
-                    time.sleep(random.uniform(1, 2))  # 等待输入框清空
+                # 输入用户名
+                username_field.input(username)
+                logging.info(f'账号 {nickname} ({username}) 输入用户名成功。')
+                time.sleep(random.uniform(1, 2))  # 增加延迟
 
-                    # 输入用户名
-                    username_field.input(username)
-                    logging.info(f'账号 {nickname} ({username}) 输入用户名成功。')
-                    time.sleep(random.uniform(1, 2))  # 增加延迟
+                # 输入密码
+                password_field.input(password)
+                logging.info(f'账号 {nickname} ({username}) 输入密码成功。')
+                time.sleep(random.uniform(1, 2))  # 增加延迟
 
-                    # 输入密码
-                    password_field.input(password)
-                    logging.info(f'账号 {nickname} ({username}) 输入密码成功。')
-                    time.sleep(random.uniform(1, 2))  # 增加延迟
+                # 点击登录按钮
+                login_button = tab.ele('#accountLoginBtn', timeout=10)
+                login_button.click()
+                logging.info(f'账号 {nickname} ({username}) 点击登录按钮成功。')
+                time.sleep(random.uniform(1, 2))  # 等待登录结果
 
-                    # 点击登录按钮
-                    login_button = tab.ele('#accountLoginBtn', timeout=10)
-                    login_button.click()
-                    logging.info(f'账号 {nickname} ({username}) 点击登录按钮成功。')
-                    time.sleep(random.uniform(1, 2))  # 等待登录结果
-
-                    # 检查是否登录成功
-                    if self.is_logged_in(tab):
-                        logging.info(f'账号 {nickname} ({username}) 登录成功。')
-                        if self.notifier:
-                            self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
-
-                        # 设置登录成功时间
-                        self.last_login_success_time = time.time()
-
-                        return True
-                    else:
-                        logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
-                        if self.notifier:
-                            self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
-                        retries += 1
-                        self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-                except Exception as e:
-                    logging.error(f'账号 {nickname} ({username}) 登录过程中出现错误：{e}', exc_info=True)
+                # 检查是否登录成功
+                if self.is_logged_in(tab):
+                    logging.info(f'账号 {nickname} ({username}) 登录成功。')
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
+                    return True
+                else:
+                    logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
                     retries += 1
-                    self.handle_login_status(tab)
+                    self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
+            except Exception as e:
+                logging.error(f'账号 {nickname} ({username}) 登录过程中出现错误：{e}', exc_info=True)
+                retries += 1
+                self.handle_login_status(tab)
 
         # 如果重试次数用尽，发送通知并返回 False
         logging.error("所有登录尝试失败，无法登录。")
@@ -643,7 +655,8 @@ class XKW:
                     success = True
                     return True
                 elif result == "limit_reached":
-                    logging.info("达到350份上限，更新账号数据并切换账号")
+                    logging.info("已达到350份上限，更新账号数据并切换账号")
+                    self.update_weekly_count_to_limit(tab)
                     success = False
                     failure_reason = 'limit'
                     return False
@@ -676,14 +689,54 @@ class XKW:
             if not success:
                 if failure_reason == 'limit':
                     self.handle_limit_failure(url, tab)
-                elif failure_reason == 'login_required':
-                    self.handle_limit_failure(url, tab)
                 else:
                     # 对于非账户上限的失败情况，执行其他处理逻辑
                     self.handle_other_failures(url, tab, failure_reason)
 
             # 返回下载结果
             return success
+
+    def update_weekly_count_to_limit(self, tab):
+        """
+        将当前账号的每周下载次数更新为350份。
+
+        参数:
+        - tab: 当前浏览器标签页。
+        """
+        try:
+            with self.account_index_lock:
+                current_account_nickname = self.get_nickname(tab)
+                if not current_account_nickname:
+                    logging.warning("无法获取当前账号昵称，无法更新下载计数。")
+                    if self.notifier:
+                        self.notifier.notify("无法获取当前账号昵称，无法更新下载计数。", is_error=True)
+                    return
+
+                with XKW.download_counts_lock:
+                    account_counts = XKW.download_counts.get(current_account_nickname, {})
+                    weekly_count_info = account_counts.get('weekly', {})
+
+                    today = datetime.today()
+                    week_number = today.strftime('%Y-%W')  # 年份和周数组合，周从星期一开始
+
+                    if weekly_count_info.get('week') != week_number:
+                        weekly_count_info = {'week': week_number, 'count': 350}
+                    else:
+                        weekly_count_info['count'] = 350
+
+                    account_counts['weekly'] = weekly_count_info
+                    XKW.download_counts[current_account_nickname] = account_counts
+
+                    with open(XKW.download_counts_file, 'w', encoding='utf-8') as f:
+                        json.dump(XKW.download_counts, f, ensure_ascii=False, indent=4)
+
+                    logging.info(f"已将账号 {current_account_nickname} 的每周下载次数更新为350份。")
+                    if self.notifier:
+                        self.notifier.notify(f"账号 {current_account_nickname} 的每周下载次数已更新为350份。")
+        except Exception as e:
+            logging.error(f"更新每周下载次数时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"更新每周下载次数时出错: {e}", is_error=True)
 
     def check_limit_message(self, tab):
         """
@@ -693,8 +746,8 @@ class XKW:
         - None：未检测到任何目标提示
         - "limit": 检测到下载上限提示（code=20603114）
         - "qr_code": 检测到需要扫码的提示（code=20603132）
-        - "skip": 检测到下载频繁提示（code=20603116），说明已经打开并下载了一个了，直接跳过即可
-        - "limit_reached": 检测到已达到350份上限（code=20602004），更新账号数据并切换账号
+        - "skip": 检测到下载频繁提示（code=20602004），说明已经打开并下载了一个了，直接跳过即可
+        - "limit_reached": 检测到已达到350份上限（code=20603116），更新账号数据并切换账号
         """
         try:
             logging.debug("检查特定的 iframe 元素")
@@ -718,10 +771,10 @@ class XKW:
                             if self.notifier:
                                 self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
                             return "qr_code"
-                        elif code == "20603116":
+                        elif code == "20602004":
                             logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
                             return "skip"
-                        elif code == "20602004":
+                        elif code == "20603116":
                             logging.info("检测到已达到350份上限，更新账号数据并切换账号")
                             return "limit_reached"
                         else:
@@ -743,23 +796,9 @@ class XKW:
         - tab: 当前浏览器标签页。
         """
         try:
-            with self.login_switch_lock:
-                current_time = time.time()
-                elapsed_time = current_time - self.last_account_switch_time
-                if elapsed_time < self.login_lock_duration:
-                    wait_time = self.login_lock_duration - elapsed_time
-                    logging.info(f"账号切换冷却中，等待 {wait_time:.1f} 秒后再切换账号。")
-                    time.sleep(wait_time)
-
-                # 更新切换时间
-                self.last_account_switch_time = time.time()
-
-                # 禁用实例，并切换到其他实例进行下载
-                self.switch_browser_and_retry(url)
-
-                # 尝试切换到下一个账号
-                self.is_handling_login = True
-                self.handle_login_status(tab)
+            self.manager.disable_xkw_instance(self)
+            self.switch_browser_and_retry(url)
+            self.handle_login_status(tab)
 
         except Exception as e:
             logging.error(f"处理账户下载上限失败时发生错误: {e}", exc_info=True)
@@ -1060,84 +1099,94 @@ class XKW:
 
     def handle_login_status(self, tab):
         try:
-            with self.login_switch_lock:
-                if self.is_handling_login:
-                    logging.info(f"实例 {self.id} 已在处理登录/切换账号，跳过当前 handle_login_status 调用。")
+            with self.handle_login_lock:
+                current_time = time.time()
+                if current_time < self.login_locked_until:
+                    remaining = self.login_locked_until - current_time
+                    logging.info(f"登录已被锁定，等待 {remaining / 60:.2f} 分钟后再尝试登录。")
                     return
-                self.manager.disable_xkw_instance(self)
-                logging.info("已禁用当前实例开始登录账号")
-                # 通过 get_nickname 识别当前账号
-                current_nickname = self.get_nickname(tab)
-                logging.info(f"当前账号昵称: {current_nickname}")
 
-                if current_nickname:
-                    # 找到当前账号在账号列表中的索引
-                    for index, account in enumerate(self.accounts):
-                        if account.get('nickname') == current_nickname:
-                            self.current_account_index = index
-                            logging.info(f"当前账号索引已设置为 {self.current_account_index}")
-                            break
+                # 设置锁定时间为当前时间 + 10分钟
+                self.login_locked_until = current_time + 600  # 600秒 = 10分钟
+                logging.debug(f"设置登录锁定，10分钟后解除。")
+
+                # 执行登录逻辑（在锁内进行，确保只有一个线程执行登录）
+                try:
+                    # 通过 get_nickname 识别当前账号
+                    current_nickname = self.get_nickname(tab)
+                    logging.info(f"当前账号昵称: {current_nickname}")
+
+                    if current_nickname:
+                        # 找到当前账号在账号列表中的索引
+                        for index, account in enumerate(self.accounts):
+                            if account.get('nickname') == current_nickname:
+                                self.current_account_index = index
+                                logging.info(f"当前账号索引已设置为 {self.current_account_index}")
+                                break
+                        else:
+                            logging.warning(f"当前昵称 {current_nickname} 不在账号列表中，开始轮询下一个账号。")
                     else:
-                        logging.warning(f"当前昵称 {current_nickname} 不在账号列表中，开始轮询下一个账号。")
-                else:
-                    logging.warning("无法识别当前账号昵称，开始轮询下一个账号。")
+                        logging.warning("无法识别当前账号昵称，开始轮询下一个账号。")
 
-                if self.is_logged_in(tab):
-                    logging.info('已登录，执行退出并切换账号。')
-                    self.logout(tab)
-                else:
-                    logging.info('未登录，开始尝试登录。')
-
-                self.is_handling_login = True
-
-                max_retries = len(self.accounts)
-                retries = 0
-                failed_accounts = []
-
-                while retries < max_retries:
-                    self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-                    current_account = self.accounts[self.current_account_index]
-                    username = current_account['username']
-                    nickname = current_account.get('nickname', username)
-                    logging.info(f'尝试登录账号：{nickname} ({username})')
-
-                    if self.login(tab):
-                        logging.info(
-                            f'账号 {nickname} ({username}) 登录成功。当前账号索引: {self.current_account_index}')
-                        if self.notifier:
-                            self.notifier.notify(f"账号 {nickname} ({username}) 登录成功,并释放了该实例。")
-                        self.is_handling_login = False
-                        self.manager.enable_xkw_instance(self)
-                        return
+                    if self.is_logged_in(tab):
+                        logging.info('已登录，执行退出并切换账号。')
+                        self.logout(tab)
                     else:
-                        logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
-                        if self.notifier:
-                            self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
-                        failed_accounts.append(nickname)
-                        retries += 1
+                        logging.info('未登录，开始尝试登录。')
 
-                logging.error('所有可用账号均无法登录，禁用实例并通知管理员。')
-                self.is_active = False
-                if self.notifier:
-                    failed_accounts_str = ', '.join(failed_accounts)
-                    self.notifier.notify(
-                        f"所有可用账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
-                        is_error=True
-                    )
+                    max_retries = len(self.accounts)
+                    retries = 0
+                    failed_accounts = []
 
-        except Exception as e:
-            logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
-            if self.manager:
-                self.manager.disable_xkw_instance(self)
-            if self.notifier:
-                import traceback
-                error_trace = traceback.format_exc()
-                self.notifier.notify(
-                    f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
-                    is_error=True
-                )
+                    while retries < max_retries:
+                        self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
+                        current_account = self.accounts[self.current_account_index]
+                        username = current_account['username']
+                        nickname = current_account.get('nickname', username)
+                        logging.info(f'尝试登录账号：{nickname} ({username})')
+
+                        if self.login(tab):
+                            logging.info(
+                                f'账号 {nickname} ({username}) 登录成功。当前账号索引: {self.current_account_index}')
+                            if self.notifier:
+                                self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
+                            self.manager.enable_xkw_instance(self)
+                            return
+                        else:
+                            logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
+                            if self.notifier:
+                                self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
+                            failed_accounts.append(nickname)
+                            retries += 1
+
+                    # 如果所有账号均无法登录，禁用实例并通知管理员
+                    logging.error('所有可用账号均无法登录，禁用实例并通知管理员。')
+                    self.manager.disable_xkw_instance(self)
+                    if self.notifier:
+                        failed_accounts_str = ', '.join(failed_accounts)
+                        self.notifier.notify(
+                            f"所有可用账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
+                            is_error=True
+                        )
+
+                    # 登录失败后立即解锁，允许其他线程尝试登录
+                    self.login_locked_until = current_time  # 解锁
+
+                except Exception as e:
+                    logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
+                    if self.manager:
+                        self.manager.disable_xkw_instance(self)
+                    if self.notifier:
+                        error_trace = traceback.format_exc()
+                        self.notifier.notify(
+                            f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
+                            is_error=True
+                        )
+                    # 发生异常时也立即解锁，允许其他线程尝试登录
+                    self.login_locked_until = current_time  # 解锁
+
         finally:
-            self.is_handling_login = False
+            pass  # 无需显式解锁，因为锁在 with 语句中自动释放
 
     def logout(self, tab):
         """执行登出操作"""
@@ -1179,25 +1228,23 @@ class XKW:
         - False: 如果没有可用的实例，任务已被添加到 pending_tasks。
         """
         try:
-            with self.login_switch_lock:
-                available_xkw_instances = self.manager.get_available_xkw_instances(self)
-                if available_xkw_instances:
-                    xkw_instance = random.choice(available_xkw_instances)
-                    logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance.id}")
-                    if self.notifier:
-                        self.notifier.notify(f"切换到新的 XKW 实例 {xkw_instance.id} 进行下载。")
+            available_xkw_instances = self.manager.get_available_xkw_instances(self)
+            if available_xkw_instances:
+                xkw_instance = random.choice(available_xkw_instances)
+                logging.info(f"切换到新的 XKW 实例进行下载: {xkw_instance.id}")
+                if self.notifier:
+                    self.notifier.notify(f"切换到新的 XKW 实例 {xkw_instance.id} 进行下载。")
 
-                    # 将任务分配给选中的实例
-                    xkw_instance.add_task(url)
-                    logging.info(f"已将 URL 添加到 XKW 实例 {xkw_instance.id} 的任务队列: {url}")
-                    return True
-                else:
-                    logging.warning("没有可用的 XKW 实例进行重试。将任务添加到 pending_tasks 队列。")
-                    if self.notifier:
-                        self.notifier.notify(f"没有可用的实例可切换，任务已添加到 pending_tasks 队列：{url}",
-                                             is_error=True)
-                    self.manager.enqueue_pending_task(url)
-                    return False
+                # 将任务分配给选中的实例
+                xkw_instance.add_task(url)
+                logging.info(f"已将 URL 添加到 XKW 实例 {xkw_instance.id} 的任务队列: {url}")
+                return True
+            else:
+                logging.warning("没有可用的 XKW 实例进行重试。将任务添加到 pending_tasks 队列。")
+                if self.notifier:
+                    self.notifier.notify(f"没有可用的实例可切换，任务已添加到 pending_tasks 队列：{url}", is_error=True)
+                self.manager.enqueue_pending_task(url)
+                return False
         except Exception as e:
             logging.error(f"切换浏览器实例时出错: {e}", exc_info=True)
             if self.notifier:
@@ -1352,7 +1399,6 @@ class AutoDownloadManager:
         - uploader: 上传器实例。
         - notifier_config: 通知器的配置。
         """
-        self.account_switch_lock = threading.RLock()
         self.notifier = None
         if notifier_config:
             try:
@@ -1384,6 +1430,9 @@ class AutoDownloadManager:
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
+            {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
+            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能26'},
+
         ]
 
         accounts_xkw2 = [
@@ -1394,6 +1443,7 @@ class AutoDownloadManager:
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
+            {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表

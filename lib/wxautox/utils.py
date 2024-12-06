@@ -16,6 +16,7 @@ import time
 import os
 import re
 
+ORIVERSION = "3.9.8.15"
 VERSION = "3.9.11.17"
 
 def set_cursor_pos(x, y):
@@ -111,6 +112,65 @@ try:
 except:
     pass
 
+def FindPid(process_name):
+    procs = psutil.process_iter(['pid', 'name'])
+    for proc in procs:
+        if process_name in proc.info['name']:
+            return proc.info['pid']
+
+def transver(ver):
+    vers = ver.split('.')
+    res = '6' + vers[0]
+    for v in vers[1:]:
+        res += hex(int(v))[2:].rjust(2, '0')
+    return int(res, 16)
+
+def Mver(pid):
+    exepath = psutil.Process(pid).exe()
+    if GetVersionByPath(exepath) != ORIVERSION:
+        Warning(f"该修复方法仅适用于版本号为{ORIVERSION}的微信！")
+        return
+    if not uia.Control(ClassName='WeChatLoginWndForPC', searchDepth=1).Exists(maxSearchSeconds=2):
+        Warning("请先打开微信启动页面再次尝试运行该方法！")
+        return
+    path = os.path.join(os.path.dirname(__file__), 'a.dll')
+    dll = ctypes.WinDLL(path)
+    dll.GetDllBaseAddress.argtypes = [ctypes.c_uint, ctypes.c_wchar_p]
+    dll.GetDllBaseAddress.restype = ctypes.c_void_p
+    dll.WriteMemory.argtypes = [ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong]
+    dll.WriteMemory.restype = ctypes.c_bool
+    dll.GetMemory.argtypes = [ctypes.c_ulong, ctypes.c_void_p]
+    dll.GetMemory.restype = ctypes.c_ulong
+    mname = 'WeChatWin.dll'
+    tar = transver(VERSION)
+    base_address = dll.GetDllBaseAddress(pid, mname)
+    address = base_address + 64761648
+    if dll.GetMemory(pid, address) != tar:
+        dll.WriteMemory(pid, address, tar)
+    handle = ctypes.c_void_p(dll._handle)
+    ctypes.windll.kernel32.FreeLibrary(handle)
+
+def FixVersionError():
+    """修复版本低无法登录的问题"""
+    pid = FindPid('WeChat.exe')
+    if pid:
+        Mver(pid)
+        return
+    else:
+        try:
+            registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Tencent\WeChat", 0, winreg.KEY_READ)
+            path, _ = winreg.QueryValueEx(registry_key, "InstallPath")
+            winreg.CloseKey(registry_key)
+            wxpath = os.path.join(path, "WeChat.exe")
+            if os.path.exists(wxpath):
+                os.system(f'start "" "{wxpath}"')
+                time.sleep(1.5)
+                FixVersionError()
+            else:
+                raise Exception('nof found')
+        except WindowsError:
+            Warning("未找到微信安装路径，请先打开微信启动页面再次尝试运行该方法！")
+
 def GetAllControlList(ele):
     def findall(ele, n=0, text=[]):
         if ele.Name:
@@ -182,6 +242,109 @@ def PasteFile(folder):
         finally:
             win32clipboard.CloseClipboard()
 
+def parse_msg(control: uia.Control):
+    if control.ControlTypeName == 'PaneControl':
+        return None
+    
+    info = {}
+    # Text
+    if control.Name == '':
+        info['type'] = 'Text'
+        info['sender'] = control.ButtonControl().Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(6).Name
+
+    # Image
+    elif control.Name == '[图片]':
+        info['type'] = 'Image'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = ""
+
+    # Video
+    elif control.Name == '[视频]':
+        info['type'] = 'Video'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = ""
+
+    # Location
+    elif control.Name == '[位置]':
+        info['type'] = 'Location'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(7, 1, control_type='TextControl').Name + control.GetProgenyControl(7, control_type='TextControl').Name
+
+    # File
+    elif control.Name == '[文件]':
+        info['type'] = 'File'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(8, control_type='TextControl').Name
+
+    # Voice
+    elif control.Name.startswith('[语音]'):
+        info['type'] = 'Voice'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.Name
+
+    # Sticker
+    elif control.Name == '[动画表情]':
+        info['type'] = 'Sticker'
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = ""
+
+    # VideoChannel
+    elif control.Name == '[视频号]':
+        info['type'] = 'VideoChannel'
+        info['source'] = control.GetProgenyControl(8, -1, control_type='TextControl').Name
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.Name
+
+    # Link
+    elif control.Name == '链接':
+        info['type'] = 'Link'
+        info['describe'] = control.GetProgenyControl(7, control_type='TextControl').Name
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(6, control_type='TextControl').Name
+
+    # Music
+    elif control.Name == '[音乐]':
+        info['type'] = 'Music'
+        info['describe'] = control.GetProgenyControl(8, -1, control_type='TextControl').Name
+        info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+        info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+        info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+        info['content'] = control.GetProgenyControl(8, control_type='TextControl').Name
+
+    else:
+        # MiniProgram
+        tempcontrol = control.GetProgenyControl(7, -1, control_type='TextControl')
+        if tempcontrol and tempcontrol.Name == '小程序':
+            info['type'] = 'MiniProgram'
+            info['source'] = control.GetProgenyControl(7, control_type='TextControl').Name
+            info['sender'] = control.GetProgenyControl(2, control_type='ButtonControl').Name
+            info['sender_remark'] = control.GetProgenyControl(4, control_type='TextControl').Name
+            info['time'] = control.GetProgenyControl(4, 1, control_type='TextControl').Name
+            info['content'] = control.Name
+    
+        # Advertisement
+
+    return info
+
 def GetText(HWND):
     length = win32gui.SendMessage(HWND, win32con.WM_GETTEXTLENGTH)*2
     buffer = win32gui.PyMakeBuffer(length)
@@ -227,9 +390,17 @@ def FindWinEx(HWND, classname=None, name=None) -> list:
 
 def ClipboardFormats(unit=0, *units):
     units = list(units)
-    win32clipboard.OpenClipboard()
-    u = win32clipboard.EnumClipboardFormats(unit)
-    win32clipboard.CloseClipboard()
+    retry_count = 5
+    while retry_count > 0:
+        try:
+            win32clipboard.OpenClipboard()
+            try:
+                u = win32clipboard.EnumClipboardFormats(unit)
+            finally:
+                win32clipboard.CloseClipboard()
+            break
+        except Exception as e:
+            retry_count -= 1
     units.append(u)
     if u:
         units = ClipboardFormats(u, *units)
@@ -237,18 +408,40 @@ def ClipboardFormats(unit=0, *units):
 
 def ReadClipboardData():
     Dict = {}
-    for i in ClipboardFormats():
+    formats = ClipboardFormats()
+
+    for i in formats:
         if i == 0:
             continue
-        win32clipboard.OpenClipboard()
-        try:
-            filenames = win32clipboard.GetClipboardData(i)
-            win32clipboard.CloseClipboard()
-        except:
-            win32clipboard.CloseClipboard()
-            raise ValueError
-        Dict[str(i)] = filenames
+
+        retry_count = 5
+        while retry_count > 0:
+            try:
+                win32clipboard.OpenClipboard()
+                try:
+                    data = win32clipboard.GetClipboardData(i)
+                    Dict[str(i)] = data
+                finally:
+                    win32clipboard.CloseClipboard()
+                break
+            except Exception as e:
+                retry_count -= 1
     return Dict
+
+# def ReadClipboardData():
+#     Dict = {}
+#     for i in ClipboardFormats():
+#         if i == 0:
+#             continue
+#         win32clipboard.OpenClipboard()
+#         try:
+#             filenames = win32clipboard.GetClipboardData(i)
+#             win32clipboard.CloseClipboard()
+#         except:
+#             win32clipboard.CloseClipboard()
+#             raise ValueError
+#         Dict[str(i)] = filenames
+#     return Dict
 
 def ParseWeChatTime(time_str):
     """
@@ -291,6 +484,20 @@ def ParseWeChatTime(time_str):
     if match:
         year, month, day, hour, minute = match.groups()
         return datetime(*[int(i) for i in [year, month, day, hour, minute]]).strftime('%Y-%m-%d %H:%M:%S')
+    
+    match = re.match(r'^(\d{2})-(\d{2}) (上午|下午) (\d{1,2}):(\d{2})$', time_str)
+    if match:
+        month, day, period, hour, minute = match.groups()
+        current_year = datetime.now().year
+        hour = int(hour)
+        if period == '下午' and hour != 12:
+            hour += 12
+        elif period == '上午' and hour == 12:
+            hour = 0
+        return datetime(current_year, int(month), int(day), hour, int(minute)).strftime('%Y-%m-%d %H:%M:%S')
+    
+    # all match failed
+    return time_str
 
 
 def RollIntoView(win, ele, equal=False):
@@ -310,7 +517,7 @@ def RollIntoView(win, ele, equal=False):
         elif ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom:
             # 下滚动
             while True:
-                win.WheelDown(wheelTimes=3)
+                win.WheelDown(wheelTimes=1)
                 time.sleep(0.1)
                 if equal:
                     if ele.BoundingRectangle.ycenter() <= win.BoundingRectangle.bottom:
