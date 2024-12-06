@@ -1408,10 +1408,12 @@ class AutoDownloadManager:
         # 创建两个 ChromiumOptions，指定不同的端口和用户数据路径
         co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
+        co3 = ChromiumOptions().set_local_port(9444).set_user_data_path('data3')
 
         # 启动两个 Chromium 浏览器实例
         browser1 = Chromium(co1)
         browser2 = Chromium(co2)
+        browser3 = Chromium(co3)
 
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         download_dir = DOWNLOAD_DIR
@@ -1424,9 +1426,7 @@ class AutoDownloadManager:
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
-            {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
-            {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
-            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能26'},
+
 
         ]
 
@@ -1437,8 +1437,16 @@ class AutoDownloadManager:
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
             {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
+
+        ]
+
+        accounts_xkw3 = [
+            {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
+            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能26'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
             {'username': '15930596893', 'password': '428199Li@', 'nickname': '全能18'},
+            {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
+
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
@@ -1446,6 +1454,8 @@ class AutoDownloadManager:
                    co=co1, manager=self, id='xkw1', accounts=accounts_xkw1)
         xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co2, manager=self, id='xkw2', accounts=accounts_xkw2)
+        xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co3, manager=self, id='xkw3', accounts=accounts_xkw3)
 
         self.xkw_instances = [xkw1, xkw2]  # 所有的 XKW 实例
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
