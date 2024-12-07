@@ -761,6 +761,9 @@ class XKW:
                         if code == "20603114":
                             logging.info("检测到下载上限提示")
                             return "limit"
+                        if code == "20603003":
+                            logging.info("检测到上限提示")
+                            return "limit"
                         elif code == "20603004":
                             logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
                             if self.notifier:
