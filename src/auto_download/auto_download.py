@@ -742,7 +742,7 @@ class XKW:
         - "limit": 检测到下载上限提示（code=20603114）
         - "qr_code": 检测到需要扫码的提示（code=20603004）
         - "skip": 检测到下载频繁提示（code=20602004），说明已经打开并下载了一个了，直接跳过即可
-        - "limit_reached": 检测到已达到350份上限（code=20603116），更新账号数据并切换账号
+        - "limit_reached": 检测到已达到350份上限（code=20603003），更新账号数据并切换账号
         """
         try:
             logging.debug("检查特定的 iframe 元素")
@@ -772,7 +772,7 @@ class XKW:
                         elif code == "20602004":
                             logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
                             return "skip"
-                        elif code == "20603116":
+                        elif code == "20603003":
                             logging.info("检测到已达到350份上限，更新账号数据并切换账号")
                             return "limit_reached"
                         else:
@@ -1470,6 +1470,7 @@ class AutoDownloadManager:
             {'username': '19536946517', 'password': '428199Li@', 'nickname': '全能06X'},
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
+
         ]
 
         accounts_xkw3 = [
