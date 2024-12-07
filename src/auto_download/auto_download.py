@@ -761,7 +761,7 @@ class XKW:
                         if code == "20603114":
                             logging.info("检测到下载上限提示")
                             return "limit"
-                        if code == "20603003":
+                        elif code == "20603003":
                             logging.info("检测到上限提示")
                             return "limit"
                         elif code == "20603004":
@@ -775,6 +775,9 @@ class XKW:
                         elif code == "20603003":
                             logging.info("检测到已达到350份上限，更新账号数据并切换账号")
                             return "limit_reached"
+                        elif code == "20600001":
+                            logging.info("到达 60份上限")
+                            return "limit"
                         else:
                             logging.info(f"code 参数不在目标列表中: {code}")
                     else:
