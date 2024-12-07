@@ -1108,9 +1108,7 @@ class XKW:
                 self.login_locked_until = current_time + 600  # 600秒 = 10分钟
                 logging.debug(f"设置登录锁定，10分钟后解除。")
 
-                # 执行登录逻辑（在锁内进行，确保只有一个线程执行登录）
                 try:
-                    # 通过 get_nickname 识别当前账号
                     current_nickname = self.get_nickname(tab)
                     logging.info(f"当前账号昵称: {current_nickname}")
 
@@ -1136,11 +1134,47 @@ class XKW:
                     retries = 0
                     failed_accounts = []
 
+                    # 修改开始：在尝试登录前检查账号是否达到上限
+                    def is_account_reached_limit(nickname: str) -> bool:
+                        today = datetime.today()
+                        date_str = today.strftime('%Y-%m-%d')
+                        week_number = today.strftime('%Y-%W')
+
+                        with XKW.download_counts_lock:
+                            account_counts = XKW.download_counts.get(nickname, {})
+                            daily_count_info = account_counts.get('daily', {})
+                            weekly_count_info = account_counts.get('weekly', {})
+
+                            if daily_count_info.get('date') != date_str:
+                                daily_count = 0
+                            else:
+                                daily_count = daily_count_info.get('count', 0)
+
+                            if weekly_count_info.get('week') != week_number:
+                                weekly_count = 0
+                            else:
+                                weekly_count = weekly_count_info.get('count', 0)
+
+                        # 如果每日≥51次或每周≥350次则视为达上限
+                        if daily_count >= 51 or weekly_count >= 350:
+                            return True
+                        return False
+                    # 修改结束
+
                     while retries < max_retries:
                         self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
                         current_account = self.accounts[self.current_account_index]
                         username = current_account['username']
                         nickname = current_account.get('nickname', username)
+
+                        # 修改开始：检查账号是否达上限
+                        if is_account_reached_limit(nickname):
+                            logging.info(f'账号 {nickname}({username}) 已达上限，跳过尝试。')
+                            failed_accounts.append(nickname + "(已达上限)")
+                            retries += 1
+                            continue
+                        # 修改结束
+
                         logging.info(f'尝试登录账号：{nickname} ({username})')
 
                         if self.login(tab):
@@ -1157,17 +1191,17 @@ class XKW:
                             failed_accounts.append(nickname)
                             retries += 1
 
-                    # 如果所有账号均无法登录，禁用实例并通知管理员
-                    logging.error('所有可用账号均无法登录，禁用实例并通知管理员。')
+                    # 如果运行到这里，说明所有账号都失败了（可能全部达上限或全部无法登录）
+                    logging.error('所有可用账号均无法登录或已达上限，禁用实例并通知管理员。')
                     self.manager.disable_xkw_instance(self)
                     if self.notifier:
                         failed_accounts_str = ', '.join(failed_accounts)
                         self.notifier.notify(
-                            f"所有可用账号均无法登录，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或登录流程。",
+                            f"所有可用账号均无法登录或已达上限，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或下载限制。",
                             is_error=True
                         )
 
-                    # 登录失败后立即解锁，允许其他线程尝试登录
+                    # 登录失败或全部账号达上限后立即解锁，以便下次尝试
                     self.login_locked_until = current_time  # 解锁
 
                 except Exception as e:
@@ -1182,9 +1216,8 @@ class XKW:
                         )
                     # 发生异常时也立即解锁，允许其他线程尝试登录
                     self.login_locked_until = current_time  # 解锁
-
         finally:
-            pass  # 无需显式解锁，因为锁在 with 语句中自动释放
+            pass
 
     def logout(self, tab):
         """执行登出操作"""
