@@ -740,7 +740,7 @@ class XKW:
         返回值：
         - None：未检测到任何目标提示
         - "limit": 检测到下载上限提示（code=20603114）
-        - "qr_code": 检测到需要扫码的提示（code=20603132）
+        - "qr_code": 检测到需要扫码的提示（code=20603004）
         - "skip": 检测到下载频繁提示（code=20602004），说明已经打开并下载了一个了，直接跳过即可
         - "limit_reached": 检测到已达到350份上限（code=20603116），更新账号数据并切换账号
         """
@@ -761,7 +761,7 @@ class XKW:
                         if code == "20603114":
                             logging.info("检测到下载上限提示")
                             return "limit"
-                        elif code == "20603132":
+                        elif code == "20603004":
                             logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
                             if self.notifier:
                                 self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
@@ -1433,8 +1433,6 @@ class AutoDownloadManager:
             {'username': '13143019361', 'password': '428199Li@', 'nickname': '全能01X'},
             {'username': '19536946517', 'password': '428199Li@', 'nickname': '全能06X'},
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
-            {'username': '15302161390', 'password': '428199Li@', 'nickname': '全能05X'},
-            {'username': '17726043780', 'password': '428199Li@', 'nickname': '全能07X'},
         ]
 
         accounts_xkw3 = [
