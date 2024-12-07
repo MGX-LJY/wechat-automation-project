@@ -1465,6 +1465,7 @@ class AutoDownloadManager:
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
+            {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
         ]
 
         accounts_xkw2 = [
@@ -1480,7 +1481,7 @@ class AutoDownloadManager:
             {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
             {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
-            {'username': '15130516893', 'password': '428199Li@', 'nickname': '全能18'},
+            {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
