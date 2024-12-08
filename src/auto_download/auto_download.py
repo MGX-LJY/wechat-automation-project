@@ -570,19 +570,32 @@ class XKW:
     def listener(self, tab, download, url, title, soft_id):
         """
         监听下载过程，处理下载链接的获取和确认按钮的点击。
+
+        参数:
+        - tab: 当前浏览器标签页。
+        - download: 下载按钮元素。
+        - url: 要下载的URL。
+        - title: 下载项的标题。
+        - soft_id: 下载项的软ID。
+
+        返回:
+        - True: 如果下载成功或任务已妥善处理。
+        - False: 如果下载失败且需要进一步处理。
         """
         try:
             logging.info(f"开始下载 {url}")
-            tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
+            # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
             time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
             self.click_confirm_button(tab)
 
+            # 设置总的等待时间和间隔
             total_wait_time = 0
-            max_wait_time = 180
-            interval = 5
+            max_wait_time = 180  # 最大等待时间（秒）
+            interval = 5  # 每次监听的时间间隔（秒）
 
+            # 开始监听循环
             while total_wait_time < max_wait_time:
                 start_time = time.time()
 
@@ -607,6 +620,7 @@ class XKW:
                     return True
 
                 # 监听下载请求
+                tab.listen.start(True, method="GET")
                 for item in tab.listen.steps(timeout=interval):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
