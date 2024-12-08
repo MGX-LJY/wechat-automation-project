@@ -1222,10 +1222,10 @@ class XKW:
         finally:
             pass
 
-    def logout(self, tab):
+    def logout(self, tab, url):
         """执行登出操作"""
         try:
-            tab.get('https://www.zxxk.com')
+            tab.get(url)
             time.sleep(random.uniform(1, 2))
             my_element = tab.ele('text:我的', timeout=10)
             if my_element:
