@@ -570,37 +570,43 @@ class XKW:
     def listener(self, tab, download, url, title, soft_id):
         """
         监听下载过程，处理下载链接的获取和确认按钮的点击。
-
-        参数:
-        - tab: 当前浏览器标签页。
-        - download: 下载按钮元素。
-        - url: 要下载的URL。
-        - title: 下载项的标题。
-        - soft_id: 下载项的软ID。
-
-        返回:
-        - True: 如果下载成功或任务已妥善处理。
-        - False: 如果下载失败且需要进一步处理。
         """
-        success = False
-        failure_reason = None  # 用于跟踪失败原因
         try:
             logging.info(f"开始下载 {url}")
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
-            # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
             time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
             self.click_confirm_button(tab)
 
-            # 设置总的等待时间和间隔
             total_wait_time = 0
-            max_wait_time = 180  # 最大等待时间（秒）
-            interval = 5  # 每次监听的时间间隔（秒）
+            max_wait_time = 180
+            interval = 5
 
-            # 开始监听循环
             while total_wait_time < max_wait_time:
                 start_time = time.time()
+
+                # 在等待下载链接期间先检查是否有上限等提示
+                result = self.check_limit_message(tab)
+                if result == "limit" or result == "limit_reached":
+                    # 当检测到下载上限时，不再继续等待
+                    logging.warning("检测到下载上限，直接跳过该链接并切换账号/实例。")
+                    # 重置标签页
+                    self.reset_tab(tab)
+                    self.tabs.put(tab)
+                    # 切换实例并重新尝试下载
+                    self.switch_browser_and_retry(url)
+                    # 尝试重新登录
+                    self.handle_login_status(tab)
+                    return False
+                elif result == "skip":
+                    # 检测到下载频繁提示，已打开并下载了一个了，直接跳过即可
+                    logging.info("下载频繁提示，跳过该链接。")
+                    self.reset_tab(tab)
+                    self.tabs.put(tab)
+                    return True
+
+                # 监听下载请求
                 for item in tab.listen.steps(timeout=interval):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
@@ -610,86 +616,53 @@ class XKW:
                         # 记录账号下载次数
                         self.account_count(url, tab)
 
-                        # 匹配下载的文件
+                        # 匹配下载文件
                         file_path = self.match_downloaded_file(title)
                         if not file_path:
                             logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
                             if self.notifier:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                            return True  # 返回 True，表示任务处理完毕
+                            self.reset_tab(tab)
+                            self.tabs.put(tab)
+                            return True
 
-                        # 获取当前账号的昵称
                         current_account = self.accounts[self.current_account_index]
                         nickname = current_account.get('nickname', current_account['username'])
 
-                        # 处理上传任务
+                        # 上传逻辑
                         if self.uploader:
                             try:
                                 self.uploader.add_upload_task(file_path, soft_id)
-                                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                                logging.info(f"已添加文件 {file_path} 和 soft_id {soft_id} 到上传队列。")
                             except Exception as e:
                                 logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
                                 if self.notifier:
                                     self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
                         else:
-                            logging.warning("Uploader 未设置，无法传递上传任务。")
+                            logging.warning("Uploader 未设置，无法上传。")
 
-                        # 重置标签页
                         self.reset_tab(tab)
-                        success = True
-                        return True  # 下载成功，返回 True
+                        self.tabs.put(tab)
+                        return True
 
-                result = self.check_limit_message(tab)
-                if result == "limit":
-                    logging.warning("账户下载上限，直接跳过该链接。")
-                    success = False
-                    failure_reason = 'limit'
-                    return False
-                elif result == "skip":
-                    logging.info("下载频繁，已打开并下载一个了，直接跳过即可")
-                    success = True
-                    return True
-                elif result == "limit_reached":
-                    logging.info("已达到350份上限，更新账号数据并切换账号")
-                    self.update_weekly_count_to_limit(tab)
-                    success = False
-                    failure_reason = 'limit'
-                    return False
-
-                # 计算本次循环消耗的时间
                 elapsed = time.time() - start_time
                 total_wait_time += elapsed
-                # 尝试再次点击确认按钮，但如果未找到，不报错，直接继续
                 self.click_confirm_button(tab)
 
-            # 超过最大等待时间，下载失败
-            logging.warning(f"在 {max_wait_time} 秒内未能捕获到下载链接，下载失败: {url}")
-            # 检查账号是否登录
-            if not self.is_logged_in(tab):
-                logging.warning("账号未登录，尝试重新登录。")
-                if self.notifier:
-                    self.notifier.notify("账号未登录，尝试重新登录。")
-                self.handle_login_status(tab)
-            success = False
-            failure_reason = 'timeout'
-            return False  # 返回 False，表示任务处理失败
+            # 超过最大等待时间
+            logging.warning(f"在 {max_wait_time} 秒内未能获取下载链接，下载失败: {url}")
+            self.switch_browser_and_retry(url)
+            return False
 
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-            failure_reason = 'exception'
 
-        finally:
-            if not success:
-                if failure_reason == 'limit':
-                    self.handle_limit_failure(url, tab)
-                else:
-                    # 对于非账户上限的失败情况，执行其他处理逻辑
-                    self.handle_other_failures(url, tab, failure_reason)
-
-            # 返回下载结果
-            return success
+            self.reset_tab(tab)
+            self.tabs.put(tab)
+            self.switch_browser_and_retry(url)
+            return False
 
     def update_weekly_count_to_limit(self, tab):
         """
@@ -769,6 +742,9 @@ class XKW:
                             if self.notifier:
                                 self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
                             return "limit"
+                        elif code == "20604103":
+                            logging.info("检测到需要手机号验证，切换账号")
+                            return "limit"
                         elif code == "20602004":
                             logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
                             return "skip"
@@ -787,24 +763,6 @@ class XKW:
         except Exception as e:
             logging.error(f"出现异常 - {e}")
         return None
-
-    def handle_limit_failure(self, url, tab):
-        """
-        处理账户达到下载上限的失败情况，切换账户进行重试或禁用实例。
-
-        参数:
-        - url: 下载的URL。
-        - tab: 当前浏览器标签页。
-        """
-        try:
-            self.manager.disable_xkw_instance(self)
-            self.switch_browser_and_retry(url)
-            self.handle_login_status(tab)
-
-        except Exception as e:
-            logging.error(f"处理账户下载上限失败时发生错误: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"处理账户下载上限失败时发生错误: {e}", is_error=True)
 
     def handle_other_failures(self, url, tab, failure_reason):
         """
