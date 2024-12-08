@@ -744,6 +744,8 @@ class XKW:
                             return "limit"
                         elif code == "20604103":
                             logging.info("检测到需要手机号验证，切换账号")
+                            if self.notifier:
+                                self.notifier.notify("检测到需要手机号验证，请管理员切换账号。")
                             return "limit"
                         elif code == "20602004":
                             logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
