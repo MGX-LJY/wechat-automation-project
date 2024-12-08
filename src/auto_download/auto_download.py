@@ -1512,25 +1512,27 @@ class AutoDownloadManager:
             {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02'},
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
-            {'username': '19536946517', 'password': '428199Li@', 'nickname': '全能06X'},
-            {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
+            {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
+            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
         ]
 
         accounts_xkw2 = [
+            {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
+            {'username': '13920946017', 'password': '428199Li@', 'nickname': '全能11X'},
             {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
-            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
         ]
 
         accounts_xkw3 = [
+            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
             {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
             {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
             {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
             # {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
-            {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
+            # {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
             # {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能23'},
         ]
 
