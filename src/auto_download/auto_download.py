@@ -614,6 +614,7 @@ class XKW:
                     self.reset_tab(tab)
                     self.tabs.put(tab)
                     # 切换实例并重新尝试下载
+                    self.manager.disable_xkw_instance(self)
                     self.switch_browser_and_retry(url)
                     # 尝试重新登录
                     self.handle_login_status(tab)
