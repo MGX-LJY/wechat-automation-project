@@ -523,6 +523,12 @@ class XKW:
         attempt = 0
         while attempt < max_attempts:
             try:
+                if attempt > 0:
+                    # 在第2次（attempt=1）及以后尝试前先重新访问主页
+                    logging.debug("重试获取昵称，重新访问 https://www.zxxk.com")
+                    tab.get('https://www.zxxk.com')
+                    time.sleep(random.uniform(1, 2))  # 给页面足够的加载时间
+
                 # 找到“我的”元素
                 my_element = tab.ele('text:我的', timeout=10)
                 if not my_element:
@@ -726,10 +732,9 @@ class XKW:
 
         返回值：
         - None：未检测到任何目标提示
-        - "limit": 检测到下载上限提示（code=20603114）
-        - "qr_code": 检测到需要扫码的提示（code=20603004）
-        - "skip": 检测到下载频繁提示（code=20602004），说明已经打开并下载了一个了，直接跳过即可
-        - "limit_reached": 检测到已达到350份上限（code=20603003），更新账号数据并切换账号
+        - "limit": 检测到需要管理员干预的提示（上限、手机验证、扫码等）
+        - "skip": 检测到下载频繁提示（code=20602004），已打开并下载了一个了，直接跳过即可
+        - "limit_reached": 检测到已达到350份上限（code=20603003）
         """
         try:
             logging.debug("检查特定的 iframe 元素")
@@ -738,6 +743,11 @@ class XKW:
             iframes = iframe_pattern.findall(tab.html)
             if iframes:
                 logging.info(f"检测到 {len(iframes)} 个特定的 iframe 元素")
+
+                # 获取当前账号的昵称与手机号
+                nickname = self.get_nickname(tab)
+                username = self.get_username_by_nickname(nickname)
+
                 for iframe_src in iframes:
                     logging.info(f"获取 iframe 的 src: {iframe_src}")
                     # 提取 src 中的 code 参数
@@ -746,29 +756,53 @@ class XKW:
                         code = code_match.group(1)
                         logging.info(f"检测到 code 参数: {code}")
                         if code == "20603114":
+                            # 下载上限提示
                             logging.info("检测到下载上限提示")
+                            if self.notifier:
+                                self.notifier.notify(
+                                    f"检测到下载上限提示。当前账号昵称: {nickname}, 手机号: {username}",
+                                    is_error=True
+                                )
                             return "limit"
                         elif code == "20603003":
-                            logging.info("检测到上限提示")
-                            return "limit"
+                            # 已达到350份上限
+                            logging.info("检测到已达到350份上限")
+                            if self.notifier:
+                                self.notifier.notify(
+                                    f"账号 {nickname}({username}) 已达到350份下载上限。",
+                                    is_error=True
+                                )
+                            return "limit_reached"
                         elif code == "20603004":
+                            # 检测到需要扫码
                             logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
                             if self.notifier:
-                                self.notifier.notify("检测到需要扫码的提示，请管理员扫码并切换账号。")
+                                self.notifier.notify(
+                                    f"检测到需要扫码的提示，请管理员扫码并切换账号。当前账号昵称: {nickname}, 手机号: {username}",
+                                    is_error=True
+                                )
                             return "limit"
                         elif code == "20604103":
+                            # 需要手机号验证
                             logging.info("检测到需要手机号验证，切换账号")
                             if self.notifier:
-                                self.notifier.notify("检测到需要手机号验证，请管理员切换账号。")
+                                self.notifier.notify(
+                                    f"检测到需要手机号验证。当前账号昵称: {nickname}, 手机号: {username}",
+                                    is_error=True
+                                )
                             return "limit"
                         elif code == "20602004":
+                            # 检测到下载频繁提示
                             logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
                             return "skip"
-                        elif code == "20603003":
-                            logging.info("检测到已达到350份上限，更新账号数据并切换账号")
-                            return "limit_reached"
                         elif code == "20600001":
-                            logging.info("到达 60份上限")
+                            # 到达60份上限
+                            logging.info("到达60份上限")
+                            if self.notifier:
+                                self.notifier.notify(
+                                    f"检测到60份下载上限提示。当前账号昵称: {nickname}, 手机号: {username}",
+                                    is_error=True
+                                )
                             return "limit"
                         else:
                             logging.info(f"code 参数不在目标列表中: {code}")
