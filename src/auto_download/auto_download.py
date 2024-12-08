@@ -1495,7 +1495,6 @@ class AutoDownloadManager:
             disabled = []
             for xkw in self.active_xkw_instances[:]:  # 遍历活跃实例的副本
                 xkw.is_active = False
-                xkw.stop()  # 停止实例的运行线程
                 disabled.append(xkw.id)
             # 清空活跃实例列表
             self.active_xkw_instances.clear()
