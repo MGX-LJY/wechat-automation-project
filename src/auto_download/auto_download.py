@@ -1526,11 +1526,13 @@ class AutoDownloadManager:
         co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
         co3 = ChromiumOptions().set_local_port(9444).set_user_data_path('data3')
+        co4 = ChromiumOptions().set_local_port(9455).set_user_data_path('data4')
 
         # 启动两个 Chromium 浏览器实例
         browser1 = Chromium(co1)
         browser2 = Chromium(co2)
         browser3 = Chromium(co3)
+        browser4 = Chromium(co4)
 
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         download_dir = DOWNLOAD_DIR
@@ -1541,21 +1543,24 @@ class AutoDownloadManager:
             {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02'},
             {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
             {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
-            {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
-            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
         ]
 
         accounts_xkw2 = [
+            {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
+            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
             {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
             {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
+        ]
+
+        accounts_xkw3 = [
             {'username': '13920946017', 'password': '428199Li@', 'nickname': '全能11X'},
             {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
             {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
             {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
+            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
         ]
 
-        accounts_xkw3 = [
-            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
+        accounts_xkw4 = [
             {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
             {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
             {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
@@ -1563,7 +1568,7 @@ class AutoDownloadManager:
             # {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
             # {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
             # {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能23'},
-        ]
+            ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
         xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
@@ -1572,8 +1577,10 @@ class AutoDownloadManager:
                    co=co2, manager=self, id='xkw2', accounts=accounts_xkw2)
         xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co3, manager=self, id='xkw3', accounts=accounts_xkw3)
+        xkw4 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co3, manager=self, id='xkw4', accounts=accounts_xkw4)
 
-        self.xkw_instances = [xkw1, xkw2, xkw3]  # 所有的 XKW 实例
+        self.xkw_instances = [xkw1, xkw2, xkw3, xkw4]  # 所有的 XKW 实例
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
         self.xkw_lock = threading.RLock()
