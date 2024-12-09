@@ -502,7 +502,6 @@ class XKW:
             except Exception as e:
                 logging.error(f'账号 {nickname} ({username}) 登录过程中出现错误：{e}', exc_info=True)
                 retries += 1
-                self.handle_login_status(tab)
 
         # 如果重试次数用尽，发送通知并返回 False
         logging.error("所有登录尝试失败，无法登录。")
@@ -651,7 +650,6 @@ class XKW:
                     self.manager.disable_xkw_instance(self)
                     self.switch_browser_and_retry(url)
                     # 尝试重新登录
-                    self.handle_login_status(tab)
                     return False
                 elif result == "skip":
                     # 检测到下载频繁提示，已打开并下载了一个了，直接跳过即可
@@ -673,7 +671,6 @@ class XKW:
                 self.reset_tab(tab)
                 self.tabs.put(tab)
                 self.switch_browser_and_retry(url)
-                self.handle_login_status(tab)
                 return False
 
         except Exception as e:
@@ -953,8 +950,8 @@ class XKW:
                         if self.notifier:
                             self.notifier.notify(
                                 f"账号 {current_account_nickname} {limit_type}下载数量已达{limit_value}，切换账号。")
+                        self.manager.disable_xkw_instance(self)
                         self.switch_browser_and_retry(url)
-                        self.handle_login_status(tab)
         except Exception as e:
             logging.error(f"记录账号下载次数时出错: {e}", exc_info=True)
             if self.notifier:
