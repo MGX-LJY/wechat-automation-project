@@ -1578,7 +1578,7 @@ class AutoDownloadManager:
         xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co3, manager=self, id='xkw3', accounts=accounts_xkw3)
         xkw4 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                   co=co3, manager=self, id='xkw4', accounts=accounts_xkw4)
+                   co=co4, manager=self, id='xkw4', accounts=accounts_xkw4)
 
         self.xkw_instances = [xkw1, xkw2, xkw3, xkw4]  # 所有的 XKW 实例
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
