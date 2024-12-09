@@ -224,7 +224,7 @@ class XKW:
             processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
             processed_title = processed_title.strip().lower()
             processed_title = re.sub(r'[\-]+', ' ', processed_title)
-            logging.debug(f"[{self.id}]处理后的标题: {processed_title}")
+            processed_title = re.sub(r'\++', ' ', processed_title)
 
             # 定义初始相似度阈值
             similarity_threshold = 100  # 前90秒的阈值
@@ -258,7 +258,7 @@ class XKW:
                     processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', file_name)
                     processed_file_name = processed_file_name.strip().lower()
                     processed_file_name = re.sub(r'[\-]+', ' ', processed_file_name)
-                    logging.debug(f"[{self.id}]处理后的文件名: {processed_file_name}")
+                    processed_file_name = re.sub(r'\++', ' ', processed_file_name)
 
                     # 计算相似度
                     similarity = fuzz.partial_ratio(processed_title, processed_file_name)
