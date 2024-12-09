@@ -15,7 +15,7 @@ from typing import Tuple
 
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
-from rapidfuzz import fuzz
+from fuzzywuzzy import fuzz  # 确保已安装 fuzzywuzzy 库
 
 from src.notification.notifier import Notifier
 
@@ -215,20 +215,22 @@ class XKW:
             elapsed_time = 0
 
             # 预期的文件扩展名，可以根据需求调整
-            expected_extensions = ['.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z', '.doc', '.docx', '.ppt', '.pptx',
-                                   '.xls', '.xlsx', '.wps']
+            expected_extensions = [
+                '.pdf', '.mkv', '.mp4', '.zip', '.rar', '.7z',
+                '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.wps'
+            ]
 
             # 处理标题：保留中文、数字、空格、下划线、破折号、加号
-            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
+            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-+]', '', title)
             processed_title = processed_title.strip().lower()
-            processed_title = re.sub(r'[\-\+]+', ' ', processed_title)
+            processed_title = re.sub(r'[-+]+', ' ', processed_title)
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义初始相似度阈值
             similarity_threshold = 100  # 前90秒的阈值
 
             # 正则表达式模式，用于匹配带数字编号的文件名，例如：[123456]filename.pdf
-            numbered_file_pattern = re.compile(r'^\[\d+\]', re.IGNORECASE)
+            numbered_file_pattern = re.compile(r'^\[\d+]', re.IGNORECASE)
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
@@ -253,9 +255,9 @@ class XKW:
                         continue
 
                     # 处理文件名：保留中文、数字、空格、下划线、破折号、加号
-                    processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', file_name)
+                    processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-+]', '', file_name)
                     processed_file_name = processed_file_name.strip().lower()
-                    processed_file_name = re.sub(r'[\-\+]+', ' ', processed_file_name)
+                    processed_file_name = re.sub(r'[-+]+', ' ', processed_file_name)
                     logging.debug(f"处理后的文件名: {processed_file_name}")
 
                     # 计算相似度
@@ -596,6 +598,7 @@ class XKW:
         """
         try:
             logging.info(f"开始下载 {url}")
+            tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
             # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
@@ -610,30 +613,6 @@ class XKW:
             # 开始监听循环
             while total_wait_time < max_wait_time:
                 start_time = time.time()
-
-                # 在等待下载链接期间先检查是否有上限等提示
-                result = self.check_limit_message(tab)
-                if result == "limit" or result == "limit_reached":
-                    # 当检测到下载上限时，不再继续等待
-                    logging.warning("检测到下载上限，直接跳过该链接并切换账号/实例。")
-                    # 重置标签页
-                    self.reset_tab(tab)
-                    self.tabs.put(tab)
-                    # 切换实例并重新尝试下载
-                    self.manager.disable_xkw_instance(self)
-                    self.switch_browser_and_retry(url)
-                    # 尝试重新登录
-                    self.handle_login_status(tab)
-                    return False
-                elif result == "skip":
-                    # 检测到下载频繁提示，已打开并下载了一个了，直接跳过即可
-                    logging.info("下载频繁提示，跳过该链接。")
-                    self.reset_tab(tab)
-                    self.tabs.put(tab)
-                    return True
-
-                # 监听下载请求
-                tab.listen.start(True, method="GET")
                 for item in tab.listen.steps(timeout=interval):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
@@ -671,7 +650,27 @@ class XKW:
                         self.reset_tab(tab)
                         self.tabs.put(tab)
                         return True
+                # 在等待下载链接期间先检查是否有上限等提示
 
+                result = self.check_limit_message(tab)
+                if result == "limit" or result == "limit_reached":
+                    # 当检测到下载上限时，不再继续等待
+                    logging.warning("检测到下载上限，直接跳过该链接并切换账号/实例。")
+                    # 重置标签页
+                    self.reset_tab(tab)
+                    self.tabs.put(tab)
+                    # 切换实例并重新尝试下载
+                    self.manager.disable_xkw_instance(self)
+                    self.switch_browser_and_retry(url)
+                    # 尝试重新登录
+                    self.handle_login_status(tab)
+                    return False
+                elif result == "skip":
+                    # 检测到下载频繁提示，已打开并下载了一个了，直接跳过即可
+                    logging.info("下载频繁提示，跳过该链接。")
+                    self.reset_tab(tab)
+                    self.tabs.put(tab)
+                    return True
                 elapsed = time.time() - start_time
                 total_wait_time += elapsed
                 self.click_confirm_button(tab)
@@ -780,10 +779,6 @@ class XKW:
             if iframes:
                 logging.info(f"检测到 {len(iframes)} 个特定的 iframe 元素")
 
-                # 获取当前账号的昵称与手机号
-                nickname = self.get_nickname(tab)
-                username = self.get_username_by_nickname(nickname)
-
                 for iframe_src in iframes:
                     logging.info(f"获取 iframe 的 src: {iframe_src}")
                     # 提取 src 中的 code 参数
@@ -796,7 +791,7 @@ class XKW:
                             logging.info("检测到下载上限提示")
                             if self.notifier:
                                 self.notifier.notify(
-                                    f"检测到下载上限提示。当前账号昵称: {nickname}, 手机号: {username}",
+                                    f"检测到下载上限提示",
                                     is_error=True
                                 )
                             return "limit"
@@ -805,7 +800,7 @@ class XKW:
                             logging.info("检测到已达到350份上限")
                             if self.notifier:
                                 self.notifier.notify(
-                                    f"账号 {nickname}({username}) 已达到350份下载上限。",
+                                    f"账号已达到350份下载上限。",
                                     is_error=True
                                 )
                             return "limit_reached"
@@ -814,7 +809,7 @@ class XKW:
                             logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
                             if self.notifier:
                                 self.notifier.notify(
-                                    f"检测到需要扫码的提示，请管理员扫码并切换账号。当前账号昵称: {nickname}, 手机号: {username}",
+                                    f"检测到需要扫码的提示，请管理员扫码并切换账号。",
                                     is_error=True
                                 )
                             return "limit"
@@ -823,7 +818,7 @@ class XKW:
                             logging.info("检测到需要手机号验证，切换账号")
                             if self.notifier:
                                 self.notifier.notify(
-                                    f"检测到需要手机号验证。当前账号昵称: {nickname}, 手机号: {username}",
+                                    f"检测到需要手机号验证。",
                                     is_error=True
                                 )
                             return "limit"
@@ -836,7 +831,7 @@ class XKW:
                             logging.info("到达60份上限")
                             if self.notifier:
                                 self.notifier.notify(
-                                    f"检测到60份下载上限提示。当前账号昵称: {nickname}, 手机号: {username}",
+                                    f"检测到60份下载上限提示。",
                                     is_error=True
                                 )
                             return "limit"
