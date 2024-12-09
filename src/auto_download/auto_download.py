@@ -1457,12 +1457,38 @@ class AutoDownloadManager:
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
         co3 = ChromiumOptions().set_local_port(9444).set_user_data_path('data3')
         co4 = ChromiumOptions().set_local_port(9455).set_user_data_path('data4')
+        co5 = ChromiumOptions().set_local_port(9466).set_user_data_path('data5')
+        co6 = ChromiumOptions().set_local_port(9477).set_user_data_path('data6')
+        co7 = ChromiumOptions().set_local_port(9488).set_user_data_path('data7')
+        co8 = ChromiumOptions().set_local_port(9499).set_user_data_path('data8')
+        co9 = ChromiumOptions().set_local_port(9500).set_user_data_path('data9')
+        co10 = ChromiumOptions().set_local_port(9511).set_user_data_path('data10')
+        co11 = ChromiumOptions().set_local_port(9522).set_user_data_path('data11')
+        co12 = ChromiumOptions().set_local_port(9533).set_user_data_path('data12')
+        co13 = ChromiumOptions().set_local_port(9544).set_user_data_path('data13')
+        co14 = ChromiumOptions().set_local_port(9555).set_user_data_path('data14')
+        co15 = ChromiumOptions().set_local_port(9566).set_user_data_path('data15')
+        co16 = ChromiumOptions().set_local_port(9577).set_user_data_path('data16')
+        co17 = ChromiumOptions().set_local_port(9588).set_user_data_path('data17')
 
         # 启动两个 Chromium 浏览器实例
         browser1 = Chromium(co1)
         browser2 = Chromium(co2)
         browser3 = Chromium(co3)
         browser4 = Chromium(co4)
+        browser5 = Chromium(co5)
+        browser6 = Chromium(co6)
+        browser7 = Chromium(co7)
+        browser8 = Chromium(co8)
+        browser9 = Chromium(co9)
+        browser10 = Chromium(co10)
+        browser11 = Chromium(co11)
+        browser12 = Chromium(co12)
+        browser13 = Chromium(co13)
+        browser14 = Chromium(co14)
+        browser15 = Chromium(co15)
+        browser16 = Chromium(co16)
+        browser17 = Chromium(co17)
 
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         download_dir = DOWNLOAD_DIR
@@ -1470,47 +1496,99 @@ class AutoDownloadManager:
         # 为每个实例提供不同的账号列表
         accounts_xkw1 = [
             {'username': '13143019361', 'password': '428199Li@', 'nickname': '全能01X'},
-            {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02'},
-            {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
-            {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
         ]
 
         accounts_xkw2 = [
-            {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
-            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
-            {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
-            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
+            {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02'},
         ]
 
         accounts_xkw3 = [
-            {'username': '13920946017', 'password': '428199Li@', 'nickname': '全能11X'},
-            {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
-            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
-            {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
-            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
+            {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
         ]
 
         accounts_xkw4 = [
-            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
-            {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
-            {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
-            {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
+            {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
             # {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
             # {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
             # {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能23'},
             ]
+        accounts_xkw5 = [
+            {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
+        ]
+        accounts_xkw6 = [
+            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
+        ]
+        accounts_xkw7 = [
+            {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
+        ]
+        accounts_xkw8 = [
+            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
+        ]
+        accounts_xkw9 = [
+            {'username': '13920946017', 'password': '428199Li@', 'nickname': '全能11X'},
+        ]
+        accounts_xkw10 = [
+            {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
+        ]
+        accounts_xkw11 = [
+            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
+        ]
+        accounts_xkw12 = [
+            {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
+        ]
+        accounts_xkw13 = [
+            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
+        ]
+        accounts_xkw14 = [
+            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
+        ]
+        accounts_xkw15 = [
+            {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
+        ]
+        accounts_xkw16 = [
+            {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
+        ]
+        accounts_xkw17 = [
+            {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
+        ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
-        xkw1 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+        xkw1 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co1, manager=self, id='xkw1', accounts=accounts_xkw1)
-        xkw2 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+        xkw2 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co2, manager=self, id='xkw2', accounts=accounts_xkw2)
-        xkw3 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+        xkw3 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co3, manager=self, id='xkw3', accounts=accounts_xkw3)
-        xkw4 = XKW(thread=5, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+        xkw4 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                    co=co4, manager=self, id='xkw4', accounts=accounts_xkw4)
+        xkw5 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co5, manager=self, id='xkw5', accounts=accounts_xkw5)
+        xkw6 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co6, manager=self, id='xkw6', accounts=accounts_xkw6)
+        xkw7 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co7, manager=self, id='xkw7', accounts=accounts_xkw7)
+        xkw8 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co8, manager=self, id='xkw8', accounts=accounts_xkw8)
+        xkw9 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                   co=co9, manager=self, id='xkw9', accounts=accounts_xkw9)
+        xkw10 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co10, manager=self, id='xkw10', accounts=accounts_xkw10)
+        xkw11 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co11, manager=self, id='xkw11', accounts=accounts_xkw11)
+        xkw12 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co12, manager=self, id='xkw12', accounts=accounts_xkw12)
+        xkw13 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co13, manager=self, id='xkw13', accounts=accounts_xkw13)
+        xkw14 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co14, manager=self, id='xkw14', accounts=accounts_xkw14)
+        xkw15 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co15, manager=self, id='xkw15', accounts=accounts_xkw13)
+        xkw16 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co16, manager=self, id='xkw16', accounts=accounts_xkw16)
+        xkw17 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
+                     co=co17, manager=self, id='xkw17', accounts=accounts_xkw17)
 
-        self.xkw_instances = [xkw1, xkw2, xkw3, xkw4]  # 所有的 XKW 实例
+        self.xkw_instances = [xkw1, xkw2, xkw3, xkw4, xkw5, xkw6, xkw7, xkw8, xkw9, xkw10, xkw11, xkw12, xkw13, xkw14, xkw15, xkw16, xkw17]  # 所有的 XKW 实例
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
         self.xkw_lock = threading.RLock()
