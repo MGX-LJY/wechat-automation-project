@@ -1579,7 +1579,7 @@ class AutoDownloadManager:
         xkw14 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                      co=co14, manager=self, id='xkw14', accounts=accounts_xkw14)
         xkw15 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
-                     co=co15, manager=self, id='xkw15', accounts=accounts_xkw13)
+                     co=co15, manager=self, id='xkw15', accounts=accounts_xkw15)
         xkw16 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
                      co=co16, manager=self, id='xkw16', accounts=accounts_xkw16)
         xkw17 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
