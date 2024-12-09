@@ -541,7 +541,6 @@ class XKW:
                 time.sleep(random.uniform(0.5, 1.0))  # 随机延迟，等待下拉菜单显示
 
                 # 提取昵称
-                # 假设昵称位于 <a class="username">全能数字X</a> 或类似格式
                 nickname_element = tab.ele('tag:a@@class=username', timeout=5)
                 if nickname_element:
                     nickname_text = nickname_element.text.strip()
@@ -552,9 +551,17 @@ class XKW:
                     if match:
                         nickname = match.group()
                         logging.info(f"提取到符合格式的昵称: {nickname}")
+
+                        # 将鼠标移到页面其他地方，让下拉菜单消失
+                        # 假设页面总有 body 元素，可以对其 hover 来移开鼠标
+                        body_element = tab.ele('tag:body')
+                        if body_element:
+                            body_element.hover()
+                            time.sleep(random.uniform(0.5, 1.0))  # 等待菜单收回
+
                         return nickname
                     else:
-                        logging.error(f"提取到的昵称不符合格式要求（全能数字 或 全能数字X 或 全能数字x）：{nickname_text}")
+                        logging.error(f"提取到的昵称不符合格式要求（全能数字 或 全能数字X）：{nickname_text}")
                         raise ValueError("昵称格式不正确")
                 else:
                     logging.error("未找到昵称元素，无法提取昵称。")
@@ -569,7 +576,6 @@ class XKW:
                     logging.error("已达到最大尝试次数，无法提取有效昵称。")
                     return ""
                 else:
-                    # 等待一段时间后重试
                     time.sleep(1)
         return ""
 
