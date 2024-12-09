@@ -592,94 +592,120 @@ class XKW:
             logging.info(f"开始下载 {url}")
             download.click(by_js=True)  # 点击下载按钮
 
-            # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
-            time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
+            # 点击确认按钮（如果有）
+            time.sleep(random.uniform(5, 6))  # 等待页面可能弹出的确认按钮出现
             self.click_confirm_button(tab)
 
-            # 设置总的等待时间和间隔
-            total_wait_time = 0
-            max_wait_time = 180  # 最大等待时间（秒）
-            interval = 5  # 每次监听的时间间隔（秒）
+            # 设置超时时间
+            max_wait_time = 180
+            interval = 5
+            start_time = time.time()
 
-            # 开始监听循环
-            while total_wait_time < max_wait_time:
-                start_time = time.time()
+            # 并行执行文件匹配
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            executor = ThreadPoolExecutor(max_workers=2)
+            file_match_future = executor.submit(self.match_downloaded_file, title)
 
-                # 在等待下载链接期间先检查是否有上限等提示
+            # 开始监听下载链接
+            tab.listen.start(True, method="GET")
+
+            # 我们使用轮询的方式，在等待下载链接的同时检查文件匹配结果
+            download_link_captured = False
+            file_path = None
+
+            while time.time() - start_time < max_wait_time:
+                # 先检查文件匹配future是否完成
+                if file_match_future.done():
+                    file_path = file_match_future.result()
+                    if file_path:
+                        # 成功匹配到文件，无论有无捕捉到下载链接，都可继续处理
+                        logging.info(f"文件已匹配到：{file_path}")
+                        break
+
+                # 检查下载上限等提示
                 result = self.check_limit_message(tab)
-                if result == "limit" or result == "limit_reached":
-                    # 当检测到下载上限时，不再继续等待
-                    logging.warning("检测到下载上限，直接跳过该链接并切换账号/实例。")
-                    # 重置标签页
+                if result in ["limit", "limit_reached"]:
+                    logging.warning("检测到下载上限，执行相应的切换账号/实例逻辑。")
                     self.reset_tab(tab)
                     self.tabs.put(tab)
-                    # 切换实例并重新尝试下载
                     self.manager.disable_xkw_instance(self)
                     self.switch_browser_and_retry(url)
-                    # 尝试重新登录
                     self.handle_login_status(tab)
                     return False
                 elif result == "skip":
-                    # 检测到下载频繁提示，已打开并下载了一个了，直接跳过即可
+                    # 下载频繁提示，跳过
                     logging.info("下载频繁提示，跳过该链接。")
                     self.reset_tab(tab)
                     self.tabs.put(tab)
                     return True
 
-                # 监听下载请求
-                tab.listen.start(True, method="GET")
-                for item in tab.listen.steps(timeout=interval):
+                # 循环监听请求
+                items = tab.listen.steps(timeout=interval)
+                got_download_link = False
+                for item in items:
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
-                        tab.listen.stop()
-                        tab.stop_loading()
-                        logging.info(f"下载链接获取成功: {item.url}")
-                        logging.info(f"下载成功，开始处理上传任务: {url}")
-                        # 记录账号下载次数
-                        self.account_count(url, tab)
+                        logging.info(f"捕捉到下载链接: {item.url}")
+                        got_download_link = True
+                        break
 
-                        # 匹配下载文件
-                        file_path = self.match_downloaded_file(title)
-                        if not file_path:
-                            logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
-                            if self.notifier:
-                                self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                            self.reset_tab(tab)
-                            self.tabs.put(tab)
-                            return True
+                if got_download_link:
+                    # 停止监听
+                    tab.listen.stop()
+                    tab.stop_loading()
+                    download_link_captured = True
+                    # 如果文件还没有匹配到，我们等待文件匹配结果或超时
+                    break
+                else:
+                    # 如果还没有获取到下载链接，则重试点击确认按钮（如果有）
+                    self.click_confirm_button(tab)
 
-                        current_account = self.accounts[self.current_account_index]
-                        nickname = current_account.get('nickname', current_account['username'])
+            # 等待文件匹配完成（如果尚未完成）
+            if not file_path:
+                # 尝试获取文件匹配结果（如果还在进行）
+                if not file_match_future.done():
+                    remaining_time = max_wait_time - (time.time() - start_time)
+                    if remaining_time > 0:
+                        try:
+                            file_path = file_match_future.result(timeout=remaining_time)
+                        except Exception:
+                            file_path = None
 
-                        # 上传逻辑
-                        if self.uploader:
-                            try:
-                                self.uploader.add_upload_task(file_path, soft_id)
-                                logging.info(f"已添加文件 {file_path} 和 soft_id {soft_id} 到上传队列。")
-                            except Exception as e:
-                                logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
-                                if self.notifier:
-                                    self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
-                        else:
-                            logging.warning("Uploader 未设置，无法上传。")
+            # 判断结果
+            if not file_path:
+                logging.warning(f"在 {max_wait_time} 秒内未能找到匹配的下载文件：{title}")
+                if self.notifier:
+                    self.notifier.notify(f"在 {max_wait_time} 秒内未能找到匹配的下载文件：{title}", is_error=True)
+                self.reset_tab(tab)
+                self.tabs.put(tab)
+                return False
 
-                        self.reset_tab(tab)
-                        self.tabs.put(tab)
-                        return True
+            # 如果获取到文件，则进行上传任务
+            current_account = self.accounts[self.current_account_index]
+            nickname = current_account.get('nickname', current_account['username'])
 
-                elapsed = time.time() - start_time
-                total_wait_time += elapsed
-                self.click_confirm_button(tab)
+            # 记录下载次数
+            self.account_count(url, tab)
 
-            # 超过最大等待时间
-            logging.warning(f"在 {max_wait_time} 秒内未能获取下载链接，下载失败: {url}")
-            self.switch_browser_and_retry(url)
-            return False
+            # 上传逻辑
+            if self.uploader:
+                try:
+                    self.uploader.add_upload_task(file_path, soft_id)
+                    logging.info(f"已添加文件 {file_path} 和 soft_id {soft_id} 到上传队列。")
+                except Exception as e:
+                    logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
+                    if self.notifier:
+                        self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
+            else:
+                logging.warning("Uploader 未设置，无法上传。")
+
+            self.reset_tab(tab)
+            self.tabs.put(tab)
+            return True
 
         except Exception as e:
             logging.error(f"下载过程中出错: {e}", exc_info=True)
             if self.notifier:
                 self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-
             self.reset_tab(tab)
             self.tabs.put(tab)
             self.switch_browser_and_retry(url)
