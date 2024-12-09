@@ -564,8 +564,6 @@ class XKW:
             except Exception as e:
                 attempt += 1
                 logging.error(f"提取昵称时出错（尝试 {attempt}/{max_attempts}）：{e}", exc_info=True)
-                if self.notifier:
-                    self.notifier.notify(f"提取昵称时出错（尝试 {attempt}/{max_attempts}）：{e}", is_error=True)
                 if attempt >= max_attempts:
                     logging.error("已达到最大尝试次数，无法提取有效昵称。")
                     return ""
@@ -595,7 +593,7 @@ class XKW:
             download.click(by_js=True)  # 点击下载按钮
 
             # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
-            time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
+            time.sleep(random.uniform(2, 3))  # 随机延迟，等待页面加载
             self.click_confirm_button(tab)
 
             # 设置总的等待时间和间隔
@@ -642,7 +640,6 @@ class XKW:
                         self.reset_tab(tab)
                         return True
                 # 在等待下载链接期间先检查是否有上限等提示
-
                 result = self.check_limit_message(tab)
                 if result == "limit" or result == "limit_reached":
                     # 当检测到下载上限时，不再继续等待
