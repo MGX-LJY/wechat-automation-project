@@ -145,9 +145,9 @@ class XKW:
         for tab in tabs:
             try:
                 tab.close()
-                logging.debug("关闭了一个浏览器标签页。")
+                logging.debug(f"[{self.id}] 关闭了一个浏览器标签页。")
             except Exception as e:
-                logging.error(f"关闭标签页时出错: {e}", exc_info=True)
+                logging.error(f"[{self.id}] 关闭标签页时出错: {e}", exc_info=True)
 
     def make_tabs(self):
         """
@@ -155,21 +155,21 @@ class XKW:
         """
         try:
             tabs = self.page.get_tabs()
-            logging.debug(f"当前标签页: {tabs}")
+            logging.debug(f"[{self.id}] 当前标签页: {tabs}")
             while len(tabs) < self.thread:
                 self.page.new_tab()
                 tabs = self.page.get_tabs()
-                logging.debug(f"添加新标签页。总标签页数: {len(tabs)}")
+                logging.debug(f"[{self.id}] 添加新标签页。总标签页数: {len(tabs)}")
             if len(tabs) > self.thread:
                 self.close_tabs(tabs[self.thread:])
                 tabs = self.page.get_tabs()[:self.thread]
             for tab in tabs:
                 self.tabs.put(tab)
-            logging.info(f"初始化了 {self.thread} 个标签页用于下载。")
+            logging.info(f"[{self.id}] 初始化了 {self.thread} 个标签页用于下载。")
         except Exception as e:
-            logging.error(f"初始化标签页时出错: {e}", exc_info=True)
+            logging.error(f"[{self.id}] 初始化标签页时出错: {e}", exc_info=True)
             if self.notifier:
-                self.notifier.notify(f"初始化标签页时出错: {e}", is_error=True)
+                self.notifier.notify(f"[{self.id}] 初始化标签页时出错: {e}", is_error=True)
 
     def reset_tab(self, tab):
         """
@@ -181,11 +181,11 @@ class XKW:
         try:
             time.sleep(0.1)
             tab.get('about:blank')
-            logging.info("标签页已重置为 about:blank。")
+            logging.info(f"[{self.id}] 标签页已重置为 about:blank。")
         except Exception as e:
-            logging.error(f"导航标签页到空白页时出错: {e}", exc_info=True)
+            logging.error(f"[{self.id}] 导航标签页到空白页时出错: {e}", exc_info=True)
             if self.notifier:
-                self.notifier.notify(f"导航标签页到空白页时出错: {e}", is_error=True)
+                self.notifier.notify(f"[{self.id}] 导航标签页到空白页时出错: {e}", is_error=True)
 
     def match_downloaded_file(self, title):
         """
@@ -197,15 +197,15 @@ class XKW:
         返回:
         - 匹配到的文件路径，若未找到则返回 None。
         """
-        logging.info(f"开始匹配下载的文件，标题: {title}")
+        logging.info(f"[{self.id}] 开始匹配下载的文件，标题: {title}")
 
         try:
             if not title:
-                logging.error("标题为空，无法匹配下载文件")
+                logging.error(f"[{self.id}] 标题为空，无法匹配下载文件")
                 return None
 
             download_dir = self.co.download_path
-            logging.debug(f"下载目录: {download_dir}")
+            logging.debug(f"[{self.id}] 下载目录: {download_dir}")
 
             # 配置参数
             max_wait_time = 1800  # 最大等待时间（秒）
@@ -310,9 +310,9 @@ class XKW:
                 self.notifier.notify(f"在 {max_wait_time} 秒内未能找到匹配的下载文件: {title}", is_error=True)
             return None
         except Exception as e:
-            logging.error(f"匹配下载文件时发生错误: {e}", exc_info=True)
+            logging.error(f"[{self.id}] 匹配下载文件时发生错误: {e}", exc_info=True)
             if self.notifier:
-                self.notifier.notify(f"匹配下载文件时发生错误: {e}", is_error=True)
+                self.notifier.notify(f"[{self.id}] 匹配下载文件时发生错误: {e}", is_error=True)
             return None
 
     def extract_id_and_title(self, tab, url) -> Tuple[str, str]:
@@ -667,10 +667,11 @@ class XKW:
             if not self.is_logged_in(tab):
                 logging.warning("账号未登录，尝试重新登录。")
                 if self.notifier:
-                    self.notifier.notify("未捕捉到下载链接且文件匹配失败，进行换实例下载。", is_error=True)
+                    self.notifier.notify("账号未登录，进行登录并进行换实例下载。", is_error=True)
                 self.reset_tab(tab)
                 self.tabs.put(tab)
                 self.switch_browser_and_retry(url)
+                self.handle_login_status(tab)
                 return False
 
         except Exception as e:
@@ -811,29 +812,6 @@ class XKW:
             logging.error(f"出现异常 - {e}")
         return None
 
-    def handle_other_failures(self, url, tab, failure_reason):
-        """
-        处理非账户上限的失败情况，例如超时、异常等。
-
-        参数:
-        - url: 下载的URL。
-        - tab: 当前浏览器标签页。
-        - failure_reason: 失败原因。
-        """
-        # 记录详细的失败原因
-        logging.error(f"下载失败，原因: {failure_reason}. URL: {url}")
-        if self.notifier and failure_reason:
-            self.notifier.notify(
-                f"下载失败，原因: {failure_reason}. URL: {url}",
-                is_error=True
-            )
-
-        self.switch_browser_and_retry(url)
-
-        # 重置标签页并将其放回队列
-        self.reset_tab(tab)
-        self.tabs.put(tab)
-
     def click_confirm_button(self, tab):
         """
         尝试点击确认按钮。
@@ -938,13 +916,10 @@ class XKW:
                     logging.info(
                         f"账号 {current_account_nickname} 的下载计数: 每日 {daily_count_info['count']}, 每周 {weekly_count_info['count']}")
 
-                    if daily_count_info['count'] >= 51 or weekly_count_info['count'] >= 350:
-                        if daily_count_info['count'] >= 51:
-                            limit_type = "每日"
-                            limit_value = 51
-                        else:
-                            limit_type = "每周"
-                            limit_value = 350
+                    # 检查是否达到下载上限
+                    if self.is_account_reached_limit(current_account_nickname):
+                        limit_type = "每日" if daily_count_info['count'] >= 51 else "每周"
+                        limit_value = 51 if daily_count_info['count'] >= 51 else 350
 
                         logging.info(f"账号 {current_account_nickname} {limit_type}下载数量已达{limit_value}，切换账号。")
                         if self.notifier:
@@ -1059,50 +1034,6 @@ class XKW:
                 self.notifier.notify(f"根据昵称获取用户名时出错: {e}", is_error=True)
             return ""
 
-    def get_next_available_account_index(self) -> int:
-        """
-        获取下一个下载次数未达标的账号索引（每日计数 < 51 且 每周计数 < 350）。
-        如果所有账号均达到下载次数限制，则返回 -1。
-
-        返回:
-        - 下一个可用账号的索引，或 -1 表示无可用账号。
-        """
-        # 获取当前日期和周数
-        today = datetime.today()
-        date_str = today.strftime('%Y-%m-%d')
-        week_number = today.strftime('%Y-%U')
-
-        # 从当前账号开始，循环遍历所有账号
-        for i in range(len(self.accounts)):
-            # 计算下一个账号的索引
-            next_index = (self.current_account_index + 1 + i) % len(self.accounts)
-            account = self.accounts[next_index]
-            nickname = account.get('nickname', account.get('username', ''))
-
-            # 获取该账号的下载计数
-            account_counts = self.download_counts.get(nickname, {})
-            daily_count_info = account_counts.get('daily', {})
-            weekly_count_info = account_counts.get('weekly', {})
-
-            # 检查并重置每日计数
-            if daily_count_info.get('date') != date_str:
-                daily_count = 0
-            else:
-                daily_count = daily_count_info.get('count', 0)
-
-            # 检查并重置每周计数
-            if weekly_count_info.get('week') != week_number:
-                weekly_count = 0
-            else:
-                weekly_count = weekly_count_info.get('count', 0)
-
-            # 检查每日和每周计数是否未达上限
-            if daily_count < 51 and weekly_count < 350:
-                return next_index
-
-        # 如果所有账号都达到下载次数限制
-        return -1
-
     def handle_login_status(self, tab):
         try:
             with self.handle_login_lock:
@@ -1116,143 +1047,81 @@ class XKW:
                 self.login_locked_until = current_time + 600  # 600秒 = 10分钟
                 logging.debug(f"设置登录锁定，10分钟后解除。")
 
-                try:
-                    current_nickname = self.get_nickname(tab)
-                    logging.info(f"当前账号昵称: {current_nickname}")
+                current_nickname = self.get_nickname(tab)
+                logging.info(f"当前账号昵称: {current_nickname}")
 
-                    if current_nickname:
-                        # 找到当前账号在账号列表中的索引
-                        for index, account in enumerate(self.accounts):
-                            if account.get('nickname') == current_nickname:
-                                self.current_account_index = index
-                                logging.info(f"当前账号索引已设置为 {self.current_account_index}")
-                                break
-                        else:
-                            logging.warning(f"当前昵称 {current_nickname} 不在账号列表中，开始轮询下一个账号。")
-                    else:
-                        logging.warning("无法识别当前账号昵称，开始轮询下一个账号。")
-
-                    if self.is_logged_in(tab):
-                        logging.info('已登录，执行退出并切换账号。')
-                        self.logout(tab)
-                    else:
-                        logging.info('未登录，开始尝试登录。')
-
-                    max_retries = len(self.accounts)
-                    retries = 0
-                    failed_accounts = []
-
-                    # 修改开始：在尝试登录前检查账号是否达到上限
-                    def is_account_reached_limit(nickname: str) -> bool:
-                        today = datetime.today()
-                        date_str = today.strftime('%Y-%m-%d')
-                        week_number = today.strftime('%Y-%W')
-
-                        with XKW.download_counts_lock:
-                            account_counts = XKW.download_counts.get(nickname, {})
-                            daily_count_info = account_counts.get('daily', {})
-                            weekly_count_info = account_counts.get('weekly', {})
-
-                            if daily_count_info.get('date') != date_str:
-                                daily_count = 0
-                            else:
-                                daily_count = daily_count_info.get('count', 0)
-
-                            if weekly_count_info.get('week') != week_number:
-                                weekly_count = 0
-                            else:
-                                weekly_count = weekly_count_info.get('count', 0)
-
-                        # 如果每日≥51次或每周≥350次则视为达上限
-                        if daily_count >= 51 or weekly_count >= 350:
-                            return True
-                        return False
-                    # 修改结束
-
-                    while retries < max_retries:
-                        self.current_account_index = (self.current_account_index + 1) % len(self.accounts)
-                        current_account = self.accounts[self.current_account_index]
-                        username = current_account['username']
-                        nickname = current_account.get('nickname', username)
-
-                        # 修改开始：检查账号是否达上限
-                        if is_account_reached_limit(nickname):
-                            logging.info(f'账号 {nickname}({username}) 已达上限，跳过尝试。')
-                            failed_accounts.append(nickname + "(已达上限)")
-                            retries += 1
-                            continue
-                        # 修改结束
-
-                        logging.info(f'尝试登录账号：{nickname} ({username})')
-
-                        if self.login(tab):
-                            logging.info(
-                                f'账号 {nickname} ({username}) 登录成功。当前账号索引: {self.current_account_index}')
-                            if self.notifier:
-                                self.notifier.notify(f"账号 {nickname} ({username}) 登录成功。")
-                            self.manager.enable_xkw_instance(self)
-                            return
-                        else:
-                            logging.warning(f'账号 {nickname} ({username}) 登录失败，尝试下一个账号。')
-                            if self.notifier:
-                                self.notifier.notify(f"账号 {nickname} ({username}) 登录失败。", is_error=True)
-                            failed_accounts.append(nickname)
-                            retries += 1
-
-                    # 如果运行到这里，说明所有账号都失败了（可能全部达上限或全部无法登录）
-                    logging.error('所有可用账号均无法登录或已达上限，禁用实例并通知管理员。')
-                    self.manager.disable_xkw_instance(self)
-                    if self.notifier:
-                        failed_accounts_str = ', '.join(failed_accounts)
-                        self.notifier.notify(
-                            f"所有可用账号均无法登录或已达上限，已尝试账号：{failed_accounts_str}。请管理员检查账号状态或下载限制。",
-                            is_error=True
-                        )
-
-                    # 登录失败或全部账号达上限后立即解锁，以便下次尝试
-                    self.login_locked_until = current_time  # 解锁
-
-                except Exception as e:
-                    logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
-                    if self.manager:
+                if current_nickname:
+                    # 检查当前账号是否达到下载上限
+                    if self.is_account_reached_limit(current_nickname):
+                        logging.info(f"账号 {current_nickname} 已达到下载上限，禁用该实例。")
+                        if self.notifier:
+                            self.notifier.notify(f"账号 {current_nickname} 已达到下载上限，实例 {self.id} 已被禁用。",
+                                                 is_error=True)
                         self.manager.disable_xkw_instance(self)
+                        return
+
+                # 尝试重新登录当前账号
+                if not self.login(tab):
+                    logging.error(f"账号 {current_nickname} 登录失败，禁用该实例。")
                     if self.notifier:
-                        error_trace = traceback.format_exc()
-                        self.notifier.notify(
-                            f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
-                            is_error=True
-                        )
-                    # 发生异常时也立即解锁，允许其他线程尝试登录
-                    self.login_locked_until = current_time  # 解锁
-        finally:
-            pass
-
-    def logout(self, tab):
-        """执行登出操作"""
-        try:
-            tab.get('https://www.zxxk.com')
-            time.sleep(random.uniform(1, 2))
-
-            my_element = tab.ele('text:我的', timeout=10)
-            if my_element:
-                time.sleep(random.uniform(0.5, 1.0))
-                my_element.hover()
-                time.sleep(random.uniform(0.5, 1.0))
-
-                logout_element = tab.ele('text:退出', timeout=10)
-                if logout_element:
-                    time.sleep(random.uniform(0.5, 1.0))
-                    logout_element.click()
-                    logging.info('退出成功。')
-                    time.sleep(random.uniform(1, 2))
-                else:
-                    logging.warning('未找到“退出”按钮，可能已被登出。')
-            else:
-                logging.warning('未找到“我的”元素，可能已被登出。')
+                        self.notifier.notify(f"账号 {current_nickname} 登录失败，实例 {self.id} 已被禁用。",
+                                             is_error=True)
+                    self.manager.disable_xkw_instance(self)
         except Exception as e:
-            logging.error(f'执行登出操作时出错：{e}', exc_info=True)
+            logging.error(f'处理登录状态时发生错误：{e}', exc_info=True)
+            if self.manager:
+                self.manager.disable_xkw_instance(self)
             if self.notifier:
-                self.notifier.notify(f"执行登出操作时出错：{e}", is_error=True)
+                error_trace = traceback.format_exc()
+                self.notifier.notify(
+                    f"处理登录状态时发生错误：{e}\n详细信息：{error_trace}",
+                    is_error=True
+                )
+            # 发生异常时也立即解锁，允许其他线程尝试登录
+            self.login_locked_until = current_time  # 解锁
+
+    def is_account_reached_limit(self, nickname: str) -> bool:
+        """
+        检查指定昵称的账号是否达到每日或每周的下载上限。
+
+        参数:
+        - nickname: 账号的昵称。
+
+        返回:
+        - True: 达到上限。
+        - False: 未达到上限。
+        """
+        try:
+            today = datetime.today()
+            date_str = today.strftime('%Y-%m-%d')
+            week_number = today.strftime('%Y-%W')  # 年份和周数组合，周从星期一开始
+
+            with XKW.download_counts_lock:
+                account_counts = XKW.download_counts.get(nickname, {})
+                daily_count_info = account_counts.get('daily', {})
+                weekly_count_info = account_counts.get('weekly', {})
+
+                # 获取每日下载次数
+                if daily_count_info.get('date') == date_str:
+                    daily_count = daily_count_info.get('count', 0)
+                else:
+                    daily_count = 0
+
+                # 获取每周下载次数
+                if weekly_count_info.get('week') == week_number:
+                    weekly_count = weekly_count_info.get('count', 0)
+                else:
+                    weekly_count = 0
+
+            # 检查是否达到每日或每周上限
+            if daily_count >= 51 or weekly_count >= 350:
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"检查账号下载上限时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"检查账号下载上限时出错: {e}", is_error=True)
+            return False
 
     def switch_browser_and_retry(self, url):
         """
@@ -1505,9 +1374,6 @@ class AutoDownloadManager:
 
         accounts_xkw4 = [
             {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
-            # {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
-            # {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
-            # {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能23'},
             ]
         accounts_xkw5 = [
             {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
@@ -1547,6 +1413,9 @@ class AutoDownloadManager:
         ]
         accounts_xkw17 = [
             {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
+            # {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
+            # {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
+            # {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能23'},
         ]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
