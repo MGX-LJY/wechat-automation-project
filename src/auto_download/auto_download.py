@@ -15,7 +15,7 @@ from typing import Tuple
 
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from DrissionPage.errors import ContextLostError
-from fuzzywuzzy import fuzz  # 确保已安装 fuzzywuzzy 库
+from rapidfuzz import fuzz
 
 from src.notification.notifier import Notifier
 
@@ -221,16 +221,16 @@ class XKW:
             ]
 
             # 处理标题：保留中文、数字、空格、下划线、破折号、加号
-            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-+]', '', title)
+            processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
             processed_title = processed_title.strip().lower()
-            processed_title = re.sub(r'[-+]+', ' ', processed_title)
+            processed_title = re.sub(r'[\-\+]+', ' ', processed_title)
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义初始相似度阈值
             similarity_threshold = 100  # 前90秒的阈值
 
             # 正则表达式模式，用于匹配带数字编号的文件名，例如：[123456]filename.pdf
-            numbered_file_pattern = re.compile(r'^\[\d+]', re.IGNORECASE)
+            numbered_file_pattern = re.compile(r'^\[\d+\]', re.IGNORECASE)
 
             while elapsed_time < max_wait_time:
                 logging.debug("当前下载目录下的文件:")
@@ -255,9 +255,9 @@ class XKW:
                         continue
 
                     # 处理文件名：保留中文、数字、空格、下划线、破折号、加号
-                    processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-+]', '', file_name)
+                    processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', file_name)
                     processed_file_name = processed_file_name.strip().lower()
-                    processed_file_name = re.sub(r'[-+]+', ' ', processed_file_name)
+                    processed_file_name = re.sub(r'[\-\+]+', ' ', processed_file_name)
                     logging.debug(f"处理后的文件名: {processed_file_name}")
 
                     # 计算相似度
@@ -525,7 +525,7 @@ class XKW:
         attempt = 0
         while attempt < max_attempts:
             try:
-                if attempt > 0:
+                if attempt > 1:
                     # 在第2次（attempt=1）及以后尝试前先重新访问主页
                     logging.debug("重试获取昵称，重新访问 https://www.zxxk.com")
                     tab.get('https://www.zxxk.com')
@@ -553,17 +553,9 @@ class XKW:
                     if match:
                         nickname = match.group()
                         logging.info(f"提取到符合格式的昵称: {nickname}")
-
-                        # 将鼠标移到页面其他地方，让下拉菜单消失
-                        # 假设页面总有 body 元素，可以对其 hover 来移开鼠标
-                        body_element = tab.ele('tag:body')
-                        if body_element:
-                            body_element.hover()
-                            time.sleep(random.uniform(0.5, 1.0))  # 等待菜单收回
-
                         return nickname
                     else:
-                        logging.error(f"提取到的昵称不符合格式要求（全能数字 或 全能数字X）：{nickname_text}")
+                        logging.error(f"提取到的昵称不符合格式要求（全能数字 或 全能数字X 或 全能数字x）：{nickname_text}")
                         raise ValueError("昵称格式不正确")
                 else:
                     logging.error("未找到昵称元素，无法提取昵称。")
@@ -578,6 +570,7 @@ class XKW:
                     logging.error("已达到最大尝试次数，无法提取有效昵称。")
                     return ""
                 else:
+                    # 等待一段时间后重试
                     time.sleep(1)
         return ""
 
@@ -622,16 +615,15 @@ class XKW:
                         # 记录账号下载次数
                         self.account_count(url, tab)
 
-                        # 匹配下载文件
+                        # 匹配下载的文件
                         file_path = self.match_downloaded_file(title)
                         if not file_path:
                             logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
                             if self.notifier:
                                 self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                            self.reset_tab(tab)
-                            self.tabs.put(tab)
-                            return True
+                            return True  # 返回 True，表示任务处理完毕
 
+                        # 获取当前账号的昵称
                         current_account = self.accounts[self.current_account_index]
                         nickname = current_account.get('nickname', current_account['username'])
 
@@ -639,16 +631,15 @@ class XKW:
                         if self.uploader:
                             try:
                                 self.uploader.add_upload_task(file_path, soft_id)
-                                logging.info(f"已添加文件 {file_path} 和 soft_id {soft_id} 到上传队列。")
+                                logging.info(f"已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
                                 logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
                                 if self.notifier:
                                     self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
                         else:
-                            logging.warning("Uploader 未设置，无法上传。")
+                            logging.warning("Uploader 未设置，无法传递上传任务。")
 
                         self.reset_tab(tab)
-                        self.tabs.put(tab)
                         return True
                 # 在等待下载链接期间先检查是否有上限等提示
 
@@ -675,39 +666,17 @@ class XKW:
                 total_wait_time += elapsed
                 self.click_confirm_button(tab)
 
-            # 超过180秒仍未捕捉到下载链接，此时尝试匹配下载文件
-            logging.warning(f"在 {max_wait_time} 秒内未捕捉到下载链接，将尝试通过文件匹配判断是否下载成功：{title}")
-            tab.listen.stop()
-            file_path = self.match_downloaded_file(title)
-            if file_path:
-                logging.info(f"通过文件匹配判定下载成功：{file_path}")
-
-                # 记录下载次数
-                self.account_count(url, tab)
-
-                # 上传逻辑
-                if self.uploader:
-                    try:
-                        self.uploader.add_upload_task(file_path, soft_id)
-                        logging.info(f"已添加文件 {file_path} 和 soft_id {soft_id} 到上传队列。")
-                    except Exception as e:
-                        logging.error(f"添加上传任务时发生错误: {e}", exc_info=True)
-                        if self.notifier:
-                            self.notifier.notify(f"添加上传任务时发生错误: {e}", is_error=True)
-                else:
-                    logging.warning("Uploader 未设置，无法上传。")
-
-                self.reset_tab(tab)
-                self.tabs.put(tab)
-                return True
-            else:
-                # 文件匹配也失败，则进行切换实例下载
-                logging.warning("未捕捉到下载链接且文件匹配失败，进行换实例下载。")
+            # 超过最大等待时间，下载失败
+            logging.warning(f"在 {max_wait_time} 秒内未能捕获到下载链接，下载失败: {url}")
+            # 检查账号是否登录
+            if not self.is_logged_in(tab):
+                logging.warning("账号未登录，尝试重新登录。")
                 if self.notifier:
                     self.notifier.notify("未捕捉到下载链接且文件匹配失败，进行换实例下载。", is_error=True)
                 self.reset_tab(tab)
                 self.tabs.put(tab)
                 self.switch_browser_and_retry(url)
+                self.handle_login_status(tab)
                 return False
 
         except Exception as e:
@@ -1264,8 +1233,9 @@ class XKW:
     def logout(self, tab):
         """执行登出操作"""
         try:
-            tab.get("https://www.zxxk.com")
+            tab.get('https://www.zxxk.com')
             time.sleep(random.uniform(1, 2))
+
             my_element = tab.ele('text:我的', timeout=10)
             if my_element:
                 time.sleep(random.uniform(0.5, 1.0))
@@ -1323,91 +1293,50 @@ class XKW:
                 self.notifier.notify(f"切换浏览器实例时出错: {e}", is_error=True)
             return False
 
-    def download(self, url, tab, max_attempts=3):
-        attempt = 1
-        while attempt <= max_attempts:
-            try:
-                logging.info(f"准备下载 URL: {url}，尝试次数: {attempt}/{max_attempts}")
-                # 增加随机延迟，模拟人类等待页面加载
-                pre_download_delay = random.uniform(0.5, 1)
-                logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
-                time.sleep(pre_download_delay)
+    def download(self, url, tab):
+        try:
+            logging.info(f"准备下载 URL: {url}")
+            # 增加随机延迟，模拟人类等待页面加载
+            pre_download_delay = random.uniform(0.5, 1)
+            logging.debug(f"下载前随机延迟 {pre_download_delay:.1f} 秒")
+            time.sleep(pre_download_delay)
 
-                tab.get(url)
+            tab.get(url)
 
-                # 等待页面加载完成
-                tab.wait.load_start(timeout=10)
-                tab.wait.doc_loaded(timeout=30)
+            # 等待页面加载完成
+            tab.wait.load_start(timeout=10)
+            tab.wait.doc_loaded(timeout=30)
 
-                soft_id, title = self.extract_id_and_title(tab, url)
-                if not soft_id or not title:
-                    if soft_id is None and title is None:
-                        logging.info(f"任务被跳过: {url}（提取 soft_id 和 title 失败）")
-                    else:
-                        logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
-                    # 重试前重置 Tab
-                    self.reset_tab(tab)
-                    attempt += 1
-                    if attempt > max_attempts:
-                        # 所有重试用尽，最终放弃
-                        return
-                    else:
-                        # 等待一小段时间再进行下一次重试
-                        time.sleep(2)
-                        continue
-
-                # 尝试多次获取下载按钮，如果找不到则整体重试
-                max_btn_retries = 3
-                retry_delay = 2
-                download_button = None
-                for btn_attempt in range(max_btn_retries):
-                    download_button = tab("#btnSoftDownload")
-                    if download_button:
-                        logging.debug(f"找到下载按钮（第 {btn_attempt + 1} 次尝试）")
-                        break
-                    else:
-                        logging.debug(f"无法找到下载按钮，第 {btn_attempt + 1} 次尝试失败，等待 {retry_delay} 秒重试……")
-                        time.sleep(retry_delay)
-
-                if not download_button:
-                    # 无法找到下载按钮，则进行整体重试
-                    logging.error(f"重试 {max_btn_retries} 次后仍无法找到下载按钮，准备整体重试 URL: {url}")
-                    if self.notifier:
-                        self.notifier.notify(f"无法找到下载按钮，准备整体重试 URL: {url}", is_error=True)
-                    self.reset_tab(tab)
-                    attempt += 1
-                    if attempt > max_attempts:
-                        # 所有重试用尽，最终放弃
-                        return
-                    else:
-                        time.sleep(2)
-                        continue
-
-                logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
-                click_delay = random.uniform(0.5, 1.5)
-                logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
-                time.sleep(click_delay)
-                self.listener(tab, download_button, url, title, soft_id)
-
-                # 如果代码能执行到这里，说明本次尝试成功结束，可直接break退出循环
-                break
-
-            except Exception as e:
-                logging.error(f"下载过程中出错: {e}", exc_info=True)
-                if self.notifier:
-                    self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
-                self.reset_tab(tab)
-                attempt += 1
-                if attempt > max_attempts:
-                    # 所有重试用尽，最终放弃
-                    return
+            soft_id, title = self.extract_id_and_title(tab, url)
+            if not soft_id or not title:
+                if soft_id is None and title is None:
+                    logging.info(f"任务被跳过: {url}")
                 else:
-                    time.sleep(2)
-                    continue
-            finally:
-                # 无论成功或失败，都将 tab 重置并放回队列
+                    logging.error(f"提取 soft_id 或标题失败，跳过 URL: {url}")
                 self.reset_tab(tab)
-                self.tabs.put(tab)
+                return
+
+            download_button = tab("#btnSoftDownload")  # 获取下载按钮
+            if not download_button:
+                logging.error(f"无法找到下载按钮，跳过URL: {url}")
+                if self.notifier:
+                    self.notifier.notify(f"无法找到下载按钮，跳过 URL: {url}", is_error=True)
+                self.reset_tab(tab)
+                return
+            logging.info(f"准备点击下载按钮，soft_id: {soft_id}")
+            click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
+            logging.debug(f"点击下载按钮前随机延迟 {click_delay:.1f} 秒")
+            time.sleep(click_delay)
+            self.listener(tab, download_button, url, title, soft_id)
+        except Exception as e:
+            logging.error(f"下载过程中出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"下载过程中出错: {e}", is_error=True)
+            self.reset_tab(tab)
+        finally:
+            # 无论成功与否，都重置标签页并放回队列
+            self.reset_tab(tab)
+            self.tabs.put(tab)
 
     def run(self):
         """
