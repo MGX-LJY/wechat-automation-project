@@ -223,7 +223,7 @@ class XKW:
             # 处理标题：保留中文、数字、空格、下划线、破折号、加号
             processed_title = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', title)
             processed_title = processed_title.strip().lower()
-            processed_title = re.sub(r'[\-\+]+', ' ', processed_title)
+            processed_title = re.sub(r'[\-]+', ' ', processed_title)
             logging.debug(f"处理后的标题: {processed_title}")
 
             # 定义初始相似度阈值
@@ -257,7 +257,7 @@ class XKW:
                     # 处理文件名：保留中文、数字、空格、下划线、破折号、加号
                     processed_file_name = re.sub(r'[^\u4e00-\u9fa5\d\s_\-\+]', '', file_name)
                     processed_file_name = processed_file_name.strip().lower()
-                    processed_file_name = re.sub(r'[\-\+]+', ' ', processed_file_name)
+                    processed_file_name = re.sub(r'[\-]+', ' ', processed_file_name)
                     logging.debug(f"处理后的文件名: {processed_file_name}")
 
                     # 计算相似度
@@ -283,8 +283,10 @@ class XKW:
                     similarity_threshold = 100
                 elif elapsed_time < 360:
                     similarity_threshold = 85
-                else:
+                elif elapsed_time < 720:
                     similarity_threshold = 75
+                else:
+                    similarity_threshold = 65
                 logging.debug(f"当前相似度阈值: {similarity_threshold}")
 
                 # 确定下一次的重试间隔
@@ -310,10 +312,9 @@ class XKW:
                 self.notifier.notify(f"在 {max_wait_time} 秒内未能找到匹配的下载文件: {title}", is_error=True)
             return None
         except Exception as e:
-            logging.error(f"[{self.id}] 匹配下载文件时发生错误: {e}", exc_info=True)
+            logging.error(f"发生错误: {e}")
             if self.notifier:
-                self.notifier.notify(f"[{self.id}] 匹配下载文件时发生错误: {e}", is_error=True)
-            return None
+                self.notifier.notify(f"发生错误: {e}", is_error=True)
 
     def extract_id_and_title(self, tab, url) -> Tuple[str, str]:
         """
@@ -592,18 +593,18 @@ class XKW:
             download.click(by_js=True)  # 点击下载按钮
 
             # 尝试立即点击确认按钮，但如果未找到，不报错，直接继续
-            time.sleep(random.uniform(2, 3))  # 随机延迟，等待页面加载
+            time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
             self.click_confirm_button(tab)
 
-            # 设置总的等待时间和间隔
-            total_wait_time = 0
-            max_wait_time = 180  # 最大等待时间（秒）
-            interval = 5  # 每次监听的时间间隔（秒）
+            # 设置最大等待时间
+            max_wait_time = 60  # 最大等待时间（秒）
+            end_time = time.time() + max_wait_time
 
-            # 开始监听循环
-            while total_wait_time < max_wait_time:
-                start_time = time.time()
-                for item in tab.listen.steps(timeout=interval):
+            while time.time() < end_time:
+                remaining_time = end_time - time.time()
+                timeout = max(remaining_time, 0.1)  # 防止timeout为负数
+
+                for item in tab.listen.steps(timeout=timeout):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
                         tab.stop_loading()
@@ -611,14 +612,15 @@ class XKW:
                         logging.info(f"下载成功，开始处理上传任务: {url}")
                         # 记录账号下载次数
                         self.account_count(url, tab)
-
+                        self.tabs.put(tab)
                         # 匹配下载的文件
                         file_path = self.match_downloaded_file(title)
                         if not file_path:
-                            logging.error(f"匹配下载的文件失败，跳过 URL: {url}")
+                            self.switch_browser_and_retry(tab)
+                            logging.error(f"匹配下载的文件失败，切换浏览器进行下载L: {url}")
                             if self.notifier:
-                                self.notifier.notify(f"匹配下载的文件失败，跳过 URL: {url}", is_error=True)
-                            return True  # 返回 True，表示任务处理完毕
+                                self.notifier.notify(f"匹配下载的文件失败切换浏览器进行下载,URL: {url}", is_error=True)
+                            return True
 
                         # 获取当前账号的昵称
                         current_account = self.accounts[self.current_account_index]
@@ -638,39 +640,21 @@ class XKW:
 
                         self.reset_tab(tab)
                         return True
-                # 在等待下载链接期间先检查是否有上限等提示
-                result = self.check_limit_message(tab)
-                if result == "limit" or result == "limit_reached":
-                    # 当检测到下载上限时，不再继续等待
-                    logging.warning("检测到下载上限，直接跳过该链接并切换账号/实例。")
-                    # 重置标签页
-                    self.reset_tab(tab)
-                    self.tabs.put(tab)
-                    # 切换实例并重新尝试下载
-                    self.manager.disable_xkw_instance(self)
-                    self.switch_browser_and_retry(url)
-                    # 尝试重新登录
-                    return False
-                elif result == "skip":
-                    # 检测到下载频繁提示，已打开并下载了一个了，直接跳过即可
-                    logging.info("下载频繁提示，跳过该链接。")
-                    self.reset_tab(tab)
-                    self.tabs.put(tab)
-                    return True
-                elapsed = time.time() - start_time
-                total_wait_time += elapsed
+
+                # 尝试点击确认按钮以确保页面状态
                 self.click_confirm_button(tab)
 
             # 超过最大等待时间，下载失败
-            logging.warning(f"在 {max_wait_time} 秒内未能捕获到下载链接，下载失败: {url}")
+            logging.warning(f"超时下载，禁用实例并检查账号情况，切换实例进行下载: {url}")
+            self.manager.disable_xkw_instance(self)
+            self.switch_browser_and_retry(url)
+            self.reset_tab(tab)
+            self.tabs.put(tab)
             # 检查账号是否登录
             if not self.is_logged_in(tab):
                 logging.warning("账号未登录，尝试重新登录。")
                 if self.notifier:
                     self.notifier.notify("账号未登录，进行登录并进行换实例下载。", is_error=True)
-                self.reset_tab(tab)
-                self.tabs.put(tab)
-                self.switch_browser_and_retry(url)
                 self.handle_login_status(tab)
                 return False
 
@@ -682,135 +666,6 @@ class XKW:
             self.tabs.put(tab)
             self.switch_browser_and_retry(url)
             return False
-
-    def update_weekly_count_to_limit(self, tab):
-        """
-        将当前账号的每周下载次数更新为350份。
-
-        参数:
-        - tab: 当前浏览器标签页。
-        """
-        try:
-            with self.account_index_lock:
-                current_account_nickname = self.get_nickname(tab)
-                if not current_account_nickname:
-                    logging.warning("无法获取当前账号昵称，无法更新下载计数。")
-                    if self.notifier:
-                        self.notifier.notify("无法获取当前账号昵称，无法更新下载计数。", is_error=True)
-                    return
-
-                with XKW.download_counts_lock:
-                    account_counts = XKW.download_counts.get(current_account_nickname, {})
-                    weekly_count_info = account_counts.get('weekly', {})
-
-                    today = datetime.today()
-                    week_number = today.strftime('%Y-%W')  # 年份和周数组合，周从星期一开始
-
-                    if weekly_count_info.get('week') != week_number:
-                        weekly_count_info = {'week': week_number, 'count': 350}
-                    else:
-                        weekly_count_info['count'] = 350
-
-                    account_counts['weekly'] = weekly_count_info
-                    XKW.download_counts[current_account_nickname] = account_counts
-
-                    with open(XKW.download_counts_file, 'w', encoding='utf-8') as f:
-                        json.dump(XKW.download_counts, f, ensure_ascii=False, indent=4)
-
-                    logging.info(f"已将账号 {current_account_nickname} 的每周下载次数更新为350份。")
-                    if self.notifier:
-                        self.notifier.notify(f"账号 {current_account_nickname} 的每周下载次数已更新为350份。")
-        except Exception as e:
-            logging.error(f"更新每周下载次数时出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"更新每周下载次数时出错: {e}", is_error=True)
-
-    def check_limit_message(self, tab):
-        """
-        检查页面是否出现特定的提示信息。
-
-        返回值：
-        - None：未检测到任何目标提示
-        - "limit": 检测到需要管理员干预的提示（上限、手机验证、扫码等）
-        - "skip": 检测到下载频繁提示（code=20602004），已打开并下载了一个了，直接跳过即可
-        - "limit_reached": 检测到已达到350份上限（code=20603003）
-        """
-        try:
-            logging.debug("检查特定的 iframe 元素")
-            # 使用正则表达式查找包含 "risk-control-dialog" 的 iframe src
-            iframe_pattern = re.compile(
-                r'<iframe\b[^>]*\bsrc\s*=\s*["\']([^"\']*risk-control-dialog[^"\']*)["\']',
-                re.IGNORECASE
-            )
-            iframes = iframe_pattern.findall(tab.html)
-            if iframes:
-                logging.info(f"检测到 {len(iframes)} 个特定的 iframe 元素")
-
-                for iframe_src in iframes:
-                    logging.info(f"获取 iframe 的 src: {iframe_src}")
-                    # 提取 src 中的 code 参数
-                    code_match = re.search(r'code=(\d+)', iframe_src)
-                    if code_match:
-                        code = code_match.group(1)
-                        logging.info(f"检测到 code 参数: {code}")
-                        if code == "20603114":
-                            # 下载上限提示
-                            logging.info("检测到下载上限提示")
-                            if self.notifier:
-                                self.notifier.notify(
-                                    f"检测到下载上限提示",
-                                    is_error=True
-                                )
-                            return "limit"
-                        elif code == "20603003":
-                            # 已达到350份上限
-                            logging.info("检测到已达到350份上限")
-                            if self.notifier:
-                                self.notifier.notify(
-                                    f"账号已达到350份下载上限。",
-                                    is_error=True
-                                )
-                            return "limit_reached"
-                        elif code == "20603004":
-                            # 检测到需要扫码
-                            logging.warning("检测到需要扫码的提示，提醒管理员进行扫码并切换账号")
-                            if self.notifier:
-                                self.notifier.notify(
-                                    f"检测到需要扫码的提示，请管理员扫码并切换账号。",
-                                    is_error=True
-                                )
-                            return "limit"
-                        elif code == "20604103":
-                            # 需要手机号验证
-                            logging.info("检测到需要手机号验证，切换账号")
-                            if self.notifier:
-                                self.notifier.notify(
-                                    f"检测到需要手机号验证。",
-                                    is_error=True
-                                )
-                            return "limit"
-                        elif code == "20602004":
-                            # 检测到下载频繁提示
-                            logging.info("检测到下载频繁提示，已打开并下载一个了，直接跳过即可")
-                            return "skip"
-                        elif code == "20600001":
-                            # 到达60份上限
-                            logging.info("到达60份上限")
-                            if self.notifier:
-                                self.notifier.notify(
-                                    f"检测到60份下载上限提示。",
-                                    is_error=True
-                                )
-                            return "limit"
-                        else:
-                            logging.info(f"code 参数不在目标列表中: {code}")
-                    else:
-                        logging.info("未找到 code 参数")
-            else:
-                logging.debug("未检测到特定的 iframe 元素")
-        except Exception as e:
-            logging.error(f"出现异常 - {e}")
-        return None
 
     def click_confirm_button(self, tab):
         """
