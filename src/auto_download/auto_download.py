@@ -740,7 +740,10 @@ class XKW:
         try:
             logging.debug("检查特定的 iframe 元素")
             # 使用正则表达式查找包含 "risk-control-dialog" 的 iframe src
-            iframe_pattern = re.compile(r'<iframe[^>]+src=["\']([^"\']*risk-control-dialog[^"\']*)["\']', re.IGNORECASE)
+            iframe_pattern = re.compile(
+                r'<iframe\b[^>]*\bsrc\s*=\s*["\']([^"\']*risk-control-dialog[^"\']*)["\']',
+                re.IGNORECASE
+            )
             iframes = iframe_pattern.findall(tab.html)
             if iframes:
                 logging.info(f"检测到 {len(iframes)} 个特定的 iframe 元素")
