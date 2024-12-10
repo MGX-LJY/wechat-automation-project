@@ -81,7 +81,8 @@ class AdminCommandsHandler:
             'query_all_groups_today_downloads': r'^查询所有群组今天下载量$',
             'query_all_groups_this_week_downloads': r'^查询所有群组这周下载量$',
             'query_current_account_usage': r'^查询当前账号使用情况$',
-
+            'check_all_instances_status': r'^检查所有实例状态$|^check all instances status$',
+            'query_all_instances_status': r'^查询所有实例状态$|^query all instances status$',
         }
 
     def handle_command(self, message: str) -> Optional[str]:
