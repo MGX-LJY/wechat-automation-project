@@ -30,12 +30,13 @@ class AdminCommandsHandler:
             '13': "添加非整体群组 <群组名称1>,<群组名称2>",
             '14': "删除非整体群组 <群组名称1>,<群组名称2>",
             '15': "帮助",
-            '16': "恢复指定实例 <实例ID>",
-            '17': "全部恢复",
             '18': "禁用全部实例",
             '19': "查询群组下载份数 <群组名称> <时间段>",
             '20': "查询个人下载份数 <个人名称> <时间段>",
             '21': "查询当前账号使用情况",
+            '22': "查询所有实例状态",
+            '23': "检查所有实例状态",
+            '24': "设置实例需要管理员介入 <实例ID> <True/False>",
 
         }
 
@@ -63,8 +64,6 @@ class AdminCommandsHandler:
             # 其他命令
             'help': r'^帮助$|^help$',
             'query_logs': r'^查询日志$|^query logs$',
-            'restore_specific_instance': r'^恢复实例\s+(\S+)$',
-            'restore_all_instances': r'^全部恢复$',
             'disable_all_instances': r'^禁用全部实例$|^disable all instances$',
 
             # 新增下载份数查询命令
@@ -153,15 +152,6 @@ class AdminCommandsHandler:
                             return f"用户 '{nickname}' 在群组 '{group_name}' 当前的积分为 {points}。"
                         else:
                             return f"未找到用户 '{nickname}' 在群组 '{group_name}' 的积分信息。"
-
-                    elif cmd == 'restore_specific_instance':
-                        instance_id = match.group(1)
-                        response = self.browser_controller.enable_xkw_instance(instance_id)
-                        return response
-
-                    elif cmd == 'restore_all_instances':
-                        response = self.browser_controller.enable_all_instances()
-                        return response
 
                     elif cmd == 'disable_all_instances':  # 新增的禁用全部实例命令处理
                         response = self.browser_controller.disable_all_instances()
@@ -258,6 +248,20 @@ class AdminCommandsHandler:
                             group_type = 'non_whole'
                             action = 'add' if 'add' in cmd else 'remove'
                             return self.modify_group_type(group_names, group_type, action)
+
+                        # 新增管理员命令处理逻辑
+                        elif cmd == 'query_all_instances_status':
+                            return self.browser_controller.query_all_instances_status()
+
+                        elif cmd == 'check_all_instances_status':
+                            self.browser_controller.check_instances_status()
+                            return "已执行所有实例的状态检查。"
+
+                        elif cmd == 'set_instance_admin_intervention':
+                            instance_id, status_str = match.groups()
+                            status = True if status_str.lower() == 'true' else False
+                            response = self.browser_controller.set_instance_admin_intervention(instance_id, status)
+                            return response
 
                     # 其他命令处理逻辑
                     elif cmd == 'help':
@@ -447,11 +451,6 @@ class AdminCommandsHandler:
             "    示例：删除非整体群组 群组A,群组B\n\n"
             "15. 帮助\n"
             "    示例：帮助\n\n"
-            "【恢复实例命令】\n"
-            "16. 恢复指定实例 <实例ID>\n"
-            "    示例：恢复实例 xkw1\n\n"
-            "17. 全部恢复\n"
-            "    示例：全部恢复\n\n"
             "【下载份数查询命令】\n"
             "18. 查询群组下载份数 <群组名称> <时间段>\n"
             "    示例：查询群组 群组A 今天 下载份数\n"
@@ -473,6 +472,12 @@ class AdminCommandsHandler:
             "    示例：查询所有群组这周下载量\n\n"
             "22. 查询当前账号使用情况\n"
             "    示例：查询当前账号使用情况\n\n"
+            "22. 查询所有实例状态\n"
+            "    示例：查询所有实例状态\n\n"
+            "23. 检查所有实例状态\n"
+            "    示例：检查所有实例状态\n\n"
+            "24. 设置实例需要管理员介入 <实例ID> <True/False>\n"
+            "    示例：设置实例需要管理员介入 xkw1 True\n"
             
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"

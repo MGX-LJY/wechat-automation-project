@@ -81,6 +81,10 @@ class XKW:
         self.manager = manager  # 保存 AutoDownloadManager 实例
         self.is_active = True  # 标记实例是否可用
         self.account_index_lock = threading.RLock()  # 新增锁，用于账号索引的同步
+        self.login_status = False         # 登录状态
+        self.daily_limit_reached = False  # 是否达到每日下载上限
+        self.weekly_limit_reached = False  # 是否达到每周下载上限
+        self.admin_intervention_required = False  # 是否需要管理员介入
 
         # 添加账号列表和当前账号索引
         if accounts is not None:
@@ -130,6 +134,44 @@ class XKW:
         # 记录失败次数
         self.failure_count = 0
         self.failure_threshold = 3  # 失败阈值
+
+    def set_login_status(self, status: bool):
+        """设置实例的登录状态。"""
+        self.login_status = status
+        logging.info(f"[{self.id}] 登录状态已设置为: {'已登录' if status else '未登录'}")
+
+    def set_daily_limit_reached(self, reached: bool):
+        """设置是否达到每日下载上限。"""
+        self.daily_limit_reached = reached
+        logging.info(f"[{self.id}] 每日下载上限已{'达到' if reached else '未达到'}。")
+
+    def set_weekly_limit_reached(self, reached: bool):
+        """设置是否达到每周下载上限。"""
+        self.weekly_limit_reached = reached
+        logging.info(f"[{self.id}] 每周下载上限已{'达到' if reached else '未达到'}。")
+
+    def set_admin_intervention_required(self, required: bool):
+        """设置是否需要管理员介入。"""
+        self.admin_intervention_required = required
+        logging.info(f"[{self.id}] 需要管理员介入: {'是' if required else '否'}。")
+
+    @property
+    def instance_status(self) -> str:
+        """返回实例的状态：'active' 或 'inactive'。"""
+        return 'active' if self.is_active else 'inactive'
+
+    def set_instance_status(self, status: str):
+        """根据状态字符串设置实例的活跃状态。"""
+        if status == 'active':
+            if not self.is_active:
+                self.is_active = True
+                logging.info(f"[{self.id}] 实例状态已设置为 active。")
+        elif status == 'inactive':
+            if self.is_active:
+                self.is_active = False
+                logging.info(f"[{self.id}] 实例状态已设置为 inactive。")
+        else:
+            logging.warning(f"[{self.id}] 无法识别的实例状态: {status}")
 
     def __repr__(self):
         """返回实例的字符串表示。"""
@@ -392,14 +434,8 @@ class XKW:
 
     def is_logged_in(self, tab):
         """
-        检查当前是否已登录。
-
-        参数:
-        - tab: 浏览器标签页。
-
-        返回:
-        - True: 已登录。
-        - False: 未登录。
+        检查当前是否已登录，并更新登录状态属性。
+        如果未登录，则自动执行登录程序。
         """
         try:
             results = []
@@ -408,15 +444,24 @@ class XKW:
                 results.append(result)
                 time.sleep(1)  # 可选：增加一点延迟
             if results[0] == results[1]:
-                return results[0]
+                logged_in = results[0]
             else:
                 # 如果前两次结果不一致，进行第三次检查
-                result = self._check_login_status(tab)
-                results.append(result)
-                # 返回出现次数最多的结果
-                return max(set(results), key=results.count)
+                logged_in = self._check_login_status(tab)
+
+            if not logged_in:
+                logging.info(f"[{self.id}] 未登录，开始自动登录。")
+                login_success = self.login(tab)
+                if login_success:
+                    logged_in = True
+                else:
+                    logged_in = False
+
+            # 设置登录状态
+            self.set_login_status(logged_in)
+            return logged_in
         except Exception as e:
-            logging.error(f"[{self.id}]检查登录状态时出错: {e}", exc_info=True)
+            logging.error(f"[{self.id}] 检查登录状态时出错: {e}", exc_info=True)
             return False
 
     def _check_login_status(self, tab):
@@ -575,6 +620,7 @@ class XKW:
     def listener(self, tab, download, url, title, soft_id):
         """
         监听下载过程，处理下载链接的获取和确认按钮的点击。
+        移除了与登录相关的逻辑。
 
         参数:
         - tab: 当前浏览器标签页。
@@ -588,7 +634,7 @@ class XKW:
         - False: 如果下载失败且需要进一步处理。
         """
         try:
-            logging.info(f"[{self.id}]开始下载 {url}")
+            logging.info(f"[{self.id}] 开始下载 {url}")
             tab.listen.start(True, method="GET")  # 开始监听网络请求
             download.click(by_js=True)  # 点击下载按钮
 
@@ -596,20 +642,19 @@ class XKW:
             time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
             self.click_confirm_button(tab)
 
-            # 设置最大等待时间
-            max_wait_time = 60  # 最大等待时间（秒）
-            end_time = time.time() + max_wait_time
+            # 设置总的等待时间和间隔
+            total_wait_time = 0
+            max_wait_time = 180  # 最大等待时间（秒）
 
-            while time.time() < end_time:
-                remaining_time = end_time - time.time()
-                timeout = max(remaining_time, 0.1)  # 防止timeout为负数
-
-                for item in tab.listen.steps(timeout=timeout):
+            # 开始监听循环
+            while total_wait_time < max_wait_time:
+                start_time = time.time()
+                for item in tab.listen.steps(timeout=10):
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
                         tab.stop_loading()
-                        logging.info(f"[{self.id}]下载链接获取成功: {item.url}")
-                        logging.info(f"[{self.id}]下载成功，开始处理上传任务: {url}")
+                        logging.info(f"[{self.id}] 下载链接获取成功: {item.url}")
+                        logging.info(f"[{self.id}] 下载成功，开始处理上传任务: {url}")
                         # 记录账号下载次数
                         self.account_count(url, tab)
                         self.tabs.put(tab)
@@ -617,9 +662,10 @@ class XKW:
                         file_path = self.match_downloaded_file(title)
                         if not file_path:
                             self.switch_browser_and_retry(tab)
-                            logging.error(f"[{self.id}]匹配下载的文件失败，切换浏览器进行下载L: {url}")
+                            logging.error(f"[{self.id}] 匹配下载的文件失败，切换浏览器进行下载: {url}")
                             if self.notifier:
-                                self.notifier.notify(f"[{self.id}]匹配下载的文件失败切换浏览器进行下载,URL: {url}", is_error=True)
+                                self.notifier.notify(f"[{self.id}] 匹配下载的文件失败，切换浏览器进行下载, URL: {url}",
+                                                     is_error=True)
                             return True
 
                         # 获取当前账号的昵称
@@ -630,11 +676,12 @@ class XKW:
                         if self.uploader:
                             try:
                                 self.uploader.add_upload_task(file_path, soft_id)
-                                logging.info(f"[{self.id}]已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                                logging.info(
+                                    f"[{self.id}] 已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
                             except Exception as e:
-                                logging.error(f"[{self.id}]添加上传任务时发生错误: {e}", exc_info=True)
+                                logging.error(f"[{self.id}] 添加上传任务时发生错误: {e}", exc_info=True)
                                 if self.notifier:
-                                    self.notifier.notify(f"[{self.id}]添加上传任务时发生错误: {e}", is_error=True)
+                                    self.notifier.notify(f"[{self.id}] 添加上传任务时发生错误: {e}", is_error=True)
                         else:
                             logging.warning("Uploader 未设置，无法传递上传任务。")
 
@@ -645,7 +692,7 @@ class XKW:
                 self.click_confirm_button(tab)
 
             # 超过最大等待时间，下载失败
-            logging.warning(f"[{self.id}]超时下载，禁用实例并检查账号情况，切换实例进行下载: {url}")
+            logging.warning(f"[{self.id}] 超时下载，禁用实例并检查账号情况，切换实例进行下载: {url}")
             self.manager.disable_xkw_instance(self)
             self.switch_browser_and_retry(url)
             self.reset_tab(tab)
@@ -655,17 +702,26 @@ class XKW:
                 logging.warning("账号未登录，尝试重新登录。")
                 if self.notifier:
                     self.notifier.notify("账号未登录，进行登录并进行换实例下载。", is_error=True)
-                self.handle_login_status(tab)
                 return False
 
+            # 如果超时并且登录状态下，设置需要管理员介入
+            if self.login_status:
+                self.set_admin_intervention_required(True)
+                self.manager.disable_xkw_instance(self)
+                logging.info(f"[{self.id}] 需要管理员介入以恢复实例。")
+                if self.notifier:
+                    self.notifier.notify(f"[{self.id}] 需要管理员介入以恢复实例。", is_error=True)
+
         except Exception as e:
-            logging.error(f"[{self.id}]下载过程中出错: {e}", exc_info=True)
+            logging.error(f"[{self.id}] 下载过程中出错: {e}", exc_info=True)
             if self.notifier:
-                self.notifier.notify(f"[{self.id}]下载过程中出错: {e}", is_error=True)
+                self.notifier.notify(f"[{self.id}] 下载过程中出错: {e}", is_error=True)
             self.reset_tab(tab)
             self.tabs.put(tab)
             self.switch_browser_and_retry(url)
             return False
+
+        return False  # 默认返回 False 以示未成功
 
     def click_confirm_button(self, tab):
         """
@@ -970,8 +1026,18 @@ class XKW:
 
             # 检查是否达到每日或每周上限
             if daily_count >= 51 or weekly_count >= 350:
+                if daily_count >= 51:
+                    self.set_daily_limit_reached(True)
+                if weekly_count >= 350:
+                    self.set_weekly_limit_reached(True)
                 return True
-            return False
+            else:
+                # 如果未达到上限，确保属性为 False
+                if daily_count < 51:
+                    self.set_daily_limit_reached(False)
+                if weekly_count < 350:
+                    self.set_weekly_limit_reached(False)
+                return False
         except Exception as e:
             logging.error(f"[{self.id}]检查账号下载上限时出错: {e}", exc_info=True)
             if self.notifier:
@@ -1015,49 +1081,73 @@ class XKW:
             return False
 
     def download(self, url, tab):
-        try:
-            logging.info(f"[{self.id}]准备下载 URL: {url}")
-            # 增加随机延迟，模拟人类等待页面加载
-            pre_download_delay = random.uniform(0.5, 1)
-            logging.debug(f"[{self.id}]下载前随机延迟 {pre_download_delay:.1f} 秒")
-            time.sleep(pre_download_delay)
+        """
+        执行下载任务，增加了重试机制。
 
-            tab.get(url)
+        参数:
+        - url: 要下载的文件的 URL。
+        - tab: 当前浏览器标签页。
+        """
+        max_retries = 3
+        attempt = 0
+        while attempt < max_retries:
+            try:
+                logging.info(f"[{self.id}] 准备下载 URL: {url} (尝试 {attempt + 1}/{max_retries})")
+                # 增加随机延迟，模拟人类等待页面加载
+                pre_download_delay = random.uniform(0.5, 1)
+                logging.debug(f"[{self.id}] 下载前随机延迟 {pre_download_delay:.1f} 秒")
+                time.sleep(pre_download_delay)
 
-            # 等待页面加载完成
-            tab.wait.load_start(timeout=10)
-            tab.wait.doc_loaded(timeout=30)
+                tab.get(url)
 
-            soft_id, title = self.extract_id_and_title(tab, url)
-            if not soft_id or not title:
-                if soft_id is None and title is None:
-                    logging.info(f"[{self.id}]任务被跳过: {url}")
+                # 等待页面加载完成
+                tab.wait.load_start(timeout=10)
+                tab.wait.doc_loaded(timeout=30)
+
+                soft_id, title = self.extract_id_and_title(tab, url)
+                if not soft_id or not title:
+                    if soft_id is None and title is None:
+                        logging.info(f"[{self.id}] 任务被跳过: {url}")
+                    else:
+                        logging.error(f"[{self.id}] 提取 soft_id 或标题失败，跳过 URL: {url}")
+                    self.reset_tab(tab)
+                    return
+
+                download_button = tab("#btnSoftDownload")  # 获取下载按钮
+                if not download_button:
+                    logging.error(f"[{self.id}] 无法找到下载按钮，跳过URL: {url}")
+                    if self.notifier:
+                        self.notifier.notify(f"[{self.id}] 无法找到下载按钮，跳过 URL: {url}", is_error=True)
+                    self.reset_tab(tab)
+                    return
+                logging.info(f"[{self.id}] 准备点击下载按钮，soft_id: {soft_id}")
+                click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
+                logging.debug(f"[{self.id}] 点击下载按钮前随机延迟 {click_delay:.1f} 秒")
+                time.sleep(click_delay)
+                success = self.listener(tab, download_button, url, title, soft_id)
+                if success:
+                    logging.info(f"[{self.id}] 下载成功: {url}")
+                    break  # 下载成功，退出重试循环
                 else:
-                    logging.error(f"[{self.id}]提取 soft_id 或标题失败，跳过 URL: {url}")
-                self.reset_tab(tab)
-                return
-
-            download_button = tab("#btnSoftDownload")  # 获取下载按钮
-            if not download_button:
-                logging.error(f"[{self.id}]无法找到下载按钮，跳过URL: {url}")
+                    attempt += 1
+                    logging.warning(f"[{self.id}] 下载失败，准备重试: {url}")
+                    # 重置标签页并重新加载URL
+                    self.reset_tab(tab)
+                    tab.get(url)
+            except Exception as e:
+                logging.error(f"[{self.id}] 下载过程中出错: {e}", exc_info=True)
                 if self.notifier:
-                    self.notifier.notify(f"[{self.id}]无法找到下载按钮，跳过 URL: {url}", is_error=True)
+                    self.notifier.notify(f"[{self.id}] 下载过程中出错: {e}", is_error=True)
+                # 重置标签页并重新加载URL
                 self.reset_tab(tab)
-                return
-            logging.info(f"[{self.id}]准备点击下载按钮，soft_id: {soft_id}")
-            click_delay = random.uniform(0.5, 1.5)  # 点击前的随机延迟
-            logging.debug(f"[{self.id}]点击下载按钮前随机延迟 {click_delay:.1f} 秒")
-            time.sleep(click_delay)
-            self.listener(tab, download_button, url, title, soft_id)
-        except Exception as e:
-            logging.error(f"[{self.id}]下载过程中出错: {e}", exc_info=True)
-            if self.notifier:
-                self.notifier.notify(f"[{self.id}]下载过程中出错: {e}", is_error=True)
-            self.reset_tab(tab)
-        finally:
-            # 无论成功与否，都重置标签页并放回队列
+                tab.get(url)
+                attempt += 1
+        else:
             self.reset_tab(tab)
             self.tabs.put(tab)
+            logging.error(f"[{self.id}] 下载失败，已达到最大重试次数: {url}")
+            if self.notifier:
+                self.notifier.notify(f"[{self.id}] 下载失败，已达到最大重试次数: {url}", is_error=True)
 
     def run(self):
         """
@@ -1215,63 +1305,23 @@ class AutoDownloadManager:
         download_dir = DOWNLOAD_DIR
 
         # 为每个实例提供不同的账号列表
-        accounts_xkw1 = [
-            {'username': '13143019361', 'password': '428199Li@', 'nickname': '全能01X'},
-        ]
-
-        accounts_xkw2 = [
-            {'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02'},
-        ]
-
-        accounts_xkw3 = [
-            {'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},
-        ]
-
-        accounts_xkw4 = [
-            {'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},
-            ]
-        accounts_xkw5 = [
-            {'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},
-        ]
-        accounts_xkw6 = [
-            {'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},
-        ]
-        accounts_xkw7 = [
-            {'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},
-        ]
-        accounts_xkw8 = [
-            {'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},
-        ]
-        accounts_xkw9 = [
-            {'username': '13920946017', 'password': '428199Li@', 'nickname': '全能11X'},
-        ]
-        accounts_xkw10 = [
-            {'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},
-        ]
-        accounts_xkw11 = [
-            {'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},
-        ]
-        accounts_xkw12 = [
-            {'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},
-        ]
-        accounts_xkw13 = [
-            {'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},
-        ]
-        accounts_xkw14 = [
-            {'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},
-        ]
-        accounts_xkw15 = [
-            {'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},
-        ]
-        accounts_xkw16 = [
-            {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},
-        ]
-        accounts_xkw17 = [
-            {'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},
-            # {'username': '18643599206', 'password': '428199Li@', 'nickname': '全能21'},
-            # {'username': '18131736772', 'password': '428199Li@', 'nickname': '全能22'},
-            # {'username': '18730596893', 'password': '428199Li@', 'nickname': '全能23'},
-        ]
+        accounts_xkw1 = [{'username': '13143019361', 'password': '428199Li@', 'nickname': '全能01X'},]
+        accounts_xkw2 = [{'username': '19061531853', 'password': '428199Li@', 'nickname': '全能02'},]
+        accounts_xkw3 = [{'username': '19563630322', 'password': '428199Li@', 'nickname': '全能03X'},]
+        accounts_xkw4 = [{'username': '13343297668', 'password': '428199Li@', 'nickname': '全能04X'},]
+        accounts_xkw5 = [{'username': '15324485548', 'password': '428199Li@', 'nickname': '全能05'},]
+        accounts_xkw6 = [{'username': '19536946597', 'password': '428199Li@', 'nickname': '全能06X'},]
+        accounts_xkw7 = [{'username': '13820043716', 'password': '428199Li@', 'nickname': '全能08X'},]
+        accounts_xkw8 = [{'username': '15512733826', 'password': '428199Li@', 'nickname': '全能09X'},]
+        accounts_xkw9 = [{'username': '13920946017', 'password': '428199Li@', 'nickname': '全能11X'},]
+        accounts_xkw10 = [{'username': '19358191853', 'password': '428199Li@', 'nickname': '全能12X'},]
+        accounts_xkw11 = [{'username': '18589186420', 'password': '428199Li@', 'nickname': '全能13x'},]
+        accounts_xkw12 = [{'username': '19316031853', 'password': '428199Li@', 'nickname': '全能14X'},]
+        accounts_xkw13 = [{'username': '19568101843', 'password': '428199Li@', 'nickname': '全能15X'},]
+        accounts_xkw14 = [{'username': '13370328920', 'password': '428199Li@', 'nickname': '全能16'},]
+        accounts_xkw15 = [{'username': '18330529099', 'password': '428199Li@', 'nickname': '全能17'},]
+        accounts_xkw16 = [{'username': '18730596893', 'password': '428199Li@', 'nickname': '全能18'},]
+        accounts_xkw17 = [{'username': '17332853851', 'password': '428199Li@', 'nickname': '全能20'},]
 
         # 创建两个 XKW 实例，分配唯一 ID，并传入各自的账号列表
         xkw1 = XKW(thread=3, work=True, download_dir=download_dir, uploader=uploader, notifier=self.notifier,
@@ -1313,9 +1363,63 @@ class AutoDownloadManager:
         self.active_xkw_instances = self.xkw_instances.copy()  # 活跃的 XKW 实例
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
         self.xkw_lock = threading.RLock()
-
+        self.status_check_thread = threading.Thread(target=self.periodic_status_check, daemon=True)
+        self.status_check_thread.start()
+        logging.info("定期实例状态检查线程已启动。")
         self.pending_tasks = queue.Queue()  # 用于保存挂起的下载任务
         self.paused = False  # 标志是否暂停任务分配
+        self.load_instances_state()
+    state_file = 'xkw_states.json'
+
+    def save_instances_state(self):
+        """
+        保存所有实例的状态到 JSON 文件。
+        """
+        with self.xkw_lock:
+            state = {}
+            for xkw in self.xkw_instances:
+                state[xkw.id] = {
+                    'instance_status': xkw.instance_status,
+                    'login_status': xkw.login_status,
+                    'daily_limit_reached': xkw.daily_limit_reached,
+                    'weekly_limit_reached': xkw.weekly_limit_reached,
+                    'admin_intervention_required': xkw.admin_intervention_required
+                }
+            with open(self.state_file, 'w', encoding='utf-8') as f:
+                json.dump(state, f, ensure_ascii=False, indent=4)
+            logging.info("所有实例状态已保存。")
+
+    def load_instances_state(self):
+        """
+        从 JSON 文件加载所有实例的状态，并更新 active_xkw_instances 列表。
+        """
+        if not os.path.exists(self.state_file):
+            logging.info("状态文件不存在，跳过加载实例状态。")
+            return
+
+        with open(self.state_file, 'r', encoding='utf-8') as f:
+            try:
+                state = json.load(f)
+                with self.xkw_lock:
+                    self.active_xkw_instances.clear()  # 清空当前的活跃实例列表
+                    for xkw in self.xkw_instances:
+                        if xkw.id in state:
+                            instance_state = state[xkw.id]
+                            xkw.set_instance_status(instance_state.get('instance_status', 'inactive'))
+                            xkw.login_status = instance_state.get('login_status', False)
+                            xkw.daily_limit_reached = instance_state.get('daily_limit_reached', False)
+                            xkw.weekly_limit_reached = instance_state.get('weekly_limit_reached', False)
+                            xkw.admin_intervention_required = instance_state.get('admin_intervention_required', False)
+                            logging.info(f"已加载实例 {xkw.id} 的状态。")
+
+                            if xkw.instance_status == 'active':
+                                if xkw not in self.active_xkw_instances:
+                                    self.active_xkw_instances.append(xkw)
+                                    logging.info(f"实例 {xkw.id} 已添加到 active_xkw_instances。")
+                        else:
+                            logging.warning(f"状态文件中未找到实例 {xkw.id} 的状态。")
+            except json.JSONDecodeError:
+                logging.error("状态文件格式错误，无法加载实例状态。")
 
     def disable_xkw_instance(self, xkw_instance):
         """
@@ -1403,31 +1507,103 @@ class AutoDownloadManager:
             logging.warning(f"未找到实例 ID: {id}。")
             return f"未找到实例 ID: {id}。"
 
-    def enable_all_instances(self) -> str:
+    def check_instances_status(self):
         """
-        恢复所有被禁用的 XKW 实例。
+        检查所有活跃实例的状态，首先查看是否需要管理员介入。
+        如果不需要，检查登录状态和下载上限。
+        """
+        with self.xkw_lock:
+            for xkw in self.active_xkw_instances[:]:  # 使用副本以防在循环中修改列表
+                try:
+                    # 先检查是否需要管理员介入
+                    if xkw.admin_intervention_required:
+                        logging.info(f"实例 {xkw.id} 需要管理员介入，跳过进一步检查。")
+                        continue
+
+                    # 1. 检查登录状态，并自动登录
+                    if not xkw.is_logged_in(xkw.page):
+                        logging.warning(f"实例 {xkw.id} 未登录，尝试重新登录。")
+                        if xkw.login(xkw.page):
+                            logging.info(f"实例 {xkw.id} 登录成功。")
+                        else:
+                            logging.error(f"实例 {xkw.id} 登录失败，标记需要管理员介入。")
+                            xkw.set_admin_intervention_required(True)
+                            self.disable_xkw_instance(xkw)
+                            continue
+
+                    # 2. 检查下载上限
+                    if xkw.is_account_reached_limit(xkw.get_nickname_current_account()):
+                        logging.info(f"实例 {xkw.id} 达到下载上限，禁用实例。")
+                        self.disable_xkw_instance(xkw)
+
+                except Exception as e:
+                    logging.error(f"检查实例 {xkw.id} 状态时出错: {e}", exc_info=True)
+                    if self.notifier:
+                        self.notifier.notify(f"检查实例 {xkw.id} 状态时出错: {e}", is_error=True)
+
+    def periodic_status_check(self, interval=21600):
+        """
+        定期检查所有实例的状态。
+
+        参数:
+        - interval: 检查间隔（秒）。
+        """
+        while True:
+            self.check_instances_status()
+            time.sleep(interval)
+
+    def query_all_instances_status(self) -> str:
+        """
+        查询所有实例的各个属性（活跃，登录，上限，管理员介入）。
+        """
+        try:
+            status_infos = []
+            with self.xkw_lock:
+                for xkw in self.xkw_instances:
+                    status_info = (
+                        f"实例 ID: {xkw.id}\n"
+                        f"  - 活跃状态: {'是' if xkw.is_active else '否'}\n"
+                        f"  - 登录状态: {'已登录' if xkw.login_status else '未登录'}\n"
+                        f"  - 每日下载上限已达: {'是' if xkw.daily_limit_reached else '否'}\n"
+                        f"  - 每周下载上限已达: {'是' if xkw.weekly_limit_reached else '否'}\n"
+                        f"  - 需要管理员介入: {'是' if xkw.admin_intervention_required else '否'}\n"
+                    )
+                    status_infos.append(status_info)
+            full_status = "\n".join(status_infos)
+            logging.info("查询所有实例的状态。")
+            return full_status
+        except Exception as e:
+            logging.error(f"查询所有实例状态时出错: {e}", exc_info=True)
+            return f"查询所有实例状态时出错: {e}"
+
+    def set_instance_admin_intervention(self, instance_id: str, status: bool) -> str:
+        """
+        改变指定实例的 admin_intervention_required 属性。
+
+        参数:
+        - instance_id: 要修改的实例ID。
+        - status: 需要设置的状态，True 或 False。
 
         返回:
         - 操作结果的字符串描述。
         """
-        with self.xkw_lock:
-            restored = []
+        try:
             for xkw in self.xkw_instances:
-                if not xkw.is_active:
-                    xkw.is_active = True
-                    self.active_xkw_instances.append(xkw)
-                    xkw.start()  # 重新启动实例的运行线程
-                    restored.append(xkw.id)
-            if restored:
-                logging.info(f"实例 {', '.join(restored)} 已全部恢复。")
-                if self.notifier:
-                    self.notifier.notify(f"实例 {', '.join(restored)} 已全部恢复。")
-                # 重新分配 pending_tasks 队列中的任务
-                self.redistribute_pending_tasks()
-                return f"实例 {', '.join(restored)} 已全部恢复。"
-            else:
-                logging.info("所有实例已经是活跃状态。")
-                return "所有实例已经是活跃状态。"
+                if xkw.id == instance_id:
+                    xkw.set_admin_intervention_required(status)
+                    if status:
+                        self.disable_xkw_instance(xkw)
+                        logging.info(f"实例 {instance_id} 已设置为需要管理员介入，并已被禁用。")
+                        return f"实例 {instance_id} 已设置为需要管理员介入，并已被禁用。"
+                    else:
+                        logging.info(f"实例 {instance_id} 的需要管理员介入状态已取消。")
+                        self.restore_instance(xkw)
+                        return f"实例 {instance_id} 的需要管理员介入状态已取消。"
+            logging.warning(f"未找到实例 ID: {instance_id}。")
+            return f"未找到实例 ID: {instance_id}。"
+        except Exception as e:
+            logging.error(f"设置实例 '{instance_id}' 的管理员介入状态时出错: {e}", exc_info=True)
+            return f"设置实例 '{instance_id}' 的管理员介入状态时出错: {e}"
 
     def add_task(self, url: str, current_instance=None):
         try:
@@ -1491,6 +1667,31 @@ class AutoDownloadManager:
         if self.notifier:
             self.notifier.notify("已重新分配所有 pending_tasks，恢复任务分配。")
 
+    def restore_instance(self, id: str):
+        """
+        恢复指定的实例。
+
+        参数:
+        - id: 要恢复的实例的 ID。
+        """
+        with self.xkw_lock:
+            for xkw in self.xkw_instances:
+                if xkw.id == id:
+                    if xkw.admin_intervention_required:
+                        xkw.set_admin_intervention_required(False)
+                        xkw.set_status('running')
+                        self.active_xkw_instances.append(xkw)
+                        xkw.start()
+                        logging.info(f"实例 {id} 重新启动。")
+                        if self.notifier:
+                            self.notifier.notify(f"实例 {id} 重新启动。")
+                        return f"实例 {id} 已被恢复。"
+                    else:
+                        logging.info(f"实例 {id} 不需要恢复。")
+                        return f"实例 {id} 不需要恢复。"
+            logging.warning(f"未找到实例 ID: {id}。")
+            return f"未找到实例 ID: {id}。"
+
     def get_current_account_usage(self) -> str:
         """
         获取所有活跃的 XKW 实例的账号使用情况。
@@ -1526,6 +1727,8 @@ class AutoDownloadManager:
             logging.info("停止 AutoDownloadManager 和所有 XKW 实例。")
             for xkw in self.xkw_instances:
                 xkw.stop()
+            # 保存所有实例状态
+            self.save_instances_state()
         except Exception as e:
             logging.error(f"停止过程中出错: {e}", exc_info=True)
             if self.notifier:
