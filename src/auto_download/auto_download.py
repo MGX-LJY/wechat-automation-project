@@ -22,6 +22,7 @@ from src.notification.notifier import Notifier
 # 配置基础目录和下载目录
 BASE_DIR = os.path.dirname(__file__)
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Downloads')
+STATE_DIR = os.path.join(BASE_DIR, 'state')  # 新增状态保存目录
 
 # 初始化日志记录器
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -131,29 +132,61 @@ class XKW:
         self.handle_login_lock = threading.RLock()
         self.login_locked_until = 0  # 时间戳，表示登录锁定结束的时间
 
+        # 初始化状态保存路径
+        self.state_file = os.path.join(STATE_DIR, f"{self.id}_state.json")
+        self.save_state_lock = threading.RLock()
+
         # 记录失败次数
         self.failure_count = 0
         self.failure_threshold = 3  # 失败阈值
 
-    def set_login_status(self, status: bool):
-        """设置实例的登录状态。"""
-        self.login_status = status
-        logging.info(f"[{self.id}] 登录状态已设置为: {'已登录' if status else '未登录'}")
+    def save_state(self):
+        """
+        保存当前实例的状态到 JSON 文件。
+        """
+        with self.save_state_lock:
+            state = {
+                'instance_status': self.instance_status,
+                'login_status': self.login_status,
+                'daily_limit_reached': self.daily_limit_reached,
+                'weekly_limit_reached': self.weekly_limit_reached,
+                'admin_intervention_required': self.admin_intervention_required,
+                'current_account_index': self.current_account_index
+            }
+            try:
+                with open(self.state_file, 'w', encoding='utf-8') as f:
+                    json.dump(state, f, ensure_ascii=False, indent=4)
+                logging.info(f"[{self.id}] 实例状态已保存到 {self.state_file}")
+            except Exception as e:
+                logging.error(f"[{self.id}] 保存实例状态时出错: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"[{self.id}] 保存实例状态时出错: {e}", is_error=True)
 
-    def set_daily_limit_reached(self, reached: bool):
-        """设置是否达到每日下载上限。"""
-        self.daily_limit_reached = reached
-        logging.info(f"[{self.id}] 每日下载上限已{'达到' if reached else '未达到'}。")
+    def load_state(self):
+        """
+        从 JSON 文件加载当前实例的状态。
+        """
+        if not os.path.exists(self.state_file):
+            logging.info(f"[{self.id}] 状态文件不存在，跳过加载状态。")
+            return
 
-    def set_weekly_limit_reached(self, reached: bool):
-        """设置是否达到每周下载上限。"""
-        self.weekly_limit_reached = reached
-        logging.info(f"[{self.id}] 每周下载上限已{'达到' if reached else '未达到'}。")
-
-    def set_admin_intervention_required(self, required: bool):
-        """设置是否需要管理员介入。"""
-        self.admin_intervention_required = required
-        logging.info(f"[{self.id}] 需要管理员介入: {'是' if required else '否'}。")
+        with self.save_state_lock:
+            try:
+                with open(self.state_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                self.set_instance_status(state.get('instance_status', 'inactive'))
+                self.login_status = state.get('login_status', False)
+                self.daily_limit_reached = state.get('daily_limit_reached', False)
+                self.weekly_limit_reached = state.get('weekly_limit_reached', False)
+                self.admin_intervention_required = state.get('admin_intervention_required', False)
+                self.current_account_index = state.get('current_account_index', 0)
+                logging.info(f"[{self.id}] 已加载实例状态。")
+            except json.JSONDecodeError:
+                logging.error(f"[{self.id}] 状态文件格式错误，无法加载状态。")
+            except Exception as e:
+                logging.error(f"[{self.id}] 加载实例状态时出错: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"[{self.id}] 加载实例状态时出错: {e}", is_error=True)
 
     @property
     def instance_status(self) -> str:
@@ -172,6 +205,31 @@ class XKW:
                 logging.info(f"[{self.id}] 实例状态已设置为 inactive。")
         else:
             logging.warning(f"[{self.id}] 无法识别的实例状态: {status}")
+        self.save_state()
+
+    def set_login_status(self, status: bool):
+        """设置实例的登录状态。"""
+        self.login_status = status
+        logging.info(f"[{self.id}] 登录状态已设置为: {'已登录' if status else '未登录'}")
+        self.save_state()
+
+    def set_daily_limit_reached(self, reached: bool):
+        """设置是否达到每日下载上限。"""
+        self.daily_limit_reached = reached
+        logging.info(f"[{self.id}] 每日下载上限已{'达到' if reached else '未达到'}。")
+        self.save_state()
+
+    def set_weekly_limit_reached(self, reached: bool):
+        """设置是否达到每周下载上限。"""
+        self.weekly_limit_reached = reached
+        logging.info(f"[{self.id}] 每周下载上限已{'达到' if reached else '未达到'}。")
+        self.save_state()
+
+    def set_admin_intervention_required(self, required: bool):
+        """设置是否需要管理员介入。"""
+        self.admin_intervention_required = required
+        logging.info(f"[{self.id}] 需要管理员介入: {'是' if required else '否'}。")
+        self.save_state()
 
     def __repr__(self):
         """返回实例的字符串表示。"""
@@ -1185,7 +1243,7 @@ class XKW:
                     futures.append(future)
                     logging.info(f"[{self.id}]已提交下载任务到线程池: {url}")
 
-                    # 增加随机间隔，模拟任务分发的不规则性
+                    # 添加随机间隔，模拟任务分发的不规则性
                     task_dispatch_delay = random.uniform(0.1, 0.5)
                     logging.debug(f"[{self.id}]任务分发后随机延迟 {task_dispatch_delay:.1f} 秒")
                     time.sleep(task_dispatch_delay)
@@ -1233,6 +1291,7 @@ class XKW:
             self.task.put(None)  # 发送退出信号
             self.page.close()
             logging.info("XKW 实例已停止。")
+            self.save_state()  # 保存状态
         except Exception as e:
             logging.error(f"[{self.id}]停止过程中出错: {e}", exc_info=True)
             if self.notifier:
@@ -1262,7 +1321,8 @@ class AutoDownloadManager:
 
         self.error_handler = ErrorHandler(self.notifier)
         self.uploader = uploader
-
+        # 创建状态保存目录
+        os.makedirs(STATE_DIR, exist_ok=True)
         # 创建两个 ChromiumOptions，指定不同的端口和用户数据路径
         co1 = ChromiumOptions().set_local_port(9222).set_user_data_path('data1')
         co2 = ChromiumOptions().set_local_port(9333).set_user_data_path('data2')
@@ -1376,50 +1436,21 @@ class AutoDownloadManager:
         保存所有实例的状态到 JSON 文件。
         """
         with self.xkw_lock:
-            state = {}
             for xkw in self.xkw_instances:
-                state[xkw.id] = {
-                    'instance_status': xkw.instance_status,
-                    'login_status': xkw.login_status,
-                    'daily_limit_reached': xkw.daily_limit_reached,
-                    'weekly_limit_reached': xkw.weekly_limit_reached,
-                    'admin_intervention_required': xkw.admin_intervention_required
-                }
-            with open(self.state_file, 'w', encoding='utf-8') as f:
-                json.dump(state, f, ensure_ascii=False, indent=4)
-            logging.info("所有实例状态已保存。")
+                xkw.save_state()
 
     def load_instances_state(self):
         """
         从 JSON 文件加载所有实例的状态，并更新 active_xkw_instances 列表。
         """
-        if not os.path.exists(self.state_file):
-            logging.info("状态文件不存在，跳过加载实例状态。")
-            return
-
-        with open(self.state_file, 'r', encoding='utf-8') as f:
-            try:
-                state = json.load(f)
-                with self.xkw_lock:
-                    self.active_xkw_instances.clear()  # 清空当前的活跃实例列表
-                    for xkw in self.xkw_instances:
-                        if xkw.id in state:
-                            instance_state = state[xkw.id]
-                            xkw.set_instance_status(instance_state.get('instance_status', 'inactive'))
-                            xkw.login_status = instance_state.get('login_status', False)
-                            xkw.daily_limit_reached = instance_state.get('daily_limit_reached', False)
-                            xkw.weekly_limit_reached = instance_state.get('weekly_limit_reached', False)
-                            xkw.admin_intervention_required = instance_state.get('admin_intervention_required', False)
-                            logging.info(f"已加载实例 {xkw.id} 的状态。")
-
-                            if xkw.instance_status == 'active':
-                                if xkw not in self.active_xkw_instances:
-                                    self.active_xkw_instances.append(xkw)
-                                    logging.info(f"实例 {xkw.id} 已添加到 active_xkw_instances。")
-                        else:
-                            logging.warning(f"状态文件中未找到实例 {xkw.id} 的状态。")
-            except json.JSONDecodeError:
-                logging.error("状态文件格式错误，无法加载实例状态。")
+        with self.xkw_lock:
+            self.active_xkw_instances.clear()  # 清空当前的活跃实例列表
+            for xkw in self.xkw_instances:
+                if xkw.is_active:
+                    self.active_xkw_instances.append(xkw)
+                    logging.info(f"实例 {xkw.id} 已添加到 active_xkw_instances。")
+                else:
+                    logging.info(f"实例 {xkw.id} 当前为非活跃状态。")
 
     def disable_xkw_instance(self, xkw_instance):
         """
