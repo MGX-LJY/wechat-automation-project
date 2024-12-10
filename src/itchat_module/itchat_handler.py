@@ -482,7 +482,7 @@ class DownloadTaskQueue:
         self.lock = threading.Lock()  # 用于保护 current_interval
         self.thread = threading.Thread(target=self.worker, daemon=True)
         self.thread.start()
-        logging.info("下载任务队列已启动，初始间隔时间为 %s 秒", self.current_interval)
+        logging.debug("下载任务队列已启动，初始间隔时间为 %s 秒", self.current_interval)
 
     def add_task(self, url: str):
         """将下载任务添加到队列中"""
@@ -496,11 +496,11 @@ class DownloadTaskQueue:
             if queue_size > self.high_threshold and self.current_interval < self.max_interval:
                 # 队列过长，增加间隔时间
                 self.current_interval = min(self.current_interval * 1.5, self.max_interval)
-                logging.info(f"队列长度为 {queue_size}，增加处理间隔到 {self.current_interval:.2f} 秒")
+                logging.debug(f"队列长度为 {queue_size}，增加处理间隔到 {self.current_interval:.2f} 秒")
             elif queue_size < self.low_threshold and self.current_interval > self.min_interval:
                 # 队列过短，减少间隔时间
                 self.current_interval = max(self.current_interval / 1.5, self.min_interval)
-                logging.info(f"队列长度为 {queue_size}，减少处理间隔到 {self.current_interval:.2f} 秒")
+                logging.debug(f"队列长度为 {queue_size}，减少处理间隔到 {self.current_interval:.2f} 秒")
             else:
                 logging.debug(f"队列长度为 {queue_size}，保持处理间隔为 {self.current_interval:.2f} 秒")
 
