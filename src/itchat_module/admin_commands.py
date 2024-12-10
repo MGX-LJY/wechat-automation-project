@@ -87,6 +87,8 @@ class AdminCommandsHandler:
 
     def handle_command(self, message: str) -> Optional[str]:
         """处理管理员发送的命令并执行相应操作"""
+        message = message.strip()  # 去除前后空格
+
         # 检查是否为数字，发送对应的命令模板
         if message.isdigit():
             template = self.help_templates.get(message)
@@ -98,8 +100,10 @@ class AdminCommandsHandler:
         for cmd, pattern in self.commands.items():
             match = re.match(pattern, message)
             if match:
+                logging.info(f"匹配到命令: {cmd}，参数: {match.groups()}")
                 try:
                     if cmd == 'update_individual_points':
+                        # 处理逻辑
                         name, delta = match.groups()
                         delta = int(delta)
                         success = self.point_manager.update_recipient_points(name, delta)
@@ -109,6 +113,7 @@ class AdminCommandsHandler:
                             return f"个人 '{name}' 的积分更新失败。"
 
                     elif cmd == 'update_non_whole_group_points':
+                        # 处理逻辑
                         group_name, delta = match.groups()
                         delta = int(delta)
                         success = self.point_manager.update_group_points(group_name, delta)
@@ -118,6 +123,7 @@ class AdminCommandsHandler:
                             return f"整体群组 '{group_name}' 的积分更新失败。"
 
                     elif cmd == 'update_user_points':
+                        # 处理逻辑
                         group_name, nickname, points = match.groups()
                         points = int(points) if points else 0
                         group_exists = self.point_manager.get_group_info(group_name)
@@ -129,7 +135,7 @@ class AdminCommandsHandler:
                         else:
                             return f"用户 '{nickname}' 的积分更新失败。"
 
-                    # 新增查询积分命令处理逻辑
+                    # 查询积分命令
                     elif cmd == 'query_individual_points':
                         (name,) = match.groups()
                         points = self.point_manager.get_individual_points(name)
@@ -154,19 +160,20 @@ class AdminCommandsHandler:
                         else:
                             return f"未找到用户 '{nickname}' 在群组 '{group_name}' 的积分信息。"
 
-                    elif cmd == 'disable_all_instances':  # 新增的禁用全部实例命令处理
+                    elif cmd == 'disable_all_instances':
+                        # 禁用全部实例
                         response = self.browser_controller.disable_all_instances()
                         return response
 
                     elif cmd == 'query_current_account_usage':
+                        # 查询当前账号使用情况
                         usage_info = self.browser_controller.get_current_account_usage()
                         return usage_info
 
-                    # 新增下载份数查询命令处理逻辑
-                    if cmd.startswith('query_group') and cmd.endswith('_downloads'):
+                    # 下载份数查询命令处理逻辑
+                    elif cmd.startswith('query_group') and cmd.endswith('_downloads'):
                         group_name = match.group(1)
                         recipient_type = 'whole_group'  # 假设群组都是整体性群组
-                        # 根据命令类型调用不同的方法
                         if cmd == 'query_group_today_downloads':
                             count = self.point_manager.get_today_download_count(recipient_type, group_name)
                             return f"群组 '{group_name}' 今天的下载份数为 {count}。"
@@ -186,7 +193,6 @@ class AdminCommandsHandler:
                     elif cmd.startswith('query_individual') and cmd.endswith('_downloads'):
                         individual_name = match.group(1)
                         recipient_type = 'individual'
-                        # 根据命令类型调用不同的方法
                         if cmd == 'query_individual_today_downloads':
                             count = self.point_manager.get_today_download_count(recipient_type, individual_name)
                             return f"个人 '{individual_name}' 今天的下载份数为 {count}。"
@@ -223,6 +229,22 @@ class AdminCommandsHandler:
                         else:
                             return "没有群组的下载记录。"
 
+                    # 处理非配置文件相关的管理员命令
+                    elif cmd == 'query_all_instances_status':
+                        status = self.browser_controller.query_all_instances_status()
+                        logging.info("查询所有实例状态成功")
+                        return status
+
+                    elif cmd == 'check_all_instances_status':
+                        self.browser_controller.check_instances_status()
+                        return "已执行所有实例的状态检查。"
+
+                    elif cmd == 'set_instance_admin_intervention':
+                        instance_id, status_str = match.groups()
+                        status = True if status_str.lower() == 'true' else False
+                        response = self.browser_controller.set_instance_admin_intervention(instance_id, status)
+                        return response
+
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
                                  'add_monitor_individual', 'remove_monitor_individual',
@@ -249,20 +271,6 @@ class AdminCommandsHandler:
                             group_type = 'non_whole'
                             action = 'add' if 'add' in cmd else 'remove'
                             return self.modify_group_type(group_names, group_type, action)
-
-                        # 新增管理员命令处理逻辑
-                        elif cmd == 'query_all_instances_status':
-                            return self.browser_controller.query_all_instances_status()
-
-                        elif cmd == 'check_all_instances_status':
-                            self.browser_controller.check_instances_status()
-                            return "已执行所有实例的状态检查。"
-
-                        elif cmd == 'set_instance_admin_intervention':
-                            instance_id, status_str = match.groups()
-                            status = True if status_str.lower() == 'true' else False
-                            response = self.browser_controller.set_instance_admin_intervention(instance_id, status)
-                            return response
 
                     # 其他命令处理逻辑
                     elif cmd == 'help':
@@ -473,11 +481,11 @@ class AdminCommandsHandler:
             "    示例：查询所有群组这周下载量\n\n"
             "22. 查询当前账号使用情况\n"
             "    示例：查询当前账号使用情况\n\n"
-            "22. 查询所有实例状态\n"
+            "23. 查询所有实例状态\n"
             "    示例：查询所有实例状态\n\n"
-            "23. 检查所有实例状态\n"
+            "24. 检查所有实例状态\n"
             "    示例：检查所有实例状态\n\n"
-            "24. 设置实例需要管理员介入 <实例ID> <True/False>\n"
+            "25. 设置实例需要管理员介入 <实例ID> <True/False>\n"
             "    示例：设置实例需要管理员介入 xkw1 True\n"
             
             "【命令模板】\n"
