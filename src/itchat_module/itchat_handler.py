@@ -1,10 +1,12 @@
 import logging
 import os
+import queue
 import re
 import threading
+import time
 from collections import deque
 from io import BytesIO
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Any
 from urllib.parse import urlparse, urlunparse
 
 from PIL import Image
@@ -30,7 +32,6 @@ class ItChatHandler:
         # 获取管理员列表
         self.admins: List[str] = self.config.get('wechat', {}).get('admins', [])
         self.error_handler = error_handler
-        self.point_manager = point_manager
         # 二维码保存路径
         self.qr_path = self.config.get('wechat', {}).get('login_qr_path', 'qr.png')
         # 最大重试次数
@@ -43,6 +44,8 @@ class ItChatHandler:
         self.uploader = None  # Uploader 实例
         logging.info("消息处理器初始化完成，但尚未绑定 Uploader")
 
+        # 初始化 DownloadTaskQueue
+        self.download_queue = DownloadTaskQueue(browser_controller=browser_controller)
         # 初始化 AdminCommandsHandler，用于处理管理员命令
         self.admin_commands_handler = AdminCommandsHandler(
             config=self.config,
@@ -61,7 +64,8 @@ class ItChatHandler:
             notifier=notifier,
             browser_controller=browser_controller,
             point_manager=self.point_manager,
-            admin_commands_handler=self.admin_commands_handler  # 传递 AdminCommandsHandler 实例
+            admin_commands_handler=self.admin_commands_handler,
+            add_download_task_callback=self.add_download_task  # 添加回调
         )
         # 设置消息处理器的 uploader
         self.message_handler.set_uploader(self.uploader)
@@ -151,6 +155,9 @@ class ItChatHandler:
 
         logging.info("ItChatHandler 配置已更新")
 
+    def add_download_task(self, url: str):
+        """将下载任务添加到队列"""
+        self.download_queue.add_task(url)
 
 class MessageHandler:
     """
@@ -158,7 +165,8 @@ class MessageHandler:
     """
 
     def __init__(self, error_handler, monitor_groups, target_individuals, admins, notifier=None,
-                 browser_controller=None, point_manager=None, admin_commands_handler=None):
+                 browser_controller=None, point_manager=None, admin_commands_handler=None,
+                 add_download_task_callback=None):
         # 加载配置
         self.config = ConfigManager.load_config()
         # 初始化正则表达式，用于匹配URL
@@ -179,6 +187,7 @@ class MessageHandler:
         # 群组类型配置
         self.group_types = self.config.get('wechat', {}).get('group_types', {})
         self.admin_commands_handler = admin_commands_handler
+        self.add_download_task_callback = add_download_task_callback
 
     def update_config(self, new_config):
         """更新配置并应用变化"""
@@ -310,12 +319,11 @@ class MessageHandler:
             else:
                 logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
-            if self.browser_controller:
-                # 添加下载任务
-                self.browser_controller.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
+            # 使用回调将任务添加到队列
+            if self.add_download_task_callback:
+                self.add_download_task_callback(url)
             else:
-                logging.warning("BrowserController 未设置，无法添加任务。")
+                logging.warning("下载任务回调未设置，无法添加下载任务。")
 
     def handle_individual_message(self, msg):
         """处理来自个人的消息，提取URL或执行管理员命令"""
@@ -369,10 +377,11 @@ class MessageHandler:
             else:
                 logging.warning("Uploader 未设置，或无法上传接收者和 soft_id 信息。")
 
-            if self.browser_controller:
-                # 添加下载任务
-                self.browser_controller.add_task(url)
-                logging.info(f"已添加任务到下载队列: {url}")
+            # 使用回调将任务添加到队列
+            if self.add_download_task_callback:
+                self.add_download_task_callback(url)
+            else:
+                logging.warning("下载任务回调未设置，无法添加下载任务。")
 
     def handle_admin_command(self, message: str) -> Optional[str]:
         """委托 AdminCommandsHandler 处理管理员命令"""
@@ -447,3 +456,83 @@ def send_long_message(notifier, message: str, max_length: int = 2000):
     for i in range(0, len(message), max_length):
         # 分段发送消息
         notifier.notify(message[i:i + max_length])
+
+class DownloadTaskQueue:
+    def __init__(self, browser_controller, batch_size=10, initial_interval=30,
+                 min_interval=5, max_interval=60, high_threshold=20, low_threshold=10):
+        """
+        初始化下载任务队列，并设置动态调整间隔时间的参数。
+
+        :param browser_controller: 用于处理下载任务的浏览器控制器实例
+        :param batch_size: 每批处理的链接数量
+        :param initial_interval: 初始处理间隔时间（秒）
+        :param min_interval: 最小处理间隔时间（秒）
+        :param max_interval: 最大处理间隔时间（秒）
+        :param high_threshold: 队列长度高阈值，超过此值将增加间隔
+        :param low_threshold: 队列长度低阈值，低于此值将减少间隔
+        """
+        self.browser_controller = browser_controller
+        self.batch_size = batch_size
+        self.current_interval = initial_interval
+        self.min_interval = min_interval
+        self.max_interval = max_interval
+        self.high_threshold = high_threshold
+        self.low_threshold = low_threshold
+        self.queue = queue.Queue()
+        self.lock = threading.Lock()  # 用于保护 current_interval
+        self.thread = threading.Thread(target=self.worker, daemon=True)
+        self.thread.start()
+        logging.debug("下载任务队列已启动，初始间隔时间为 %s 秒", self.current_interval)
+
+    def add_task(self, url: str):
+        """将下载任务添加到队列中"""
+        self.queue.put(url)
+        logging.debug(f"任务已添加到队列: {url}")
+
+    def adjust_interval(self):
+        """根据队列长度动态调整处理间隔时间"""
+        queue_size = self.queue.qsize()
+        with self.lock:
+            if queue_size > self.high_threshold and self.current_interval < self.max_interval:
+                # 队列过长，增加间隔时间
+                self.current_interval = min(self.current_interval * 1.5, self.max_interval)
+                logging.debug(f"队列长度为 {queue_size}，增加处理间隔到 {self.current_interval:.2f} 秒")
+            elif queue_size < self.low_threshold and self.current_interval > self.min_interval:
+                # 队列过短，减少间隔时间
+                self.current_interval = max(self.current_interval / 1.5, self.min_interval)
+                logging.debug(f"队列长度为 {queue_size}，减少处理间隔到 {self.current_interval:.2f} 秒")
+            else:
+                logging.debug(f"队列长度为 {queue_size}，保持处理间隔为 {self.current_interval:.2f} 秒")
+
+    def worker(self):
+        """后台线程，定期处理下载任务，并动态调整间隔时间"""
+        while True:
+            batch = []
+            for _ in range(self.batch_size):
+                try:
+                    # 使用较短的超时时间，例如 1 秒
+                    url = self.queue.get(timeout=1)
+                    batch.append(url)
+                except queue.Empty:
+                    break
+
+            if batch:
+                logging.info(f"开始处理 {len(batch)} 个下载任务")
+                for url in batch:
+                    try:
+                        self.browser_controller.add_task(url)
+                        logging.info(f"已添加任务到下载队列: {url}")
+                    except Exception as e:
+                        logging.error(f"处理任务 {url} 时出错: {e}")
+                # 动态调整间隔时间
+                self.adjust_interval()
+            else:
+                logging.debug("任务队列为空，等待新的任务")
+                # 动态调整间隔时间
+                self.adjust_interval()
+
+            # 等待当前间隔时间再处理下一批任务
+            with self.lock:
+                interval = self.current_interval
+            logging.debug(f"等待 {interval:.2f} 秒后处理下一批任务")
+            time.sleep(interval)
