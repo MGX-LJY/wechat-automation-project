@@ -459,7 +459,7 @@ def send_long_message(notifier, message: str, max_length: int = 2000):
 
 class DownloadTaskQueue:
     def __init__(self, browser_controller, batch_size=10, initial_interval=30,
-                 min_interval=5, max_interval=60, high_threshold=20, low_threshold=10):
+                 min_interval=5, max_interval=120, high_threshold=20, low_threshold=10):
         """
         初始化下载任务队列，并设置动态调整间隔时间的参数。
 
@@ -493,12 +493,14 @@ class DownloadTaskQueue:
         """根据队列长度动态调整处理间隔时间"""
         queue_size = self.queue.qsize()
         with self.lock:
-            if queue_size > self.high_threshold and self.current_interval < self.max_interval:
-                # 队列过长，增加间隔时间
-                self.current_interval = min(self.current_interval * 1.5, self.max_interval)
+            if queue_size > self.high_threshold:
+                # 计算需要增加的倍数，确保延迟显著增加
+                multiplier = 2 + (queue_size - self.high_threshold) // 10
+                new_interval = self.current_interval * multiplier
+                self.current_interval = min(new_interval, self.max_interval)
                 logging.debug(f"队列长度为 {queue_size}，增加处理间隔到 {self.current_interval:.2f} 秒")
-            elif queue_size < self.low_threshold and self.current_interval > self.min_interval:
-                # 队列过短，减少间隔时间
+            elif queue_size < self.low_threshold:
+                # 减少间隔时间
                 self.current_interval = max(self.current_interval / 1.5, self.min_interval)
                 logging.debug(f"队列长度为 {queue_size}，减少处理间隔到 {self.current_interval:.2f} 秒")
             else:
