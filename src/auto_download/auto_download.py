@@ -1680,10 +1680,9 @@ class AutoDownloadManager:
             return f"查询所有实例状态时出错: {e}"
 
     def set_instance_admin_intervention(self, instance_id: str, status: bool) -> str:
-        """
-        设置实例的“需要管理员介入”状态。
-        """
         try:
+            available_ids = [xkw.id for xkw in self.xkw_instances]
+            logging.debug(f"当前可用的实例ID: {available_ids}")
             for xkw in self.xkw_instances:
                 if xkw.id == instance_id:
                     xkw.set_admin_intervention_required(status)
@@ -1767,36 +1766,29 @@ class AutoDownloadManager:
         if self.notifier:
             self.notifier.notify("已重新分配所有 pending_tasks，恢复任务分配。")
 
-    def restore_instance(self, id: str):
+    def restore_instance(self, xkw_instance):
         """
-        恢复指定的实例。
+        恢复指定的 XKW 实例。
 
         参数:
-        - id: 要恢复的实例的 ID。
+        - xkw_instance: 要恢复的 XKW 实例对象。
 
         返回:
         - 操作结果的字符串描述。
         """
         try:
-            for xkw in self.xkw_instances:
-                if xkw.id == id:
-                    if xkw.admin_intervention_required:
-                        xkw.set_admin_intervention_required(False)
-                        xkw.set_instance_status('active')  # 使用现有的方法设置状态
-                        self.active_xkw_instances.append(xkw)
-                        xkw.start()  # 重新启动实例的运行线程
-                        logging.info(f"实例 {id} 已被恢复。")
-                        if self.notifier:
-                            self.notifier.notify(f"实例 {id} 已被恢复。")
-                        return f"实例 {id} 已被恢复。"
-                    else:
-                        logging.info(f"实例 {id} 不需要恢复。")
-                        return f"实例 {id} 不需要恢复。"
-            logging.warning(f"未找到实例 ID: {id}。")
-            return f"未找到实例 ID: {id}。"
+            xkw_instance.set_admin_intervention_required(False)
+            xkw_instance.set_instance_status('active')  # 使用现有的方法设置状态
+            if xkw_instance not in self.active_xkw_instances:
+                self.active_xkw_instances.append(xkw_instance)
+            xkw_instance.start()  # 重新启动实例的运行线程
+            logging.info(f"实例 {xkw_instance.id} 已被恢复。")
+            if self.notifier:
+                self.notifier.notify(f"实例 {xkw_instance.id} 已被恢复。")
+            return f"实例 {xkw_instance.id} 已被恢复。"
         except Exception as e:
-            logging.error(f"恢复实例 '{id}' 时出错: {e}", exc_info=True)
-            return f"恢复实例 '{id}' 时出错: {e}"
+            logging.error(f"恢复实例 '{xkw_instance.id}' 时出错: {e}", exc_info=True)
+            return f"恢复实例 '{xkw_instance.id}' 时出错: {e}"
 
     def get_current_account_usage(self) -> str:
         """
