@@ -9,7 +9,7 @@ import threading
 import time
 import traceback
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Tuple
 
@@ -449,6 +449,7 @@ class XKW:
             # 停止页面加载以加快速度
             tab.stop_loading()
 
+            # 使用提供的方法提取标题
             h1 = tab.s_ele("t:h1@@class=res-title clearfix")
             if h1:
                 title_element = h1.child("t:span")
@@ -553,12 +554,7 @@ class XKW:
             else:
                 # 如果找不到“我的”元素，尝试查找“登录”按钮，未登录时应存在
                 login_element = tab.ele('text:登录', timeout=5)
-                if login_element:
-                    logging.debug(f"[{self.id}][{tab_id}] 找到“登录”按钮，用户未登录。")
-                    return False
-                else:
-                    logging.warning(f"[{self.id}][{tab_id}] 无法确定登录状态。")
-                    return False
+                return not bool(login_element)
         except Exception as e:
             logging.error(f"[{self.id}][{tab_id}] 执行登录状态检查时出错: {e}", exc_info=True)
             return False
@@ -711,7 +707,18 @@ class XKW:
     def listener(self, tab, download, url, title, soft_id):
         """
         监听下载过程，处理下载链接的获取和确认按钮的点击。
-        增加标签页 ID 和 soft_id 以便追踪。
+        移除了与登录相关的逻辑。
+
+        参数:
+        - tab: 当前浏览器标签页。
+        - download: 下载按钮元素。
+        - url: 要下载的URL。
+        - title: 下载项的标题。
+        - soft_id: 下载项的软ID。
+
+        返回:
+        - True: 如果下载成功或任务已妥善处理。
+        - False: 如果下载失败且需要进一步处理。
         """
         tab_id = self.tab_ids.get(tab, "unknown_tab")
         try:
@@ -796,7 +803,8 @@ class XKW:
 
                 # 确保循环不会因快速迭代而占用过多资源
                 time.sleep(retry_interval)
-
+                # 尝试点击确认按钮以确保页面状态
+                self.click_confirm_button(tab)
             # 超过最大等待时间，下载失败
             logging.error(
                 f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在 {max_wait_time} 秒内未能找到匹配的下载文件: {url}")
@@ -838,7 +846,14 @@ class XKW:
 
     def click_confirm_button(self, tab, soft_id):
         """
-        增加soft_id和tab_id日志输出。
+        尝试点击确认按钮。
+
+        参数:
+        - tab: 当前浏览器标签页。
+
+        返回:
+        - True: 如果点击成功或找到确认按钮。
+        - False: 如果未找到确认按钮。
         """
         tab_id = self.tab_ids.get(tab, "unknown_tab")
         try:
@@ -1180,7 +1195,11 @@ class XKW:
 
     def download(self, url, tab):
         """
-        执行下载任务，增加了重试机制，且在日志中记录tab_id和soft_id。
+        执行下载任务，增加了重试机制。
+
+        参数:
+        - url: 要下载的文件的 URL。
+        - tab: 当前浏览器标签页。
         """
         max_retries = 3
         attempt = 0
@@ -1575,42 +1594,63 @@ class AutoDownloadManager:
             logging.warning(f"未找到实例 ID: {id}。")
             return f"未找到实例 ID: {id}。"
 
-    def check_instances_status(self):
-        with self.xkw_lock:
-            for xkw in self.active_xkw_instances[:]:
-                try:
-                    if xkw.admin_intervention_required:
-                        logging.info(f"实例 {xkw.id} 需要管理员介入，跳过进一步检查。")
-                        continue
+    def check_instance_status(self, xkw):
+        """
+        检查单个实例的状态。
+        """
+        try:
+            # 先检查是否需要管理员介入
+            if xkw.admin_intervention_required:
+                logging.info(f"实例 {xkw.id} 需要管理员介入，跳过进一步检查。")
+                return
 
-                    try:
-                        tab = xkw.tabs.get_nowait()  # 获取一个可用的标签页
-                    except queue.Empty:
-                        logging.warning(f"实例 {xkw.id} 没有可用的标签页进行状态检查。")
-                        continue
+            try:
+                tab = xkw.tabs.get_nowait()  # 获取一个可用的标签页
+            except queue.Empty:
+                logging.warning(f"实例 {xkw.id} 没有可用的标签页进行状态检查。")
+                return
 
-                    if not xkw.is_logged_in(tab):
-                        logging.warning(f"实例 {xkw.id} 未登录，尝试重新登录。")
-                        if xkw.login(tab):
-                            logging.info(f"实例 {xkw.id} 登录成功。")
-                        else:
-                            logging.error(f"实例 {xkw.id} 登录失败，标记需要管理员介入。")
-                            xkw.set_admin_intervention_required(True)
-                            self.disable_xkw_instance(xkw)
-                            xkw.tabs.put(tab)  # 将标签页放回队列
-                            continue
-
-                    nickname = xkw.get_nickname_current_account()
-                    if nickname and xkw.is_account_reached_limit(nickname):
-                        logging.info(f"实例 {xkw.id} 达到下载上限，禁用实例。")
-                        self.disable_xkw_instance(xkw)
-
+            if not xkw.is_logged_in(tab):
+                logging.warning(f"实例 {xkw.id} 未登录，尝试重新登录。")
+                if xkw.login(tab):
+                    logging.info(f"实例 {xkw.id} 登录成功。")
+                else:
+                    logging.error(f"实例 {xkw.id} 登录失败，标记需要管理员介入。")
+                    xkw.set_admin_intervention_required(True)
+                    self.disable_xkw_instance(xkw)
                     xkw.tabs.put(tab)  # 将标签页放回队列
+                    return
 
+            nickname = xkw.get_nickname_current_account()
+            if nickname and xkw.is_account_reached_limit(nickname):
+                logging.info(f"实例 {xkw.id} 达到下载上限，禁用实例。")
+                self.disable_xkw_instance(xkw)
+
+            xkw.tabs.put(tab)  # 将标签页放回队列
+
+        except Exception as e:
+            logging.error(f"检查实例 {xkw.id} 状态时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"检查实例 {xkw.id} 状态时出错: {e}", is_error=True)
+
+    def check_instances_status(self):
+        """
+        检查所有活跃实例的状态，首先查看是否需要管理员介入。
+        如果不需要，检查登录状态和下载上限。
+        """
+        with self.xkw_lock:
+            instances = self.active_xkw_instances.copy()
+
+        with ThreadPoolExecutor(max_workers=min(10, len(instances))) as executor:
+            futures = {executor.submit(self.check_instance_status, xkw): xkw for xkw in instances}
+            for future in as_completed(futures):
+                xkw = futures[future]
+                try:
+                    future.result()
                 except Exception as e:
-                    logging.error(f"检查实例 {xkw.id} 状态时出错: {e}", exc_info=True)
+                    logging.error(f"检查实例 {xkw.id} 状态时发生未捕获的异常: {e}", exc_info=True)
                     if self.notifier:
-                        self.notifier.notify(f"检查实例 {xkw.id} 状态时出错: {e}", is_error=True)
+                        self.notifier.notify(f"检查实例 {xkw.id} 状态时发生未捕获的异常: {e}", is_error=True)
 
     def periodic_status_check(self, interval=21600):
         """
