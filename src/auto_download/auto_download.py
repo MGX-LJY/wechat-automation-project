@@ -1681,14 +1681,7 @@ class AutoDownloadManager:
 
     def set_instance_admin_intervention(self, instance_id: str, status: bool) -> str:
         """
-        改变指定实例的 admin_intervention_required 属性。
-
-        参数:
-        - instance_id: 要修改的实例ID。
-        - status: 需要设置的状态，True 或 False。
-
-        返回:
-        - 操作结果的字符串描述。
+        设置实例的“需要管理员介入”状态。
         """
         try:
             for xkw in self.xkw_instances:
@@ -1697,12 +1690,16 @@ class AutoDownloadManager:
                     if status:
                         self.disable_xkw_instance(xkw)
                         logging.info(f"实例 {instance_id} 已设置为需要管理员介入，并已被禁用。")
+                        if self.notifier:
+                            self.notifier.notify(f"实例 {instance_id} 已设置为需要管理员介入，并已被禁用。")
                         return f"实例 {instance_id} 已设置为需要管理员介入，并已被禁用。"
                     else:
-                        logging.info(f"实例 {instance_id} 的需要管理员介入状态已取消。")
                         self.restore_instance(xkw)
+                        logging.info(f"实例 {instance_id} 的需要管理员介入状态已取消。")
+                        if self.notifier:
+                            self.notifier.notify(f"实例 {instance_id} 的需要管理员介入状态已取消。")
                         return f"实例 {instance_id} 的需要管理员介入状态已取消。"
-            logging.warning(f"未找到实例 ID: {instance_id}。")
+            logging.warning(f"未找到实例 ID: {instance_id}")
             return f"未找到实例 ID: {instance_id}。"
         except Exception as e:
             logging.error(f"设置实例 '{instance_id}' 的管理员介入状态时出错: {e}", exc_info=True)
