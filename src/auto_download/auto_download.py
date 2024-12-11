@@ -731,16 +731,12 @@ class XKW:
             self.click_confirm_button(tab, soft_id)
 
             # 设置总的等待时间和间隔
-            max_wait_time = 60  # 修改为60秒
-            elapsed_time = 0
-            retry_interval = 5  # 每次循环等待的间隔时间（秒）
-
-            logging.debug(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 设置最大等待时间为 {max_wait_time} 秒。")
+            total_wait_time = 0
+            max_wait_time = 60
 
             # 开始监听循环
-            while elapsed_time < max_wait_time:
-                start_loop_time = time.time()
-                logging.debug(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 进入监听循环，已等待 {elapsed_time} 秒。")
+            while total_wait_time < max_wait_time:
+                start_time = time.time()
                 for item in tab.listen.steps(timeout=10):  # 设置适当的超时
                     if item.url.startswith("https://files.zxxk.com/?mkey="):
                         tab.listen.stop()
@@ -788,22 +784,17 @@ class XKW:
                         return True
 
                 # 更新已等待时间
-                loop_duration = time.time() - start_loop_time
-                elapsed_time += loop_duration
-                logging.debug(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 已累计等待时间: {elapsed_time:.2f} 秒。")
+                elapsed = time.time() - start_time
+                total_wait_time += elapsed
+                self.click_confirm_button(tab, soft_id)
 
-                # 确保循环不会因快速迭代而占用过多资源
-                time.sleep(retry_interval)
-                # 尝试点击确认按钮以确保页面状态
-                self.click_confirm_button(tab, soft_id)  # 传入 soft_id
-
-            # 超过最大等待时间，下载失败
             logging.error(
                 f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在 {max_wait_time} 秒内未能找到匹配的下载文件: {url}")
             if self.notifier:
                 self.notifier.notify(
                     f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在 {max_wait_time} 秒内未能找到匹配的下载文件: {url}",
                     is_error=True)
+
             self.reset_tab(tab, tab_id)
             self.manager.disable_xkw_instance(self)
             self.switch_browser_and_retry(tab, url, soft_id)
@@ -1617,7 +1608,7 @@ class AutoDownloadManager:
             if nickname and xkw.is_account_reached_limit(nickname):
                 logging.info(f"实例 {xkw.id} 达到下载上限，禁用实例。")
                 self.disable_xkw_instance(xkw)
-
+            xkw.reset_tab(tab)
             xkw.tabs.put(tab)  # 将标签页放回队列
 
         except Exception as e:
@@ -1680,6 +1671,16 @@ class AutoDownloadManager:
             return f"查询所有实例状态时出错: {e}"
 
     def set_instance_admin_intervention(self, instance_id: str, status: bool) -> str:
+        """
+        改变指定实例的 admin_intervention_required 属性。
+
+        参数:
+        - instance_id: 要修改的实例ID。
+        - status: 需要设置的状态，True 或 False。
+
+        返回:
+        - 操作结果的字符串描述。
+        """
         try:
             available_ids = [xkw.id for xkw in self.xkw_instances]
             logging.debug(f"当前可用的实例ID: {available_ids}")
