@@ -1593,6 +1593,9 @@ class AutoDownloadManager:
                 logging.warning(f"实例 {xkw.id} 没有可用的标签页进行状态检查。")
                 return
 
+            # 获取 tab_id
+            tab_id = xkw.tab_ids.get(tab, "unknown_tab")
+
             if not xkw.is_logged_in(tab):
                 logging.warning(f"实例 {xkw.id} 未登录，尝试重新登录。")
                 if xkw.login(tab):
@@ -1608,7 +1611,9 @@ class AutoDownloadManager:
             if nickname and xkw.is_account_reached_limit(nickname):
                 logging.info(f"实例 {xkw.id} 达到下载上限，禁用实例。")
                 self.disable_xkw_instance(xkw)
-            xkw.reset_tab(tab)
+
+            # 正确调用 reset_tab，传递 tab_id
+            xkw.reset_tab(tab, tab_id)
             xkw.tabs.put(tab)  # 将标签页放回队列
 
         except Exception as e:
