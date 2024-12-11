@@ -459,7 +459,7 @@ def send_long_message(notifier, message: str, max_length: int = 2000):
 
 class DownloadTaskQueue:
     def __init__(self, browser_controller, batch_size=10, initial_interval=30,
-                 min_interval=5, max_interval=120, high_threshold=20, low_threshold=10):
+                 min_interval=5, max_interval=60, high_threshold=20, low_threshold=10):
         """
         初始化下载任务队列，并设置动态调整间隔时间的参数。
 
