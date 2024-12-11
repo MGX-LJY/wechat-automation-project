@@ -795,7 +795,7 @@ class XKW:
                 # 确保循环不会因快速迭代而占用过多资源
                 time.sleep(retry_interval)
                 # 尝试点击确认按钮以确保页面状态
-                self.click_confirm_button(tab)
+                self.click_confirm_button(tab, soft_id)  # 传入 soft_id
 
             # 超过最大等待时间，下载失败
             logging.error(
