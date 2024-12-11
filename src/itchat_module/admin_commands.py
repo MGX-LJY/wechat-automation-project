@@ -84,7 +84,7 @@ class AdminCommandsHandler:
             'check_all_instances_status': r'^检查所有实例状态$|^check all instances status$',
             'query_all_instances_status': r'^查询所有实例状态$|^query all instances status$',
             'query_soft_id_logs': r'^查询soft_id日志\s+(\S+)$',
-
+            'set_instance_admin_intervention': r'^设置实例需要管理员介入\s+(\S+)\s+(\S+)$',
         }
 
     def handle_command(self, message: str) -> Optional[str]:

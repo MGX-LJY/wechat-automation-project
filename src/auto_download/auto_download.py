@@ -804,9 +804,9 @@ class XKW:
                 self.notifier.notify(
                     f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在 {max_wait_time} 秒内未能找到匹配的下载文件: {url}",
                     is_error=True)
+            self.reset_tab(tab, tab_id)
             self.manager.disable_xkw_instance(self)
             self.switch_browser_and_retry(tab, url, soft_id)
-            self.reset_tab(tab, tab_id)
             self.tabs.put(tab)
             # 检查账号是否登录
             if not self.is_logged_in(tab):
