@@ -741,60 +741,51 @@ class XKW:
             while elapsed_time < max_wait_time:
                 start_loop_time = time.time()
                 logging.debug(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 进入监听循环，已等待 {elapsed_time} 秒。")
-                try:
-                    for item in tab.listen.steps(timeout=10):  # 设置适当的超时
-                        if item.url.startswith("https://files.zxxk.com/?mkey="):
-                            tab.listen.stop()
-                            tab.stop_loading()
-                            logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载链接获取成功: {item.url}")
-                            logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载成功，开始处理上传任务: {url}")
-                            # 记录账号下载次数
-                            self.account_count(url, tab, soft_id)
-                            self.tabs.put(tab)
-                            # 匹配下载的文件
-                            file_path = self.match_downloaded_file(title, soft_id, tab_id)
-                            if not file_path:
-                                self.switch_browser_and_retry(tab, url, soft_id)
+                for item in tab.listen.steps(timeout=10):  # 设置适当的超时
+                    if item.url.startswith("https://files.zxxk.com/?mkey="):
+                        tab.listen.stop()
+                        tab.stop_loading()
+                        logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载链接获取成功: {item.url}")
+                        logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载成功，开始处理上传任务: {url}")
+                        # 记录账号下载次数
+                        self.account_count(url, tab, soft_id)
+                        self.tabs.put(tab)
+                        # 匹配下载的文件
+                        file_path = self.match_downloaded_file(title, soft_id, tab_id)
+                        if not file_path:
+                            self.switch_browser_and_retry(tab, url, soft_id)
+                            logging.error(
+                                f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载的文件失败，切换浏览器进行下载: {url}")
+                            if self.notifier:
+                                self.notifier.notify(
+                                    f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载文件失败，切换浏览器下载: {url}",
+                                    is_error=True)
+                            return True
+
+                        # 获取当前账号的昵称
+                        current_account = self.accounts[self.current_account_index]
+                        nickname = current_account.get('nickname', current_account['username'])
+
+                        # 上传逻辑
+                        if self.uploader:
+                            try:
+                                self.uploader.add_upload_task(file_path, soft_id)
+                                logging.info(
+                                    f"[{self.id}][{tab_id}][soft_id:{soft_id}] 已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                            except Exception as e:
                                 logging.error(
-                                    f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载的文件失败，切换浏览器进行下载: {url}")
+                                    f"[{self.id}][{tab_id}][soft_id:{soft_id}] 添加上传任务时发生错误: {e}",
+                                    exc_info=True)
                                 if self.notifier:
                                     self.notifier.notify(
-                                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载文件失败，切换浏览器下载: {url}",
-                                        is_error=True)
-                                return True
-
-                            # 获取当前账号的昵称
-                            current_account = self.accounts[self.current_account_index]
-                            nickname = current_account.get('nickname', current_account['username'])
-
-                            # 上传逻辑
-                            if self.uploader:
-                                try:
-                                    self.uploader.add_upload_task(file_path, soft_id)
-                                    logging.info(
-                                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] 已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                                except Exception as e:
-                                    logging.error(
                                         f"[{self.id}][{tab_id}][soft_id:{soft_id}] 添加上传任务时发生错误: {e}",
-                                        exc_info=True)
-                                    if self.notifier:
-                                        self.notifier.notify(
-                                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] 添加上传任务时发生错误: {e}",
-                                            is_error=True)
-                            else:
-                                logging.warning(
-                                    f"[{self.id}][{tab_id}][soft_id:{soft_id}] Uploader 未设置，无法传递上传任务。")
+                                        is_error=True)
+                        else:
+                            logging.warning(
+                                f"[{self.id}][{tab_id}][soft_id:{soft_id}] Uploader 未设置，无法传递上传任务。")
 
-                            self.reset_tab(tab, tab_id)
-                            return True
-                except Exception as e:
-                    logging.error(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 监听过程中出错: {e}", exc_info=True)
-                    if self.notifier:
-                        self.notifier.notify(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 监听过程中出错: {e}",
-                                             is_error=True)
-                    self.reset_tab(tab, tab_id)
-                    self.tabs.put(tab)
-                    return False
+                        self.reset_tab(tab, tab_id)
+                        return True
 
                 # 更新已等待时间
                 loop_duration = time.time() - start_loop_time
@@ -805,6 +796,7 @@ class XKW:
                 time.sleep(retry_interval)
                 # 尝试点击确认按钮以确保页面状态
                 self.click_confirm_button(tab)
+
             # 超过最大等待时间，下载失败
             logging.error(
                 f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在 {max_wait_time} 秒内未能找到匹配的下载文件: {url}")
