@@ -83,6 +83,8 @@ class AdminCommandsHandler:
             'query_current_account_usage': r'^查询当前账号使用情况$',
             'check_all_instances_status': r'^检查所有实例状态$|^check all instances status$',
             'query_all_instances_status': r'^查询所有实例状态$|^query all instances status$',
+            'query_soft_id_logs': r'^查询soft_id日志\s+(\S+)$',
+
         }
 
     def handle_command(self, message: str) -> Optional[str]:
@@ -244,6 +246,17 @@ class AdminCommandsHandler:
                         status = True if status_str.lower() == 'true' else False
                         response = self.browser_controller.set_instance_admin_intervention(instance_id, status)
                         return response
+
+                    elif cmd == 'query_soft_id_logs':
+                        (soft_id,) = match.groups()
+                        logs = self.get_soft_id_logs(soft_id)
+                        if logs.strip():
+                            # 如果日志内容超长，考虑分段发送
+                            if len(logs) > 2000 and self.notifier:
+                                self.send_long_message(logs)
+                                return "已分段发送与该 soft_id 相关的日志。"
+                            else:
+                                return logs
 
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
@@ -487,7 +500,8 @@ class AdminCommandsHandler:
             "    示例：检查所有实例状态\n\n"
             "25. 设置实例需要管理员介入 <实例ID> <True/False>\n"
             "    示例：设置实例需要管理员介入 xkw1 True\n"
-            
+            "26. 查询soft_id日志 <soft_id>\n"
+            "    示例: 查询soft_id日志 123456"
             "【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"
             "例如，发送 '1' 获取命令模板。"
@@ -532,3 +546,35 @@ class AdminCommandsHandler:
                 self.error_handler.handle_exception(e)
             return ""
 
+    def get_soft_id_logs(self, soft_id: str) -> str:
+        """获取当天日志中与指定soft_id相关的日志行。"""
+        try:
+            config = ConfigManager.load_config()
+            log_dir = config.get('logging', {}).get('directory', 'logs')
+
+            # 确保日志目录是绝对路径
+            log_dir = os.path.abspath(log_dir)
+
+            # 获取当前日期的日志文件名
+            current_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            log_file_path = os.path.join(log_dir, f"{current_date}.log")
+
+            if not os.path.exists(log_file_path):
+                logging.error(f"日志文件未找到: {log_file_path}")
+                return "日志文件未找到。"
+
+            filtered_lines = []
+            with open(log_file_path, 'r', encoding='utf-8') as log_file:
+                for line in log_file:
+                    if f"soft_id:{soft_id}" in line:
+                        filtered_lines.append(line)
+
+            if filtered_lines:
+                return "".join(filtered_lines)
+            else:
+                return ""
+        except Exception as e:
+            logging.error(f"读取日志文件时发生错误: {e}", exc_info=True)
+            if self.error_handler:
+                self.error_handler.handle_exception(e)
+            return ""
