@@ -715,74 +715,95 @@ class XKW:
         download.click(by_js=True)  # 点击下载按钮
         time.sleep(random.uniform(5, 6))  # 随机延迟，等待页面加载
         self.click_confirm_button(tab, soft_id)
-        for item in tab.listen.steps(timeout=60):
-            if item.url.startswith("https://files.zxxk.com/?mkey="):
-                tab.listen.stop()
-                tab.stop_loading()
-                logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载链接获取成功: {item.url}")
-                logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载成功，开始处理上传任务: {url}")
-                # 记录账号下载次数
-                self.account_count(url, tab, soft_id)
-                self.tabs.put(tab)
-                # 匹配下载的文件
-                file_path = self.match_downloaded_file(title, soft_id, tab_id)
-                if not file_path:
-                    self.switch_browser_and_retry(tab, url, soft_id)
-                    logging.error(
-                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载的文件失败，切换浏览器进行下载: {url}")
-                    if self.notifier:
-                        self.notifier.notify(
-                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载文件失败，切换浏览器下载: {url}",
-                            is_error=True)
+
+        # 定义刷新页面的函数
+        def refresh_page():
+            try:
+                logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 等待60秒后刷新页面。")
+                tab.get(url)  # 刷新页面到下载URL
+                logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 页面已刷新。")
+            except Exception as e:
+                logging.error(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 刷新页面时出错: {e}", exc_info=True)
+                if self.notifier:
+                    self.notifier.notify(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 刷新页面时出错: {e}", is_error=True)
+
+        # 启动一个定时器，在60秒后刷新页面
+        refresh_timer = threading.Timer(60, refresh_page)
+        refresh_timer.start()
+
+        try:
+            for item in tab.listen.steps(timeout=60):
+                if item.url.startswith("https://files.zxxk.com/?mkey="):
+                    tab.listen.stop()
+                    tab.stop_loading()
+                    logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载链接获取成功: {item.url}")
+                    logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 下载成功，开始处理上传任务: {url}")
+                    # 记录账号下载次数
+                    self.account_count(url, tab, soft_id)
+                    self.tabs.put(tab)
+                    # 匹配下载的文件
+                    file_path = self.match_downloaded_file(title, soft_id, tab_id)
+                    if not file_path:
+                        self.switch_browser_and_retry(tab, url, soft_id)
+                        logging.error(
+                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载的文件失败，切换浏览器进行下载: {url}")
+                        if self.notifier:
+                            self.notifier.notify(
+                                f"[{self.id}][{tab_id}][soft_id:{soft_id}] 匹配下载文件失败，切换浏览器下载: {url}",
+                                is_error=True)
+                        return True
+
+                    # 获取当前账号的昵称
+                    current_account = self.accounts[self.current_account_index]
+                    nickname = current_account.get('nickname', current_account['username'])
+
+                    # 上传逻辑
+                    if self.uploader:
+                        self.uploader.add_upload_task(file_path, soft_id)
+                        logging.info(
+                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] 已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
+                    else:
+                        logging.warning(
+                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] Uploader 未设置，无法传递上传任务。")
+
+                    self.reset_tab(tab, tab_id)
+                    refresh_timer.cancel()  # 成功获取下载链接，取消刷新定时器
                     return True
-
-                # 获取当前账号的昵称
-                current_account = self.accounts[self.current_account_index]
-                nickname = current_account.get('nickname', current_account['username'])
-
-                # 上传逻辑
-                if self.uploader:
-                    self.uploader.add_upload_task(file_path, soft_id)
-                    logging.info(
-                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] 已将文件 {file_path} 和 soft_id {soft_id} 添加到上传任务队列。")
-                else:
-                    logging.warning(
-                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] Uploader 未设置，无法传递上传任务。")
+            else:
+                # 超时处理
+                logging.error(
+                    f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在60秒内未能找到匹配的下载文件: {url}")
+                if self.notifier:
+                    self.notifier.notify(
+                        f"[{self.id}][{tab_id}][soft_id:{soft_id}]60 秒内未能找到匹配的下载文件: {url}",
+                        is_error=True)
 
                 self.reset_tab(tab, tab_id)
-                return True
-        else:
-            logging.error(
-                f"[{self.id}][{tab_id}][soft_id:{soft_id}] 在60秒内未能找到匹配的下载文件: {url}")
-            if self.notifier:
-                self.notifier.notify(
-                    f"[{self.id}][{tab_id}][soft_id:{soft_id}]60 秒内未能找到匹配的下载文件: {url}",
-                    is_error=True)
-
-            self.reset_tab(tab, tab_id)
-            self.manager.disable_xkw_instance(self)
-            self.switch_browser_and_retry(tab, url, soft_id)
-            self.tabs.put(tab)
-
-            # 检查账号是否登录
-            if not self.is_logged_in(tab):
-                logging.warning(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 账号未登录，尝试重新登录。")
-                if self.notifier:
-                    self.notifier.notify(
-                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] 账号未登录，进行登录并进行换实例下载。",
-                        is_error=True)
-                return False
-
-            # 如果超时并且登录状态下，设置需要管理员介入
-            if self.login_status:
-                self.set_admin_intervention_required(True)
                 self.manager.disable_xkw_instance(self)
-                logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 需要管理员介入以恢复实例。")
-                if self.notifier:
-                    self.notifier.notify(
-                        f"[{self.id}][{tab_id}][soft_id:{soft_id}] 需要管理员介入以恢复实例。",
-                        is_error=True)
-            return False
+                self.switch_browser_and_retry(tab, url, soft_id)
+                self.tabs.put(tab)
+
+                # 检查账号是否登录
+                if not self.is_logged_in(tab):
+                    logging.warning(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 账号未登录，尝试重新登录。")
+                    if self.notifier:
+                        self.notifier.notify(
+                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] 账号未登录，进行登录并进行换实例下载。",
+                            is_error=True)
+                    return False
+
+                # 如果超时并且登录状态下，设置需要管理员介入
+                if self.login_status:
+                    self.set_admin_intervention_required(True)
+                    self.manager.disable_xkw_instance(self)
+                    logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 需要管理员介入以恢复实例。")
+                    if self.notifier:
+                        self.notifier.notify(
+                            f"[{self.id}][{tab_id}][soft_id:{soft_id}] 需要管理员介入以恢复实例。",
+                            is_error=True)
+                return False
+        finally:
+            refresh_timer.cancel()
 
     def click_confirm_button(self, tab, soft_id):
         """
