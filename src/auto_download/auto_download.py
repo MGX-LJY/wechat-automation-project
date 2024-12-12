@@ -813,7 +813,6 @@ class XKW:
 
                     self.reset_tab(tab, tab_id)
                     return True
-            return False  # 默认返回 False 以示未成功
 
     def click_confirm_button(self, tab, soft_id):
         """
