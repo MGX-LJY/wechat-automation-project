@@ -728,7 +728,7 @@ class XKW:
                     self.notifier.notify(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 刷新页面时出错: {e}", is_error=True)
 
         # 启动一个定时器，在60秒后刷新页面
-        refresh_timer = threading.Timer(60, refresh_page)
+        refresh_timer = threading.Timer(61, refresh_page)
         refresh_timer.start()
 
         try:
