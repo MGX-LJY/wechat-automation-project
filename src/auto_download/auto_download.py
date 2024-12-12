@@ -833,26 +833,21 @@ class XKW:
 
         参数:
         - tab: 当前浏览器标签页。
+        - soft_id: 下载项的软ID。
 
         返回:
-        - True: 如果点击成功或找到确认按钮。
-        - False: 如果未找到确认按钮。
+        - True: 如果点击成功。
+        - False: 如果未找到确认按钮或点击失败。
         """
-        tab_id = self.tab_ids.get(tab, "unknown_tab")
         try:
             iframe = tab.get_frame('#layui-layer-iframe100002')
             if iframe:
-                a = iframe("t:a@@class=balance-payment-btn@@text()=确认")
-                if a:
-                    a.click()
-                    logging.info(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 点击确认按钮成功。")
+                confirm_button = iframe("t:a@@class=balance-payment-btn@@text()=确认")
+                if confirm_button:
+                    confirm_button.click()
                     return True
-                else:
-                    logging.debug(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 未找到确认按钮。")
-            else:
-                logging.debug(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 未找到确认按钮的 iframe。")
-        except Exception as e:
-            logging.error(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 尝试点击确认按钮时发生错误: {e}", exc_info=True)
+        except:
+            pass
         return False
 
     def account_count(self, url, tab, soft_id):
