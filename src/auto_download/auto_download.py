@@ -916,7 +916,6 @@ class XKW:
                             self.notifier.notify(
                                 f"[{self.id}]账号 {current_account_nickname} {limit_type}下载数量已达{limit_value}，切换账号。")
                         self.manager.disable_xkw_instance(self)
-                        self.switch_browser_and_retry(tab, url, soft_id)
         except Exception as e:
             logging.error(f"[{self.id}][{tab_id}][soft_id:{soft_id}] 记录账号下载次数时出错: {e}", exc_info=True)
             if self.notifier:
