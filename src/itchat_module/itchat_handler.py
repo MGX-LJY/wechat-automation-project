@@ -7,10 +7,10 @@ import time
 from collections import deque
 from typing import Optional, List, Any
 from urllib.parse import urlparse, urlunparse
+
 from lib.wxautox.wxauto import WeChat
 from src.config.config_manager import ConfigManager
 from src.itchat_module.admin_commands import AdminCommandsHandler
-
 
 class WxAutoHandler:
     """
@@ -69,6 +69,7 @@ class WxAutoHandler:
         self.add_listen_chats()
 
         # 启动监听线程
+        self.stop_event = threading.Event()
         self.listen_thread = threading.Thread(target=self.listen_messages, daemon=True)
         self.listen_thread.start()
 
@@ -137,6 +138,12 @@ class WxAutoHandler:
     def add_download_task(self, url: str):
         """将下载任务添加到队列"""
         self.download_queue.add_task(url)
+
+    def stop(self):
+        """优雅地停止监听线程"""
+        self.stop_event.set()
+        self.listen_thread.join()
+        logging.info("消息监听线程已停止")
 
 class MessageHandler:
     """
@@ -379,7 +386,7 @@ class MessageHandler:
         urls = self.regex.findall(content)
         return urls
 
-    def process_urls(self, urls: List[str]) -> list[tuple[bytes, str | None | Any]]:
+    def process_urls(self, urls: List[str]) -> List[tuple[str, Optional[str]]]:
         """清理、验证并处理URL，返回有效的 (url, soft_id) 列表"""
         valid_urls = []
         for url in urls:
