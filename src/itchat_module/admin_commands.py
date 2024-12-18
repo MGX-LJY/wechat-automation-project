@@ -115,10 +115,7 @@ class AdminCommandsHandler:
                         return f"未找到与 soft_id '{soft_id}' 相关的日志。"
                 else:
                     return "无法从提供的链接中提取 soft_id，请检查链接格式。"
-        else:
-            return "消息中未检测到有效的链接。"
 
-        # 检查是否为数字，发送对应的命令模板
         if message.isdigit():
             template = self.help_templates.get(message)
             if template:
