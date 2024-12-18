@@ -17,38 +17,44 @@
 - [环境配置](#环境配置)
 - [快速入门](#快速入门)
 - [方法说明](#方法说明)
-  - [1. 发送消息](#1-发送消息)
-    - [1.1 发送文字消息 `SendMsg`](#11-发送文字消息-sendmsg)
-    - [1.2 发送打字机模式消息 `SendTypingText`](#12-发送打字机模式消息-sendtypingtext)
-    - [1.3 发送图片/视频/文件消息 `SendFiles`](#13-发送图片视频文件消息-sendfiles)
-    - [1.4 发送自定义表情包 `SendEmotion`](#14-发送自定义表情包-sendemotion)
-    - [1.5 消息免打扰 `MuteNotifications`](#15-消息免打扰-mutenotifications)
-    - [1.6 邀请入群 `AddGroupMembers`](#16-邀请入群-addgroupmembers)
-    - [1.7 优化 `ChatWith` 方法](#17-优化-chatwith-方法)
-    - [1.8 修改群聊名、备注、群公告、我在本群的昵称 `ManageGroup`](#18-修改群聊名备注群公告我在本群的昵称-managegroup)
-    - [1.9 修改好友备注、增加标签 `ManageFriend`](#19-修改好友备注增加标签-managefriend)
-    - [1.10 自动保存消息内的卡片链接 `parseurl` 参数](#110-自动保存消息内的卡片链接-parseurl-参数)
-    - [1.11 获取当前聊天窗口详情 `CurrentChat` 方法增加 `details` 参数](#111-获取当前聊天窗口详情-currentchat-方法增加-details-参数)
-  - [2. 获取消息](#2-获取消息)
-    - [2.1 获取当前聊天窗口所有消息 `GetAllMessage`](#21-获取当前聊天窗口所有消息-getallmessage)
-    - [2.2 加载更多历史消息 `LoadMoreMessage`](#22-加载更多历史消息-loadmoremessage)
-    - [2.3 获取新消息](#23-获取新消息)
-      - [2.3.1 获取主窗口新消息](#231-获取主窗口新消息)
-      - [2.3.2 监听消息 `GetListenMessage`](#232-监听消息-getlistenmessage)
-  - [3. 添加好友](#3-添加好友)
-    - [3.1 发起好友申请 `AddNewFriend`](#31-发起好友申请-addnewfriend)
-    - [3.2 接受好友请求](#32-接受好友请求)
-      - [3.2.1 获取新的好友申请对象列表 `GetNewFriends`](#321-获取新的好友申请对象列表-getnewfriends)
-      - [3.2.2 通过好友申请对象接受好友请求](#322-通过好友申请对象接受好友请求)
-  - [4. 切换聊天窗口](#4-切换聊天窗口)
-    - [4.1 切换到指定好友聊天框 `ChatWith`](#41-切换到指定好友聊天框-chatwith)
-    - [4.2 切换微信主页面](#42-切换微信主页面)
-      - [4.2.1 切换到聊天页面 `SwitchToChat`](#421-切换到聊天页面-switchtochat)
-      - [4.2.2 切换到通讯录页面 `SwitchToContact`](#422-切换到通讯录页面-switchtocontact)
-  - [5. 获取好友信息](#5-获取好友信息)
-    - [5.1 获取粗略信息 `GetAllFriends`](#51-获取粗略信息-getallfriends)
-    - [5.2 获取详细信息 `GetAllFriendDetails`](#52-获取详细信息-getallfrienddetails)
-    - [5.3 获取所有好友详情 `GetFriendDetails`](#53-获取所有好友详情-getfrienddetails)
+  - [1. 监听](#1-监听)
+    - [1.1 添加监听对象 `AddListenChat`](#11-添加监听对象-addlistenchat)
+    - [1.2 获取监听消息 `GetListenMessage`](#12-获取监听消息-getlistenmessage)
+    - [1.3 移除监听对象 `RemoveListenChat`](#13-移除监听对象-removelistenchat)
+    - [1.4 获取所有监听对象 `GetAllListenChat`](#14-获取所有监听对象-getalllistenchat)
+    - [1.5 示例：创建一个消息回复机器人](#15-示例创建一个消息回复机器人)
+  - [2. 发送消息](#2-发送消息)
+    - [2.1 发送文字消息 `SendMsg`](#21-发送文字消息-sendmsg)
+    - [2.2 发送打字机模式消息 `SendTypingText`](#22-发送打字机模式消息-sendtypingtext)
+    - [2.3 发送图片/视频/文件消息 `SendFiles`](#23-发送图片视频文件消息-sendfiles)
+    - [2.4 发送自定义表情包 `SendEmotion`](#24-发送自定义表情包-sendemotion)
+    - [2.5 消息免打扰 `MuteNotifications`](#25-消息免打扰-mutenotifications)
+    - [2.6 邀请入群 `AddGroupMembers`](#26-邀请入群-addgroupmembers)
+    - [2.7 优化 `ChatWith` 方法](#27-优化-chatwith-方法)
+    - [2.8 修改群聊名、备注、群公告、我在本群的昵称 `ManageGroup`](#28-修改群聊名备注群公告我在本群的昵称-managegroup)
+    - [2.9 修改好友备注、增加标签 `ManageFriend`](#29-修改好友备注增加标签-managefriend)
+    - [2.10 自动保存消息内的卡片链接 `parseurl` 参数](#210-自动保存消息内的卡片链接-parseurl-参数)
+    - [2.11 获取当前聊天窗口详情 `CurrentChat` 方法增加 `details` 参数](#211-获取当前聊天窗口详情-currentchat-方法增加-details-参数)
+  - [3. 获取消息](#3-获取消息)
+    - [3.1 获取当前聊天窗口所有消息 `GetAllMessage`](#31-获取当前聊天窗口所有消息-getallmessage)
+    - [3.2 加载更多历史消息 `LoadMoreMessage`](#32-加载更多历史消息-loadmoremessage)
+    - [3.3 获取新消息](#33-获取新消息)
+      - [3.3.1 获取主窗口新消息](#331-获取主窗口新消息)
+      - [3.3.2 监听消息 `GetListenMessage`](#332-监听消息-getlistenmessage)
+  - [4. 添加好友](#4-添加好友)
+    - [4.1 发起好友申请 `AddNewFriend`](#41-发起好友申请-addnewfriend)
+    - [4.2 接受好友请求](#42-接受好友请求)
+      - [4.2.1 获取新的好友申请对象列表 `GetNewFriends`](#421-获取新的好友申请对象列表-getnewfriends)
+      - [4.2.2 通过好友申请对象接受好友请求](#422-通过好友申请对象接受好友请求)
+  - [5. 切换聊天窗口](#5-切换聊天窗口)
+    - [5.1 切换到指定好友聊天框 `ChatWith`](#51-切换到指定好友聊天框-chatwith)
+    - [5.2 切换微信主页面](#52-切换微信主页面)
+      - [5.2.1 切换到聊天页面 `SwitchToChat`](#521-切换到聊天页面-switchtochat)
+      - [5.2.2 切换到通讯录页面 `SwitchToContact`](#522-切换到通讯录页面-switchtocontact)
+  - [6. 获取好友信息](#6-获取好友信息)
+    - [6.1 获取粗略信息 `GetAllFriends`](#61-获取粗略信息-getallfriends)
+    - [6.2 获取详细信息 `GetAllFriendDetails`](#62-获取详细信息-getallfrienddetails)
+    - [6.3 获取所有好友详情 `GetFriendDetails`](#63-获取所有好友详情-getfrienddetails)
 - [对象说明](#对象说明)
   - [1. 消息对象](#1-消息对象)
     - [1.1 系统消息](#11-系统消息)
@@ -92,11 +98,9 @@
 
 ### 2. 安装 wxautox
 
-通过 Python 的包管理工具 `pip` 安装 wxautox：
+- **根据会员群的文件进行安装**
 
-```bash
-pip install wxautox
-```
+> **说明**：请从我们的会员微信群获取安装文件和相关安装指导，以确保正确安装 wxautox。
 
 ### 3. 微信版本要求
 
@@ -174,17 +178,178 @@ while True:
 
 > **成功提示**：恭喜您，已经成功实现了一个简单的微信机器人，能够自动回复消息！
 
-> [点击查看完整代码](#) *(请根据实际链接修改)*
-
 ---
 
 ## 方法说明
 
 本节详细介绍 wxautox 提供的主要方法及其使用方法。
 
-### 1. 发送消息
+### 1. 监听
 
-#### 1.1 发送文字消息 `SendMsg`
+#### 1.1 添加监听对象 `AddListenChat`
+
+**方法说明**：
+
+`AddListenChat` 方法用于添加需要监听的聊天对象（好友或群聊），以便接收和处理新消息。
+
+**参数说明**：
+
+| 参数   | 类型        | 默认值 | 说明                                     |
+| ------ | ----------- | ------ | ---------------------------------------- |
+| who    | `str`       | /      | 要监听的对象（好友或群聊）的名称         |
+| savepic| `bool`      | `False`| 是否保存新消息中的图片，`True` 保存，`False` 不保存 |
+
+**示例代码**：
+
+```python
+from wxautox import WeChat
+
+wx = WeChat()
+
+# 设置监听列表
+listen_list = [
+    '张三',
+    '李四',
+    '工作群A',
+    '工作群B'
+]
+
+# 添加监听对象，保存新消息图片
+for chat in listen_list:
+    wx.AddListenChat(who=chat, savepic=True)
+```
+
+#### 1.2 获取监听消息 `GetListenMessage`
+
+**方法说明**：
+
+`GetListenMessage` 方法用于获取所有监听对象的新消息。返回的数据类型为字典，键为监听对象，值为消息对象列表。
+
+**参数说明**：
+
+| 参数 | 类型   | 默认值 | 说明                         |
+| ---- | ------ | ------ | ---------------------------- |
+| none | -      | -      | 当前方法不接受任何参数       |
+
+**示例代码**：
+
+```python
+from wxautox import WeChat
+
+wx = WeChat()
+
+# 获取监听消息并处理
+msgs = wx.GetListenMessage()
+for chat in msgs:
+    who = chat.who              # 获取聊天窗口名（人或群名）
+    one_msgs = msgs.get(chat)   # 获取消息内容
+    for msg in one_msgs:
+        msgtype = msg.type       # 获取消息类型
+        content = msg.content    # 获取消息内容
+        print(f'【{who}】：{content}')
+        
+        if msgtype == 'friend':
+            chat.SendMsg('收到')  # 回复“收到”
+```
+
+#### 1.3 移除监听对象 `RemoveListenChat`
+
+**方法说明**：
+
+`RemoveListenChat` 方法用于移除不再需要监听的聊天对象。
+
+**参数说明**：
+
+| 参数 | 类型 | 默认值 | 说明                       |
+| ---- | ---- | ------ | -------------------------- |
+| who  | `str`| /      | 要移除的监听对象名称       |
+
+**示例代码**：
+
+```python
+from wxautox import WeChat
+
+wx = WeChat()
+
+# 移除不需要监听的对象
+wx.RemoveListenChat(who='李四')
+```
+
+#### 1.4 获取所有监听对象 `GetAllListenChat`
+
+**方法说明**：
+
+`GetAllListenChat` 方法用于获取当前所有被监听的聊天对象列表。
+
+**参数说明**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+| ---- | ---- | ------ | ---- |
+
+**示例代码**：
+
+```python
+from wxautox import WeChat
+
+wx = WeChat()
+
+# 获取所有监听对象
+listen_chats = wx.GetAllListenChat()
+print(listen_chats)
+# 示例输出: ['张三', '工作群A', '工作群B']
+```
+
+#### 1.5 示例：创建一个消息回复机器人
+
+以下示例代码展示了如何使用 wxautox 创建一个简单的消息回复机器人，能够自动回复特定好友或群聊的消息。
+
+**示例代码**：
+
+```python
+from wxautox import WeChat
+import time
+
+wx = WeChat()
+
+# 设置监听列表
+listen_list = [
+    '张三',
+    '李四',
+    '工作群A',
+    '工作群B'
+]
+
+# 添加监听对象，保存新消息图片
+for chat in listen_list:
+    wx.AddListenChat(who=chat, savepic=True)
+
+wait = 1  # 设置每隔1秒检查一次新消息
+
+while True:
+    msgs = wx.GetListenMessage()
+    for chat in msgs:
+        who = chat.who              # 获取聊天窗口名（人或群名）
+        one_msgs = msgs.get(chat)   # 获取消息内容
+        for msg in one_msgs:
+            msgtype = msg.type       # 获取消息类型
+            content = msg.content    # 获取消息内容
+            print(f'【{who}】：{content}')
+            
+            if msgtype == 'friend':
+                chat.SendMsg('收到')  # 回复“收到”
+    time.sleep(wait)
+```
+
+> **说明**：
+> - **步骤一**：定义需要监听的聊天对象列表。
+> - **步骤二**：通过 `AddListenChat` 方法添加监听对象，并选择是否保存图片。
+> - **步骤三**：使用一个无限循环不断调用 `GetListenMessage` 方法获取新消息，并根据消息类型自动回复。
+
+---
+
+### 2. 发送消息
+
+#### 2.1 发送文字消息 `SendMsg`
 
 **方法说明**：
 
@@ -226,7 +391,7 @@ at = ['张三', '李四']   # 要 @ 的人
 wx.SendMsg(msg=msg, who=who, at=at)
 ```
 
-#### 1.2 发送打字机模式消息 `SendTypingText`
+#### 2.2 发送打字机模式消息 `SendTypingText`
 
 **方法说明**：
 
@@ -254,7 +419,7 @@ wx.SendTypingText(text)
 
 ![打字机模式示例](https://your-image-link.com/typing-mode.png) *(请根据实际链接修改)*
 
-#### 1.3 发送图片/视频/文件消息 `SendFiles`
+#### 2.3 发送图片/视频/文件消息 `SendFiles`
 
 **方法说明**：
 
@@ -286,7 +451,7 @@ who = '文件传输助手'
 wx.SendFiles(filepath=files, who=who)
 ```
 
-#### 1.4 发送自定义表情包 `SendEmotion`
+#### 2.4 发送自定义表情包 `SendEmotion`
 
 **方法说明**：
 
@@ -311,7 +476,7 @@ else:
     print("表情发送失败")
 ```
 
-#### 1.5 消息免打扰 `MuteNotifications`
+#### 2.5 消息免打扰 `MuteNotifications`
 
 **方法说明**：
 
@@ -334,7 +499,7 @@ wx.ChatWith(group)
 wx.MuteNotifications(mute=mute)
 ```
 
-#### 1.6 邀请入群 `AddGroupMembers`
+#### 2.6 邀请入群 `AddGroupMembers`
 
 **方法说明**：
 
@@ -364,7 +529,7 @@ group = 'wxautoxplus交流群'
 wx.AddGroupMembers(group, targets)
 ```
 
-#### 1.7 优化 `ChatWith` 方法
+#### 2.7 优化 `ChatWith` 方法
 
 **方法说明**：
 
@@ -390,7 +555,7 @@ who = '张三'
 wx.ChatWith(who=who, exact=True)
 ```
 
-#### 1.8 修改群聊名、备注、群公告、我在本群的昵称 `ManageGroup`（2024-12-11 新增）
+#### 2.8 修改群聊名、备注、群公告、我在本群的昵称 `ManageGroup`
 
 **方法说明**：
 
@@ -417,7 +582,7 @@ result = wx.ManageGroup(remark=remark)
 # }
 ```
 
-#### 1.9 修改好友备注、增加标签 `ManageFriend`（2024-12-11 新增）
+#### 2.9 修改好友备注、增加标签 `ManageFriend`
 
 **方法说明**：
 
@@ -444,7 +609,7 @@ else:
     print("好友备注和标签修改失败")
 ```
 
-#### 1.10 自动保存消息内的卡片链接 `parseurl` 参数（2024-12-11 新增）
+#### 2.10 自动保存消息内的卡片链接 `parseurl` 参数
 
 以下方法增加 `parseurl` 参数，用于自动解析消息内卡片消息的 URL 链接：
 
@@ -467,7 +632,7 @@ msgs = wx.GetAllMessage(parseurl=True)
 # ]
 ```
 
-#### 1.11 获取当前聊天窗口详情 `CurrentChat` 方法增加 `details` 参数（2024-12-11 新增）
+#### 2.11 获取当前聊天窗口详情 `CurrentChat` 方法增加 `details` 参数
 
 **方法说明**：
 
@@ -507,9 +672,9 @@ print(details)
 
 ---
 
-### 2. 获取消息
+### 3. 获取消息
 
-#### 2.1 获取当前聊天窗口所有消息 `GetAllMessage`
+#### 3.1 获取当前聊天窗口所有消息 `GetAllMessage`
 
 **方法说明**：
 
@@ -556,7 +721,7 @@ for msg in msgs:
 
 > **注意**：自动保存文件功能在处理大文件时可能存在 BUG。
 
-#### 2.2 加载更多历史消息 `LoadMoreMessage`
+#### 3.2 加载更多历史消息 `LoadMoreMessage`
 
 **方法说明**：
 
@@ -579,9 +744,9 @@ msgs = wx.GetAllMessage()
 
 > **提示**：`LoadMoreMessage` 方法加载更多历史消息时，需确保当前聊天窗口存在历史消息，否则调用无效。
 
-#### 2.3 获取新消息
+#### 3.3 获取新消息
 
-##### 2.3.1 获取主窗口新消息
+##### 3.3.1 获取主窗口新消息
 
 - **`GetAllNewMessage`**：获取所有新消息。
 - **`GetNextNewMessage`**：获取下一条新消息。
@@ -610,7 +775,7 @@ next_msg = wx.GetNextNewMessage()
 }
 ```
 
-##### 2.3.2 监听消息 `GetListenMessage`
+##### 3.3.2 监听消息 `GetListenMessage`
 
 在调用 `AddListenChat` 方法添加监听对象后，通过 `GetListenMessage` 方法获取监听消息。
 
@@ -648,9 +813,9 @@ for chat in msgs:
 
 ---
 
-### 3. 添加好友
+### 4. 添加好友
 
-#### 3.1 发起好友申请 `AddNewFriend`
+#### 4.1 发起好友申请 `AddNewFriend`
 
 **方法说明**：
 
@@ -658,13 +823,13 @@ for chat in msgs:
 
 **参数说明**：
 
-| 参数     | 类型        | 默认值            | 说明                                     |
-| -------- | ----------- | ----------------- | ---------------------------------------- |
-| keywords | `str`       | /                 | 微信号、手机号、QQ号                      |
-| addmsg   | `str`       | `'你好，我是xxxx'` | 添加好友的消息                            |
-| remark   | `str`       | `None`            | 备注名                                   |
-| tags     | `list`      | `None`            | 标签列表，如 `['朋友', '同事']`             |
-| permission| `str`     | `'朋友圈'`        | 权限设置，`'朋友圈'` 或 `'仅聊天'`        |
+| 参数      | 类型        | 默认值            | 说明                                     |
+| --------- | ----------- | ----------------- | ---------------------------------------- |
+| keywords  | `str`       | /                 | 微信号、手机号、QQ号                      |
+| addmsg    | `str`       | `'你好，我是xxxx'` | 添加好友的消息                            |
+| remark    | `str`       | `None`            | 备注名                                   |
+| tags      | `list`      | `None`            | 标签列表，如 `['朋友', '同事']`             |
+| permission| `str`       | `'朋友圈'`        | 权限设置，`'朋友圈'` 或 `'仅聊天'`        |
 
 **示例代码**：
 
@@ -682,9 +847,9 @@ tags = ['朋友', '同事']        # 标签列表
 wx.AddNewFriend(keywords, addmsg=addmsg, remark=remark, tags=tags, permission='朋友圈')
 ```
 
-#### 3.2 接受好友请求
+#### 4.2 接受好友请求
 
-##### 3.2.1 获取新的好友申请对象列表 `GetNewFriends`
+##### 4.2.1 获取新的好友申请对象列表 `GetNewFriends`
 
 **方法说明**：
 
@@ -703,7 +868,7 @@ new_friends = wx.GetNewFriends()
 #  <wxautox New Friends Element at 0x1e95fced081 (李四: 你好,我是xxx群的李四)>]
 ```
 
-##### 3.2.2 通过好友申请对象接受好友请求
+##### 4.2.2 通过好友申请对象接受好友请求
 
 **示例代码**：
 
@@ -728,9 +893,9 @@ wx.SwitchToChat()
 
 ---
 
-### 4. 切换聊天窗口
+### 5. 切换聊天窗口
 
-#### 4.1 切换到指定好友聊天框 `ChatWith`
+#### 5.1 切换到指定好友聊天框 `ChatWith`
 
 **方法说明**：
 
@@ -756,11 +921,11 @@ who = '张三'
 wx.ChatWith(who=who, exact=True)
 ```
 
-#### 4.2 切换微信主页面
+#### 5.2 切换微信主页面
 
 通过点击微信左侧黑色侧边栏的相应图标按钮，实现页面切换。
 
-##### 4.2.1 切换到聊天页面 `SwitchToChat`
+##### 5.2.1 切换到聊天页面 `SwitchToChat`
 
 ```python
 from wxautox import WeChat
@@ -771,7 +936,7 @@ wx = WeChat()
 wx.SwitchToChat()
 ```
 
-##### 4.2.2 切换到通讯录页面 `SwitchToContact`
+##### 5.2.2 切换到通讯录页面 `SwitchToContact`
 
 ```python
 from wxautox import WeChat
@@ -784,9 +949,9 @@ wx.SwitchToContact()
 
 ---
 
-### 5. 获取好友信息
+### 6. 获取好友信息
 
-#### 5.1 获取粗略信息 `GetAllFriends`
+#### 6.1 获取粗略信息 `GetAllFriends`
 
 **方法说明**：
 
@@ -818,7 +983,7 @@ friend_infos = wx.GetAllFriends()
 
 > **注意**：该方法的运行时间取决于好友数量，约为每秒 6-8 个好友的速度。未经过大量测试，可能存在未知问题，如有问题请在微信群内反馈。
 
-#### 5.2 获取详细信息 `GetAllFriendDetails`
+#### 6.2 获取详细信息 `GetAllFriendDetails`
 
 **方法说明**：
 
@@ -873,7 +1038,7 @@ friend_details = wx.GetAllFriendDetails()
 > - 若遇到企业微信的好友且处于已离职状态，可能会导致微信客户端卡死，需重启（此为微信客户端 BUG）。
 > - 该方法未经过大量测试，可能存在未知问题，如有问题请在微信群内反馈。
 
-#### 5.3 获取所有好友详情 `GetFriendDetails`
+#### 6.3 获取所有好友详情 `GetFriendDetails`
 
 **方法说明**：
 
@@ -1351,7 +1516,7 @@ print(details)
 | chat_name          | 当前聊天对象名，群名或好友名                                     |
 | group_member_count | 群聊人数，如果是群消息则有该参数                               |
 
-##### 4.2.5 解析卡片链接 `parse_url` 方法（2024-12-11 新增）
+##### 4.2.5 解析卡片链接 `parse_url` 方法
 
 **方法说明**：
 
