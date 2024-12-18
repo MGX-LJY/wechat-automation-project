@@ -117,7 +117,7 @@
         "method": "wechat",
         "recipient": "李老师呀",
         "error_recipient": "李老师呀",
-        "admin": "李老师呀"
+        "admins": "李老师呀"
     },
     "itchat": {
         "qr_check": {
