@@ -29,6 +29,8 @@ import win32con
 from PIL import ImageGrab
 from typing import (Any, Callable, Dict, List, Iterable, Tuple)  # need pip install typing for Python3.4 or lower
 from typing_extensions import Literal
+
+comtypes.CoInitialize()
 TreeNode = Any
 
 # print('uia done')
@@ -65,7 +67,6 @@ class _AutomationClient:
                 self.UIAutomationCore = comtypes.client.GetModule("UIAutomationCore.dll")
                 self.IUIAutomation = comtypes.client.CreateObject("{ff48dba4-60ef-4201-aa87-54103eef594e}", interface=self.UIAutomationCore.IUIAutomation)
                 self.ViewWalker = self.IUIAutomation.RawViewWalker
-                #self.ViewWalker = self.IUIAutomation.ControlViewWalker
                 break
             except Exception as ex:
                 if retry + 1 == tryCount:
@@ -1703,8 +1704,16 @@ class Win32:
     # def _check_hwnd(self):
     #     if not win32gui.IsWindow(self.hwnd):
     #         raise Exception("Window not found")
+
+    def activate(self):
+        """
+        Activate the window.
+        """
+        win32gui.ShowWindow(self.hwnd, 1)
+        win32gui.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 3)
+        win32gui.SetWindowPos(self.hwnd, -2, 0, 0, 0, 0, 3)
     
-    def click(self, x: int, y: int, button: Literal["left", "right"] = "left"):
+    def click(self, x: int, y: int, button: Literal["left", "right"] = "left", activate: bool = False):
         """
         Click at the specified client coordinates.
         
@@ -1713,17 +1722,19 @@ class Win32:
             y: The y-coordinate.
             button: The button to click. Default is "left".
         """
-        # print(x, y, button)
-        x, y = win32gui.ScreenToClient(self.hwnd, (x, y))
-        # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+        if activate:
+            self.activate()
+        x1, y1 = win32gui.ScreenToClient(self.hwnd, (x, y))
         if button.lower() == "left":
-            win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, win32api.MAKELONG(x, y))
-            # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
-            win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, win32api.MAKELONG(x, y))
+            # win32gui.SendMessage(self.hwnd, win32con.WM_NCHITTEST, 0, win32api.MAKELONG(x, y))
+            # win32gui.SendMessage(self.hwnd, win32con.WM_SETCURSOR, self.hwnd, win32api.MAKELONG(win32con.HTCLIENT, 0))
+            win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, win32api.MAKELONG(x1, y1))
+            win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, win32api.MAKELONG(x1, y1))
+            # win32gui.SendMessage(self.hwnd, win32con.WM_ERASEBKGND, 0, 0)
+            # win32gui.SendMessage(self.hwnd, win32con.WM_PAINT, 0, 0)
         elif button.lower() == "right":
-            win32api.SendMessage(self.hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, win32api.MAKELONG(x, y))
-            # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
-            win32api.SendMessage(self.hwnd, win32con.WM_RBUTTONUP, 0, win32api.MAKELONG(x, y))
+            win32api.SendMessage(self.hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, win32api.MAKELONG(x1, y1))
+            win32api.SendMessage(self.hwnd, win32con.WM_RBUTTONUP, 0, win32api.MAKELONG(x1, y1))
         else:
             raise ValueError("Invalid button")
         
@@ -1732,12 +1743,15 @@ class Win32:
         Move the mouse to the specified client coordinates.
         """
         x, y = win32gui.ScreenToClient(self.hwnd, (x, y))
-        win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+        # win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
+        ctypes.windll.user32.PostMessageW(self.hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(x, y))
 
-    def double_click(self, x: int, y: int):
+    def double_click(self, x: int, y: int, activate: bool = False):
         """
         Double click at the specified client coordinates.
         """
+        if activate:
+            self.activate()
         x, y = win32gui.ScreenToClient(self.hwnd, (x, y))
         win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDBLCLK, win32con.MK_LBUTTON, win32api.MAKELONG(x, y))
 
@@ -1788,7 +1802,8 @@ class Win32:
             button: Literal["left", "right"] = "left",
             double_click: bool = False,
             xbias: int = 0,
-            ybias: int = 0
+            ybias: int = 0,
+            activate: bool = False
         ):
         """
         Click at the specified position relative to the bounding box.
@@ -1831,9 +1846,9 @@ class Win32:
         x += xbias
         y += ybias
         if double_click:
-            self.double_click(x, y)
+            self.double_click(x, y, activate)
         else:
-            self.click(x, y, button)
+            self.click(x, y, button, activate)
 
     def scroll_wheel(self, bbox, delta=120):
         """
@@ -6188,6 +6203,8 @@ class Control():
         Get all progeny controls.
         Return List[List[Control]], a list of list of `Control` subclasses.
         """
+        if hasattr(self, '_progeny'):
+            return self._progeny
         all_elements = []
 
         def find_all_elements(element, depth=0):
@@ -6199,7 +6216,8 @@ class Control():
                 find_all_elements(child, depth+1)
             return all_elements
         
-        return find_all_elements(self)
+        self._progeny = find_all_elements(self)
+        return self._progeny
     
     def GetProgenyControl(self, depth: int=1, index: int=0, control_type: str = None) -> 'Control':
         """
@@ -6393,7 +6411,7 @@ class Control():
         """
         return self.MoveCursorToInnerPos(simulateMove=simulateMove)
 
-    def Click(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False, pos='center', return_pos=True) -> None:
+    def Click(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False, pos='center', return_pos=True, show_window=False) -> None:
         """
         x: int, if < 0, click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6416,7 +6434,7 @@ class Control():
         else:
             if not hasattr(self, 'winapi'):
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
-            self.winapi.click_by_bbox(self.BoundingRectangle, xbias=x, ybias=y, pos=pos)
+            self.winapi.click_by_bbox(self.BoundingRectangle, xbias=x, ybias=y, pos=pos, activate=show_window)
 
     def Flash(self, color=0x0000FF):
         """
@@ -6463,7 +6481,7 @@ class Control():
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
             self.winapi.hover_by_bbox(self.BoundingRectangle, xbias=x, ybias=y)
 
-    def MiddleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False) -> None:
+    def MiddleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move: bool=False, show_window=False) -> None:
         """
         x: int, if < 0, middle click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, middle click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6483,9 +6501,9 @@ class Control():
         else:
             if not hasattr(self, 'winapi'):
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
-            self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True, xbias=x, ybias=y)
+            self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True, xbias=x, ybias=y, activate=show_window)
 
-    def RightClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move=False) -> None:
+    def RightClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move=False, show_window=False) -> None:
         """
         x: int, if < 0, right click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, right click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6505,9 +6523,9 @@ class Control():
         else:
             if not hasattr(self, 'winapi'):
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
-            self.winapi.click_by_bbox(self.BoundingRectangle, button='right', xbias=x, ybias=y)
+            self.winapi.click_by_bbox(self.BoundingRectangle, button='right', xbias=x, ybias=y, activate=show_window)
 
-    def DoubleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move=False) -> None:
+    def DoubleClick(self, x: int = None, y: int = None, ratioX: float = 0.5, ratioY: float = 0.5, simulateMove: bool = True, waitTime: float = OPERATION_WAIT_TIME, move=False, show_window=False) -> None:
         """
         x: int, if < 0, right click self.BoundingRectangle.right + x, if not None, ignore ratioX.
         y: int, if < 0, right click self.BoundingRectangle.bottom + y, if not None, ignore ratioY.
@@ -6527,7 +6545,7 @@ class Control():
         else:
             if not hasattr(self, 'winapi'):
                 self.winapi = Win32(self.GetTopLevelControl().NativeWindowHandle)
-            self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True)
+            self.winapi.click_by_bbox(self.BoundingRectangle, double_click=True, activate=show_window)
 
     def ShortcutPaste(self, click=True, move=False) -> None:
         """

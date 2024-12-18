@@ -3,6 +3,7 @@ from . import uiautomation as uia
 from PIL import ImageGrab
 import win32clipboard
 import win32process
+import subprocess
 import win32gui
 import win32api
 import win32con
@@ -12,12 +13,38 @@ import psutil
 import shutil
 import winreg
 import logging
+import hashlib
 import time
+import sys
 import os
 import re
 
 ORIVERSION = "3.9.8.15"
 VERSION = "3.9.11.17"
+AGREEMENTHASH = 'c155ea310562359e0975cfe317386951e2a8297e3a3e9ab5064998c4465c41142e32ea66e82669d351f83be211623aa1e1bbfee65d3226d951553b8f2182f363'
+
+AGREEMENT_CONTENT = """用户协议
+最后更新日期：2024年12月7日
+
+感谢您使用 wxauto(x)（以下简称“本项目”）。为明确用户责任，特制定本用户协议（以下简称“协议”）。请在使用前仔细阅读并同意以下条款。您使用本项目即视为您已接受并同意遵守本协议。
+
+许可与使用限制
+1. 合法用途
+用户应仅将本项目用于合法用途，包括但不限于：
+- 个人学习和研究。
+- 在不违反适用法律法规及第三方协议（如微信用户协议）的情况下个人使用。
+
+2. 禁止行为
+- 不得私自删除该协议中任何内容。
+- 用户不得将本项目用于以下用途：
+- 开发、分发或使用任何违反法律法规的工具或服务。
+- 开发、分发或使用任何违反第三方平台规则（如微信用户协议）的工具或服务。
+- 从事任何危害他人权益、平台安全或公共利益的行为。
+
+3. 风险与责任
+用户在使用本项目时，须自行确保其行为的合法性及合规性。
+任何因使用本项目而产生的法律风险、责任及后果，由用户自行承担。
+"""
 
 def set_cursor_pos(x, y):
     win32api.SetCursorPos((x, y))
@@ -499,33 +526,123 @@ def ParseWeChatTime(time_str):
     # all match failed
     return time_str
 
-
-def RollIntoView(win, ele, equal=False):
-    while ele.BoundingRectangle.ycenter() < win.BoundingRectangle.top or ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom:
-        if ele.BoundingRectangle.ycenter() < win.BoundingRectangle.top:
+def RollIntoView(win, ele, equal=False, bias=0):
+    while ele.BoundingRectangle.ycenter() < win.BoundingRectangle.top + bias or ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom - bias:
+        if ele.BoundingRectangle.ycenter() < win.BoundingRectangle.top + bias:
             # 上滚动
             while True:
                 win.WheelUp(wheelTimes=1)
                 time.sleep(0.1)
                 if equal:
-                    if ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.top:
+                    if ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.top + bias:
                         break
                 else:
-                    if ele.BoundingRectangle.ycenter() > win.BoundingRectangle.top:
+                    if ele.BoundingRectangle.ycenter() > win.BoundingRectangle.top + bias:
                         break
 
-        elif ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom:
+        elif ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom - bias:
             # 下滚动
             while True:
                 win.WheelDown(wheelTimes=1)
                 time.sleep(0.1)
                 if equal:
-                    if ele.BoundingRectangle.ycenter() <= win.BoundingRectangle.bottom:
+                    if ele.BoundingRectangle.ycenter() <= win.BoundingRectangle.bottom - bias:
                         break
                 else:
-                    if ele.BoundingRectangle.ycenter() < win.BoundingRectangle.bottom:
+                    if ele.BoundingRectangle.ycenter() < win.BoundingRectangle.bottom - bias:
                         break
         time.sleep(0.3)
+
+
+def ensure_agreement():
+    # 定义协议文件和确认状态的路径
+    # agreement_file = "AGREEMENT"  # 确保文件与模块放在同一目录
+    # agreement_file_path = os.path.join(os.path.dirname(__file__), agreement_file)
+    confirmation_folder = os.path.join(os.getenv("USERPROFILE"), ".wxauto")
+    confirmation_file = os.path.join(confirmation_folder, "WXAUTO_AGREED")
+
+    # 检查是否已确认协议
+    if not os.path.exists(confirmation_folder):
+        os.makedirs(confirmation_folder)  # 创建 .wxauto 文件夹
+
+    if os.path.exists(confirmation_file):
+        with open(confirmation_file, "r", encoding="utf-8") as file:
+            now_agreement_hash = file.read()
+        
+        if now_agreement_hash == AGREEMENTHASH:
+            return 
+        else:
+            print("协议文件已更新，重新确认协议。")
+
+    # 读取协议内容
+    # if not os.path.exists(agreement_file_path):
+    #     raise FileNotFoundError(f"协议文件不存在。请联系开发者。")
+
+    # with open(agreement_file_path, "r", encoding="utf-8") as file:
+    #     agreement_content = file.read()
+
+    agreementhash = hashlib.sha256(AGREEMENT_CONTENT.encode("utf-8")).hexdigest()
+    if agreementhash != AGREEMENTHASH[:64]:
+        raise ValueError(f"协议文件已被篡改。请联系开发者。")
+    
+    print("=== 请阅读以下协议，您使用本项目即视为您已接受并同意遵守本协议。 ===\n")
+    print(AGREEMENT_CONTENT)
+    
+    with open(confirmation_file, "w", encoding="utf-8") as file:
+        file.write(AGREEMENTHASH)
+
+    # # 显示协议并要求用户确认
+    # attempts = 0
+    # max_attempts = 5
+    # while attempts < max_attempts:
+    #     print("=== 请阅读并确认以下协议 ===\n")
+    #     print(agreement_content)
+    #     print("\n输入回车键以表示您已阅读并同意协议。")
+
+    #     user_input = input("请输入您的选择：").strip()
+    #     if user_input == "":
+    #         # 用户确认协议
+    #         with open(confirmation_file, "w", encoding="utf-8") as file:
+    #             file.write(AGREEMENTHASH)
+    #         print("协议已确认，感谢您的配合。")
+    #         return
+    #     else:
+    #         attempts += 1
+    #         print(f"输入无效，您还有 {max_attempts - attempts} 次机会。\n")
+
+    # # 超过最大尝试次数，自动卸载模块
+    # print("您未能正确确认协议，将卸载模块 wxautox。")
+    # subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "wxautox"])
+    # sys.exit("由于协议未被确认，wxautox 模块已被卸载。")
+
+# 在模块首次导入时调用
+ensure_agreement()
+# def RollIntoView(win, ele, equal=False):
+#     while ele.BoundingRectangle.ycenter() < win.BoundingRectangle.top or ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom:
+#         if ele.BoundingRectangle.ycenter() < win.BoundingRectangle.top:
+#             # 上滚动
+#             while True:
+#                 win.WheelUp(wheelTimes=1)
+#                 time.sleep(0.1)
+#                 if equal:
+#                     if ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.top:
+#                         break
+#                 else:
+#                     if ele.BoundingRectangle.ycenter() > win.BoundingRectangle.top:
+#                         break
+
+#         elif ele.BoundingRectangle.ycenter() >= win.BoundingRectangle.bottom:
+#             # 下滚动
+#             while True:
+#                 win.WheelDown(wheelTimes=1)
+#                 time.sleep(0.1)
+#                 if equal:
+#                     if ele.BoundingRectangle.ycenter() <= win.BoundingRectangle.bottom:
+#                         break
+#                 else:
+#                     if ele.BoundingRectangle.ycenter() < win.BoundingRectangle.bottom:
+#                         break
+#         time.sleep(0.3)
 
 wxlog = logging.getLogger('wxauto')
 wxlog.setLevel(logging.DEBUG)
