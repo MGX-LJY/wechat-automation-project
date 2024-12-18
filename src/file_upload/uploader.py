@@ -45,8 +45,6 @@ class Uploader:
 
         # 初始化 wxauto WeChat 实例
         self.wx = WeChat()
-        self.initialize_wechat()
-        logging.info("wxauto WeChat 实例已初始化")
 
         # 初始化 PointManager
         self.point_manager = point_manager if point_manager else PointManager()
@@ -78,14 +76,6 @@ class Uploader:
     def update_config(self, new_upload_config):
         self.upload_config = new_upload_config
         logging.info("Uploader 配置已更新")
-
-    def initialize_wechat(self):
-        """
-        确保微信客户端已运行，并切换到主页面。
-        """
-        self.wx.SwitchToChat()
-        logging.info("已切换到微信聊天页面")
-        time.sleep(1)  # 等待界面切换完成
 
     def upload_group_id(self, recipient_name: str, soft_id: str, sender_nickname: str = None, recipient_type: str = 'group', group_type: str = None):
         """
