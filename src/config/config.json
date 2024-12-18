@@ -115,8 +115,6 @@
     },
     "error_notification": {
         "method": "wechat",
-        "recipient": "李老师呀",
-        "error_recipient": "李老师呀"
     },
     "itchat": {
         "qr_check": {
