@@ -11,10 +11,10 @@ from src.auto_download.auto_download import AutoDownloadManager
 from src.config.config_manager import ConfigManager
 from src.error_handling.error_handler import ErrorHandler
 from src.file_upload.uploader import Uploader
-from src.itchat_module.itchat_handler import ItChatHandler
 from src.logging_module.logger import setup_logging
 from src.notification.notifier import Notifier
 from src.point_manager import PointManager
+from src.wxauto_module.WxAutoHandler import WxAutoHandler  # 添加 WxAutoHandler
 
 
 class ConfigChangeHandler(FileSystemEventHandler):
@@ -79,32 +79,28 @@ def main():
         )
         logging.info("AutoDownloadManager 初始化完成")
 
-        # 9. 初始化 ItChatHandler
-        itchat_handler = ItChatHandler(
+        # 9. 初始化 WxAutoHandler
+        wx_auto_handler = WxAutoHandler(
             error_handler=error_handler,
             notifier=notifier,
             browser_controller=auto_download_manager,
             point_manager=point_manager,
         )
-        logging.info("ItChatHandler 初始化完成")
+        logging.info("WxAutoHandler 初始化完成")
 
-        # 10. 绑定 Uploader 到 ItChatHandler
-        itchat_handler.set_uploader(uploader)
-        logging.info("Uploader 已绑定到 ItChatHandler")
+        # 10. 绑定 Uploader 到 WxAutoHandler
+        wx_auto_handler.set_uploader(uploader)
+        logging.info("Uploader 已绑定到 WxAutoHandler")
 
-        # 11. 登录微信
-        itchat_handler.login()
-        logging.info("微信登录完成")
-
-        # 12. 启动微信消息监听线程
-        itchat_thread = threading.Thread(target=itchat_handler.run, daemon=True)
-        itchat_thread.start()
+        # 11. 启动微信消息监听线程
+        wx_auto_thread = threading.Thread(target=wx_auto_handler.listen_messages, daemon=True)
+        wx_auto_thread.start()
         logging.info("微信消息监听线程已启动")
 
-        # 13. 注册信号处理，确保程序退出时停止下载监控和登出微信
+        # 12. 注册信号处理，确保程序退出时停止下载监控和登出微信
         def signal_handler(sig, frame):
             logging.info('接收到退出信号，正在停止程序...')
-            itchat_handler.logout()
+            wx_auto_handler.stop()  # 停止 WxAutoHandler 的监听线程
             uploader.stop()  # 停止 Uploader 的上传线程
             auto_download_manager.stop()  # 停止下载管理器
             sys.exit(0)
@@ -121,8 +117,8 @@ def main():
             # 更新 Uploader 配置
             uploader.update_config(new_config.get('upload', {}))
 
-            # 更新 ItChatHandler 的配置
-            itchat_handler.update_config(new_config)
+            # 更新 WxAutoHandler 的配置
+            wx_auto_handler.update_config(new_config)
 
             logging.info("配置变化已应用")
 
@@ -133,7 +129,7 @@ def main():
         logging.info("配置文件监控已启动")
 
         # 15. 主线程等待子线程
-        itchat_thread.join()
+        wx_auto_thread.join()
 
     except Exception as e:
         try:

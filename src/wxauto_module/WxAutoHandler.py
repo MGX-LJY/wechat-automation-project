@@ -1,3 +1,5 @@
+# src/wxauto_module/WxAutoHandler.py
+
 import logging
 import os
 import queue
@@ -10,7 +12,7 @@ from urllib.parse import urlparse, urlunparse
 
 from lib.wxautox.wxauto import WeChat
 from src.config.config_manager import ConfigManager
-from src.itchat_module.admin_commands import AdminCommandsHandler
+from src.wxauto_module.admin_commands import AdminCommandsHandler
 
 class WxAutoHandler:
     """
