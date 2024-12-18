@@ -76,7 +76,7 @@ class Notifier:
 
         :param config: 配置字典，包含 'method' 和 'admins'
         """
-        wechat_config = config.get('wechat', {})
+        wechat_config = config.get('error_notification', {})
         self.method = wechat_config.get('method', 'wechat').lower()
 
         admins = wechat_config.get('admins', [])
