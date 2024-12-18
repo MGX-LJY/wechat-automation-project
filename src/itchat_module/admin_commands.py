@@ -1,7 +1,7 @@
 import re
 import logging
 import os
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 from src.config.config_manager import ConfigManager
 
@@ -13,14 +13,16 @@ class AdminCommandsHandler:
         self.notifier = notifier
         self.browser_controller = browser_controller
         self.error_handler = error_handler
-
         self.help_templates = {
+            # 【数据库命令】
             '1': "更新个人积分 <个人名称> <变化量>",
             '2': "更新群组积分 <群组名称> <变化量>",
             '3': "更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]",
             '4': "查询个人积分 <个人名称>",
             '5': "查询群组积分 <群组名称>",
             '6': "查询用户积分 群组名: <群组名称> 昵称: <用户昵称>",
+
+            # 【配置文件命令】
             '7': "添加监听群组 <群组名称1>,<群组名称2>",
             '8': "删除监听群组 <群组名称1>,<群组名称2>",
             '9': "添加监听个人 <个人名称1>,<个人名称2>",
@@ -30,16 +32,18 @@ class AdminCommandsHandler:
             '13': "添加非整体群组 <群组名称1>,<群组名称2>",
             '14': "删除非整体群组 <群组名称1>,<群组名称2>",
             '15': "帮助",
-            '18': "禁用全部实例",
-            '19': "查询群组下载份数 <群组名称> <时间段>",
-            '20': "查询个人下载份数 <个人名称> <时间段>",
+
+            # 【实例管理命令】
+            '16': "禁用全部实例",
+            '17': "查询群组下载份数 <群组名称> <时间段>",
+            '18': "查询个人下载份数 <个人名称> <时间段>",
+            '19': "查询所有群组今天下载量",
+            '20': "查询所有群组这周下载量",
             '21': "查询当前账号使用情况",
             '22': "查询所有实例状态",
             '23': "检查所有实例状态",
             '24': "设置实例需要管理员介入 <实例ID> <True/False>",
-
         }
-
         self.commands = {
             # 数据库命令
             'update_individual_points': r'^更新个人积分\s+(\S+)\s+([+-]?\d+)$',
@@ -76,33 +80,56 @@ class AdminCommandsHandler:
             'query_individual_today_downloads': r'^查询个人\s+(\S+)\s+今天\s+下载份数$',
             'query_individual_this_week_downloads': r'^查询个人\s+(\S+)\s+这周\s+下载份数$',
             'query_individual_last_week_downloads': r'^查询个人\s+(\S+)\s+上周\s+下载份数$',
-            'query_individual_this_month_downloads': r'^查询个人\s+(\S+)\s+这个月\s+下载份数$',
-            'query_individual_last_month_downloads': r'^查询个人\s+(\S+)\s+上个月\s+下载份数$',
             'query_all_groups_today_downloads': r'^查询所有群组今天下载量$',
             'query_all_groups_this_week_downloads': r'^查询所有群组这周下载量$',
             'query_current_account_usage': r'^查询当前账号使用情况$',
             'check_all_instances_status': r'^检查所有实例状态$|^check all instances status$',
             'query_all_instances_status': r'^查询所有实例状态$|^query all instances status$',
-            'query_soft_id_logs': r'^查询soft_id日志\s+(\S+)$',
             'set_instance_admin_intervention': r'^设置实例需要管理员介入\s+(\S+)\s+(\S+)$',
         }
 
     def handle_command(self, message: str) -> Optional[str]:
         """处理管理员发送的命令并执行相应操作"""
         message = message.strip()  # 去除前后空格
+        # 首先检测消息是否包含链接
+        links = self.extract_urls(message)
+        if links:
+            for link in links:
+                logging.info(f"检测到链接: {link}")
+                soft_id = self.extract_soft_id_from_url(link)
+                if soft_id:
+                    try:
+                        logs = self.get_soft_id_logs(soft_id)
+                    except Exception as e:
+                        logging.error(f"获取 soft_id '{soft_id}' 的日志时出错: {e}")
+                        return "获取日志时发生错误，请稍后再试。"
+
+                    if logs.strip():
+                        MAX_LOG_LENGTH = 4000  # 根据实际平台调整
+                        if len(logs) > MAX_LOG_LENGTH and self.notifier:
+                            self.send_long_message(logs)
+                            return "已分段发送与该 soft_id 相关的日志。"
+                        else:
+                            return logs
+                    else:
+                        return f"未找到与 soft_id '{soft_id}' 相关的日志。"
+                else:
+                    return "无法从提供的链接中提取 soft_id，请检查链接格式。"
+        else:
+            return "消息中未检测到有效的链接。"
 
         # 检查是否为数字，发送对应的命令模板
         if message.isdigit():
             template = self.help_templates.get(message)
             if template:
-                return f"请使用以下命令模板：\n{template}"
+                return f"{template}"
             else:
                 return "无效的命令序号，请输入帮助命令查看可用命令列表。"
 
         for cmd, pattern in self.commands.items():
             match = re.match(pattern, message)
             if match:
-                logging.info(f"匹配到命令: {cmd}，参数: {match.groups()}")
+                logging.debug(f"匹配到命令: {cmd}，参数: {match.groups()}")
                 try:
                     if cmd == 'update_individual_points':
                         # 处理逻辑
@@ -246,17 +273,6 @@ class AdminCommandsHandler:
                         status = True if status_str.lower() == 'true' else False
                         response = self.browser_controller.set_instance_admin_intervention(instance_id, status)
                         return response
-
-                    elif cmd == 'query_soft_id_logs':
-                        (soft_id,) = match.groups()
-                        logs = self.get_soft_id_logs(soft_id)
-                        if logs.strip():
-                            # 如果日志内容超长，考虑分段发送
-                            if len(logs) > 2000 and self.notifier:
-                                self.send_long_message(logs)
-                                return "已分段发送与该 soft_id 相关的日志。"
-                            else:
-                                return logs
 
                     # 配置文件命令处理逻辑
                     elif cmd in ['add_monitor_group', 'remove_monitor_group',
@@ -440,69 +456,82 @@ class AdminCommandsHandler:
     def get_help_message(self) -> str:
         """返回可用命令的帮助信息，按照分类整理"""
         help_message = (
-            "可用命令如下：\n\n"
-            "【数据库命令】\n"
+            "📚 可用命令如下：\n\n"
+
+            "=== 数据库命令 ===\n"
             "1. 更新个人积分 <个人名称> <变化量>\n"
             "   示例：更新个人积分 User1 -10\n\n"
+
             "2. 更新群组积分 <群组名称> <变化量>\n"
             "   示例：更新群组积分 群组B -20\n\n"
+
             "3. 更新用户积分 群组名: <群组名称> 昵称: <用户昵称> 积分: [更新积分]\n"
             "   示例：更新用户积分 群组名: 群组A 昵称: 用户1 积分: 50\n\n"
+
             "4. 查询个人积分 <个人名称>\n"
             "   示例：查询个人积分 User1\n\n"
+
             "5. 查询群组积分 <群组名称>\n"
             "   示例：查询群组积分 群组B\n\n"
+
             "6. 查询用户积分 群组名: <群组名称> 昵称: <用户昵称>\n"
             "   示例：查询用户积分 群组名: 群组A 昵称: 用户1\n\n"
-            "【配置文件命令】\n"
+
+            "=== 配置文件命令 ===\n"
             "7. 添加监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：添加监听群组 群组A,群组B\n\n"
+
             "8. 删除监听群组 <群组名称1>,<群组名称2>\n"
             "   示例：删除监听群组 群组A,群组B\n\n"
+
             "9. 添加监听个人 <个人名称1>,<个人名称2>\n"
             "   示例：添加监听个人 个人1,个人2\n\n"
+
             "10. 删除监听个人 <个人名称1>,<个人名称2>\n"
             "    示例：删除监听个人 个人1,个人2\n\n"
+
             "11. 添加整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：添加整体群组 群组A,群组B\n\n"
+
             "12. 删除整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除整体群组 群组A,群组B\n\n"
+
             "13. 添加非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：添加非整体群组 群组A,群组B\n\n"
+
             "14. 删除非整体群组 <群组名称1>,<群组名称2>\n"
             "    示例：删除非整体群组 群组A,群组B\n\n"
+
             "15. 帮助\n"
             "    示例：帮助\n\n"
-            "【下载份数查询命令】\n"
-            "18. 查询群组下载份数 <群组名称> <时间段>\n"
-            "    示例：查询群组 群组A 今天 下载份数\n"
-            "    示例：查询群组 群组A 这周 下载份数\n"
-            "    示例：查询群组 群组A 上周 下载份数\n"
-            "    示例：查询群组 群组A 这个月 下载份数\n"
-            "    示例：查询群组 群组A 上个月 下载份数\n\n"
-            
-            "19. 查询个人下载份数 <个人名称> <时间段>\n"
-            "    示例：查询个人 用户1 今天 下载份数\n"
-            "    示例：查询个人 用户1 这周 下载份数\n"
-            "    示例：查询个人 用户1 上周 下载份数\n"
-            "    示例：查询个人 用户1 这个月 下载份数\n"
-            "    示例：查询个人 用户1 上个月 下载份数\n\n"
 
-            "20. 查询所有群组今天下载量\n"
-            "    示例：查询所有群组今天下载量\n\n"
-            "21. 查询所有群组这周下载量\n"
-            "    示例：查询所有群组这周下载量\n\n"
-            "22. 查询当前账号使用情况\n"
+            "=== 实例管理命令 ===\n"
+            "18. 禁用全部实例\n"
+            "    示例：禁用全部实例\n\n"
+
+            "19. 查询群组下载份数 <群组名称> <时间段>\n"
+            "    示例：查询群组下载份数 群组A 今天\n"
+            "    示例：查询群组下载份数 群组A 这周\n"
+            "    示例：查询群组下载份数 群组A 上周\n\n"
+
+            "20. 查询个人下载份数 <个人名称> <时间段>\n"
+            "    示例：查询个人下载份数 用户1 今天\n"
+            "    示例：查询个人下载份数 用户1 这周\n"
+            "    示例：查询个人下载份数 用户1 上周\n\n"
+
+            "21. 查询当前账号使用情况\n"
             "    示例：查询当前账号使用情况\n\n"
-            "23. 查询所有实例状态\n"
+
+            "22. 查询所有实例状态\n"
             "    示例：查询所有实例状态\n\n"
-            "24. 检查所有实例状态\n"
+
+            "23. 检查所有实例状态\n"
             "    示例：检查所有实例状态\n\n"
-            "25. 设置实例需要管理员介入 <实例ID> <True/False>\n"
-            "    示例：设置实例需要管理员介入 xkw1 True\n"
-            "26. 查询soft_id日志 <soft_id>\n"
-            "    示例: 查询soft_id日志 123456"
-            "【命令模板】\n"
+
+            "24. 设置实例需要管理员介入 <实例ID> <True/False>\n"
+            "    示例：设置实例需要管理员介入 xkw1 True\n\n"
+
+            "📄 【命令模板】\n"
             "发送序号以获取对应的命令模板。\n"
             "例如，发送 '1' 获取命令模板。"
         )
@@ -545,6 +574,39 @@ class AdminCommandsHandler:
             if self.error_handler:
                 self.error_handler.handle_exception(e)
             return ""
+
+    def extract_urls(self, message: str) -> List[str]:
+        """
+        从消息中提取所有有效的URL。
+
+        参数:
+        - message: 管理员发送的消息。
+
+        返回:
+        - URL字符串列表，若未找到则返回空列表。
+        """
+        url_pattern = r'https?://(?:www\.|m\.)?zxxk\.com/soft/\d+\.html(?:[?#]\S+)?'
+        return re.findall(url_pattern, message)
+
+    def extract_soft_id_from_url(self, url: str) -> Optional[str]:
+        """
+        从给定的下载链接中提取 soft_id。
+
+        参数:
+        - url: 包含 soft_id 的下载链接。
+
+        返回:
+        - 提取到的 soft_id，若未找到则返回 None。
+        """
+        pattern = r'/soft/(\d+)\.html'
+        match = re.search(pattern, url)
+        if match:
+            soft_id = match.group(1)
+            logging.info(f"从链接中提取到 soft_id: {soft_id}")
+            return soft_id
+        else:
+            logging.error(f"无法从链接中提取 soft_id: {url}")
+            return None
 
     def get_soft_id_logs(self, soft_id: str) -> str:
         """获取当天日志中与指定soft_id相关的日志行。"""
