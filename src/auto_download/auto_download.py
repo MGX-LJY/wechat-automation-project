@@ -1833,9 +1833,8 @@ class AutoDownloadManager:
         """
         计算距离下一个午夜的时间，并安排`daily_reset`方法执行。
         """
-        now = datetime.datetime.now()
-        # 计算下一个午夜的时间
-        next_midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        now = datetime.now()
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         delay = (next_midnight - now).total_seconds()
         logging.info(f"计划在 {next_midnight} 执行每日重置任务。延迟 {delay} 秒。")
         timer = threading.Timer(delay, self.daily_reset)
