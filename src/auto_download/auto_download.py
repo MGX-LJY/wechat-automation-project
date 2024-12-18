@@ -9,6 +9,8 @@ import threading
 import time
 import traceback
 import uuid
+import datetime
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Tuple
@@ -1435,8 +1437,8 @@ class AutoDownloadManager:
         self.next_xkw_index = 0  # 用于轮询选择 XKW 实例
         self.xkw_lock = threading.RLock()
         self.status_check_thread = threading.Thread(target=self.periodic_status_check, daemon=True)
+        self.schedule_daily_reset()
         self.status_check_thread.start()
-        logging.info("定期实例状态检查线程已启动。")
         self.pending_tasks = queue.Queue()  # 用于保存挂起的下载任务
         self.paused = False  # 标志是否暂停任务分配
         self.load_instances_state()
@@ -1794,6 +1796,52 @@ class AutoDownloadManager:
             if self.notifier:
                 self.notifier.notify(f"获取当前账号使用情况时出错: {e}", is_error=True)
             return "获取当前账号使用情况时发生错误。"
+
+    def daily_reset(self):
+        """
+        每日重置所有账号的每日下载计数，并更新状态。
+        """
+        try:
+            logging.info("开始执行每日重置任务。")
+            for xkw in self.xkw_instances:
+                with XKW.download_counts_lock:
+                    for account in xkw.accounts:
+                        nickname = account.get('nickname')
+                        if nickname in XKW.download_counts:
+                            daily_info = XKW.download_counts[nickname].get('daily', {})
+                            daily_info['count'] = 0
+                            daily_info['date'] = datetime.today().strftime('%Y-%m-%d')
+                            XKW.download_counts[nickname]['daily'] = daily_info
+                            logging.info(f"[{xkw.id}] 账号 {nickname} 的每日下载计数已重置。")
+                # 更新实例状态
+                xkw.set_daily_limit_reached(False)
+            # 保存重置后的下载计数
+            with XKW.download_counts_lock:
+                with open(XKW.download_counts_file, 'w', encoding='utf-8') as f:
+                    json.dump(XKW.download_counts, f, ensure_ascii=False, indent=4)
+            logging.info("每日重置任务完成。")
+            if self.notifier:
+                self.notifier.notify("每日下载计数已重置。")
+        except Exception as e:
+            logging.error(f"执行每日重置任务时出错: {e}", exc_info=True)
+            if self.notifier:
+                self.notifier.notify(f"执行每日重置任务时出错: {e}", is_error=True)
+        finally:
+            # 重新安排下一个重置任务
+            self.schedule_daily_reset()
+
+    def schedule_daily_reset(self):
+        """
+        计算距离下一个午夜的时间，并安排`daily_reset`方法执行。
+        """
+        now = datetime.datetime.now()
+        # 计算下一个午夜的时间
+        next_midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        delay = (next_midnight - now).total_seconds()
+        logging.info(f"计划在 {next_midnight} 执行每日重置任务。延迟 {delay} 秒。")
+        timer = threading.Timer(delay, self.daily_reset)
+        timer.daemon = True
+        timer.start()
 
     def stop(self):
         """
