@@ -422,12 +422,6 @@ class MessageHandler:
             # 使用 deque 读取文件的最后 n 行
             return ''.join(deque(f, n))
 
-def send_long_message(notifier, message: str, max_length: int = 2000):
-    """将长消息分割为多个部分并逐段发送"""
-    for i in range(0, len(message), max_length):
-        # 分段发送消息
-        notifier.notify(message[i:i + max_length])
-
 class DownloadTaskQueue:
     def __init__(self, browser_controller, batch_size=10, initial_interval=30,
                  min_interval=5, max_interval=60, high_threshold=20, low_threshold=10):
