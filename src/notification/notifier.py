@@ -110,12 +110,13 @@ class Notifier:
             logging.warning(f"无法发送通知，未知的通知方法: {self.method}")
             return False
 
-    def notify_long_message(self, message: str, max_length: int = 2000) -> bool:
+    def notify_long_message(self, message: str, max_length: int = 2000, is_error: bool = False) -> bool:
         """
         分割长消息并逐段发送
 
         :param message: 要发送的长消息内容
         :param max_length: 每段消息的最大长度
+        :param is_error: 是否为错误通知
         :return: 发送是否全部成功
         """
         try:
