@@ -74,8 +74,10 @@ class Notifier:
 
         :param config: 配置字典，包含 'method' 和 'admins'
         """
-        self.method = config.get('method', 'wechat').lower()
-        self.admins = config.get('admins', [])
+        wechat_config = config.get('wechat', {})
+        self.method = wechat_config.get('method', 'wechat').lower()
+        self.admins = wechat_config.get('admins', [])
+
         self.wechat_notifiers: List[WeChatNotifier] = []
 
         if self.method == 'wechat':
