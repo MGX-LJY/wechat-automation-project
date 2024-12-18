@@ -86,14 +86,14 @@ class WxAutoHandler:
         """持续监听消息，并对接收到的消息进行解析处理"""
         wait = 1  # 设置1秒查看一次是否有新消息
         logging.info("开始启动消息监听线程")
-        while True:
+        while not self.stop_event.is_set():  # 修改循环条件
             try:
                 msgs = self.wx.GetListenMessage()
                 for chat in msgs:
                     who = chat.who  # 获取聊天窗口名（人或群名）
                     one_msgs = msgs.get(chat)  # 获取消息内容
                     for msg in one_msgs:
-                        content = msg.content    # 获取消息内容，字符串类型的消息内容
+                        content = msg.content  # 获取消息内容，字符串类型的消息内容
                         logging.debug(f'【{who}】：{content}')
                         self.run(msg)
             except Exception as e:
